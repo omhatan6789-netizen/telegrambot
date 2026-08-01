@@ -153,6 +153,56 @@ def main():
         )
     )
 
+    # =====================
+    # الحظر والكتم
+    # =====================
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex("^حظر"),
+            ban_user
+        )
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex("^رفع الحظر"),
+            unban_user
+        )
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex("^حظر عام"),
+            global_ban
+        )
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex("^كتم"),
+            mute_user
+        )
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex("^رفع الكتم"),
+            unmute_user
+        )
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex("^كتم عام"),
+            global_mute
+        )
+    )
 
     app.add_handler(
         MessageHandler(
