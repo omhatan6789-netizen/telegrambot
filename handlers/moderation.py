@@ -20,13 +20,25 @@ RANKS = {
 
 def has_permission(actor_id, target_id):
 
+    # المطور لا يُمس
+    if target_id == OWNER_ID:
+        return False
+
+    # المطور يقدر على الجميع
     if actor_id == OWNER_ID:
         return True
+
 
     actor_rank = get_rank(actor_id)
     target_rank = get_rank(target_id)
 
-    return RANKS.get(actor_rank, 0) > RANKS.get(target_rank, 0)
+
+    actor_level = RANKS.get(actor_rank, 0)
+    target_level = RANKS.get(target_rank, 0)
+
+
+    # لازم رتبة المنفذ أعلى من الهدف
+    return actor_level > target_level
 
 
 async def get_target(update: Update):
@@ -271,12 +283,24 @@ async def ban_user(update, context):
         return
 
 
-    parts = update.message.text.split()
+    if target.id == OWNER_ID:
+        await update.message.reply_text(
+            "❌ لا يمكن حظر المالك"
+        )
+        return
 
-    until = None
 
-    if len(parts) >= 3:
-        until = parse_time(parts[2])
+    try:
+        await context.bot.ban_chat_member(
+            chat_id=update.effective_chat.id,
+            user_id=target.id
+        )
+
+    except Exception as e:
+        await update.message.reply_text(
+            "❌ تأكد أن البوت مشرف ولديه صلاحية الحظر"
+        )
+        return
 
 
     conn = connect()
@@ -295,7 +319,7 @@ async def ban_user(update, context):
         (
             target.id,
             "normal",
-            str(until) if until else None
+            None
         )
     )
 
