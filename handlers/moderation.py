@@ -208,3 +208,27 @@ async def check_user(
 🚫 الحظر: {ban_text}
 🔇 الكتم: {mute_text}"""
     )
+
+
+async def ban_user(update, context):
+    await update.message.reply_text("🚫 أمر الحظر جاهز")
+
+
+async def unban_user(update, context):
+    await update.message.reply_text("✅ أمر فك الحظر جاهز")
+
+
+async def global_ban(update, context):
+    await update.message.reply_text("🌍 أمر الحظر العام جاهز")
+
+
+async def mute_user(update, context):
+    await update.message.reply_text("🔇 أمر الكتم جاهز")
+
+
+async def unmute_user(update, context):
+    await update.message.reply_text("🔊 أمر فك الكتم جاهز")
+
+
+async def global_mute(update, context):
+    await update.message.reply_text("🌍 أمر الكتم العام جاهز")
