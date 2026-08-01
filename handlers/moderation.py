@@ -426,13 +426,21 @@ async def unban_user(update, context):
 
 
     try:
+
         await context.bot.unban_chat_member(
             chat_id=update.effective_chat.id,
-            user_id=target.id
+            user_id=target.id,
+            only_if_banned=True
         )
 
-    except Exception:
-        pass
+    except Exception as e:
+
+        await update.message.reply_text(
+            f"❌ لم يتم رفع الحظر: {e}"
+        )
+
+        return
+
 
 
     conn = connect()
