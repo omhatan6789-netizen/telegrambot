@@ -37,9 +37,7 @@ def has_permission(actor_id, target_id):
     actor_level = RANKS.get(actor_rank, 0)
     target_level = RANKS.get(target_rank, 0)
 
-    print("Actor:", actor_id, actor_rank)
-    print("Target:", target_id, target_rank)
-    
+        
     return actor_level > target_level
     
 
@@ -302,7 +300,7 @@ def parse_time(text):
 
 
 
-async def ban_user(update, context):
+async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not update.message:
         return
@@ -311,49 +309,63 @@ async def ban_user(update, context):
 
     if not target:
         await update.message.reply_text(
-            "❌ استخدم: حظر بالرد أو الآيدي"
+            "❌ استخدم الرد على الشخص أو الآيدي."
         )
         return
-    if not await can_bot_action(update, context):
+
+
+    # منع حظر النفس
+    if target.id == update.effective_user.id:
+        await update.message.reply_text(
+            "❌ ما يمديك تحظر نفسك."
+        )
         return
 
+
+    # منع حظر البوت
+    if target.id == context.bot.id:
+        await update.message.reply_text(
+            "❌ ما يمديك تحظر البوت."
+        )
+        return
+
+
+    # منع حظر المطور
+    if target.id == OWNER_ID:
+        await update.message.reply_text(
+            "❌ مايمديك تحظر المطور."
+        )
+        return
+
+
+    # فحص الصلاحية
     if not has_permission(
         update.effective_user.id,
         target.id
     ):
         await update.message.reply_text(
-            "❌ لا تملك صلاحية"
+            "❌ لا تملك صلاحية استخدام هذا الأمر."
         )
         return
 
 
-    if target.id == OWNER_ID:
-        await update.message.reply_text(
-            "❌ لا يمكن حظر المالك"
-        )
-        return
+    until = None
+
+    parts = update.message.text.split()
+
+    if len(parts) >= 2:
+        until = parse_time(parts[1])
 
 
-    try:
-        await context.bot.ban_chat_member(
-            chat_id=update.effective_chat.id,
-            user_id=target.id
-        )
-
-    except Exception as e:
-        await update.message.reply_text(
-            "❌ تأكد أن البوت مشرف ولديه صلاحية الحظر"
-        )
-        return
+    await context.bot.ban_chat_member(
+        chat_id=update.effective_chat.id,
+        user_id=target.id,
+        until_date=until
+    )
 
 
     conn = connect()
     cur = conn.cursor()
-
-    await context.bot.unban_chat_member(
-        chat_id=update.effective_chat.id,
-        user_id=target.id
-    )
 
     cur.execute(
         """
@@ -368,61 +380,8 @@ async def ban_user(update, context):
         (
             target.id,
             "normal",
-            None
+            str(until) if until else None
         )
-    )
-
-    conn.commit()
-    conn.close()
-
-    await context.bot.ban_chat_member(
-        chat_id=update.effective_chat.id,
-        user_id=target.id
-    )
-
-    await update.message.reply_text(
-        f"🚫 تم حظر {target.first_name}"
-    )
-
-    # بعد الحصول على target مباشرة
-
-    if target.id == update.effective_user.id:
-        await update.message.reply_text("❌ ما يمديك تكتم أو تحظر نفسك.")
-        return
-
-    if target.id == context.bot.id:
-        await update.message.reply_text("❌ ما يمديك تكتم أو تحظر البوت.")
-        return
-
-    if target.id == OWNER_ID:
-        await update.message.reply_text("❌ لا يمكن معاقبة المالك.")
-        return
-
-    if not has_permission(update.effective_user.id, target.id):
-        await update.message.reply_text("❌ لا تملك صلاحية استخدام هذا الأمر.")
-        return
-
-
-async def unban_user(update, context):
-
-    target = await get_target(update)
-
-    if not target:
-        await update.message.reply_text(
-            "❌ استخدم الرد أو الآيدي"
-        )
-        return
-
-
-    conn = connect()
-    cur = conn.cursor()
-
-    cur.execute(
-        """
-        DELETE FROM bans
-        WHERE user_id=?
-        """,
-        (target.id,)
     )
 
     conn.commit()
@@ -430,9 +389,8 @@ async def unban_user(update, context):
 
 
     await update.message.reply_text(
-        "✅ تم رفع الحظر"
+        f"🚫 تم حظر {target.first_name}"
     )
-
 
 
 async def global_ban(update, context):
@@ -492,6 +450,7 @@ async def mute_user(update, context):
     # منع كتم المطور أو النفس أو البوت
     bot = await context.bot.get_me()
 
+
     if target.id == OWNER_ID:
         await update.message.reply_text(
             "❌ لا يمكن كتم المطور"
@@ -513,6 +472,7 @@ async def mute_user(update, context):
         return
 
 
+
     # فحص الصلاحيات
     if not has_permission(
         update.effective_user.id,
@@ -525,7 +485,7 @@ async def mute_user(update, context):
 
 
 
-    # التأكد أن البوت لديه صلاحية الكتم
+    # التأكد من صلاحية البوت
     bot_member = await context.bot.get_chat_member(
         update.effective_chat.id,
         bot.id
@@ -558,20 +518,11 @@ async def mute_user(update, context):
         user_id=target.id,
 
         permissions=ChatPermissions(
-            can_send_messages=False,
-            can_send_audios=False,
-            can_send_documents=False,
-            can_send_photos=False,
-            can_send_videos=False,
-            can_send_video_notes=False,
-            can_send_voice_notes=False,
-            can_send_polls=False,
-            can_send_other_messages=False,
-            can_add_web_page_previews=False
+            can_send_messages=False
         ),
 
-            until_date=until_date
-        )
+        until_date=until_date
+    )
 
 
 
@@ -585,13 +536,15 @@ async def mute_user(update, context):
         INSERT OR REPLACE INTO mutes
         (
             user_id,
-            mute_type
+            mute_type,
+            until_time
         )
-        VALUES (?,?)
+        VALUES (?,?,?)
         """,
         (
             target.id,
-            "normal"
+            "normal",
+            str(until_date) if until_date else None
         )
     )
 
@@ -602,12 +555,14 @@ async def mute_user(update, context):
 
 
     if until_date:
+
         await update.message.reply_text(
             f"🔇 تم كتم {target.first_name}\n"
-            f"⏱ المدة: {update.message.text.split()[-1]}"
+            f"⏱ المدة: {parts[1]}"
         )
 
     else:
+
         await update.message.reply_text(
             f"🔇 تم كتم {target.first_name}"
         )
