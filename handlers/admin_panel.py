@@ -250,3 +250,34 @@ async def admin_buttons(
     await query.edit_message_text(
         text
     )
+
+
+async def developer_panel(
+    update,
+    context
+):
+
+    if not update.message:
+        return
+
+
+    user_id = update.effective_user.id
+
+
+    OWNER_ID = 8453977662
+
+
+    if user_id != OWNER_ID:
+        await update.message.reply_text(
+            "❌ هذه اللوحة للمطور فقط"
+        )
+        return
+
+
+    await update.message.reply_text(
+        """
+        👑 لوحة المطور
+
+     كل صلاحيات البوت متاحة لك.
+        """
+            )
