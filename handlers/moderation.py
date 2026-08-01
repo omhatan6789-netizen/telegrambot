@@ -405,10 +405,71 @@ async def global_ban(update, context):
 
 async def mute_user(update, context):
 
+    if not update.message:
+        return
+
+
     target = await get_target(update)
 
+
     if not target:
+        await update.message.reply_text(
+            "❌ استخدم: كتم بالرد أو الآيدي"
+        )
         return
+
+
+
+    if not has_permission(
+        update.effective_user.id,
+        target.id
+    ):
+        await update.message.reply_text(
+            "❌ لا تملك صلاحية"
+        )
+        return
+
+
+
+    if target.id == OWNER_ID:
+        await update.message.reply_text(
+            "❌ لا يمكن كتم المالك"
+        )
+        return
+
+
+
+    import datetime
+
+    until = datetime.datetime.now() + datetime.timedelta(
+        hours=1
+    )
+
+
+
+    from telegram import ChatPermissions
+
+
+    try:
+
+        await context.bot.restrict_chat_member(
+            chat_id=update.effective_chat.id,
+            user_id=target.id,
+            permissions=ChatPermissions(
+                can_send_messages=False
+            ),
+            until_date=until
+        )
+
+
+    except:
+
+        await update.message.reply_text(
+            "❌ تأكد أن البوت مشرف ولديه صلاحية الكتم"
+        )
+
+        return
+
 
 
     conn = connect()
@@ -420,13 +481,15 @@ async def mute_user(update, context):
         INSERT OR REPLACE INTO mutes
         (
             user_id,
-            mute_type
+            mute_type,
+            until_time
         )
-        VALUES (?,?)
+        VALUES (?, ?, ?)
         """,
         (
             target.id,
-            "normal"
+            "normal",
+            str(until)
         )
     )
 
@@ -435,18 +498,57 @@ async def mute_user(update, context):
     conn.close()
 
 
+
     await update.message.reply_text(
-        "🔇 تم كتم المستخدم"
+        f"🔇 تم كتم {target.first_name} لمدة ساعة"
     )
 
 
 
 async def unmute_user(update, context):
 
+    if not update.message:
+        return
+
+
     target = await get_target(update)
+
 
     if not target:
         return
+
+
+
+    if not has_permission(
+        update.effective_user.id,
+        target.id
+    ):
+        await update.message.reply_text(
+            "❌ لا تملك صلاحية"
+        )
+        return
+
+
+
+    from telegram import ChatPermissions
+
+
+    try:
+
+        await context.bot.restrict_chat_member(
+            chat_id=update.effective_chat.id,
+            user_id=target.id,
+            permissions=ChatPermissions(
+                can_send_messages=True,
+                can_send_media_messages=True,
+                can_send_other_messages=True,
+                can_add_web_page_previews=True
+            )
+        )
+
+    except:
+        pass
+
 
 
     conn = connect()
@@ -460,9 +562,9 @@ async def unmute_user(update, context):
         (target.id,)
     )
 
-
     conn.commit()
     conn.close()
+
 
 
     await update.message.reply_text(
