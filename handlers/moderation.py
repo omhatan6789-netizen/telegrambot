@@ -20,11 +20,11 @@ RANKS = {
 
 def has_permission(actor_id, target_id):
 
-    # المطور لا يُمس
+    # المالك لا يُمس
     if target_id == OWNER_ID:
         return False
 
-    # المطور يقدر على الجميع
+    # المالك يقدر على الجميع
     if actor_id == OWNER_ID:
         return True
 
@@ -37,7 +37,10 @@ def has_permission(actor_id, target_id):
     target_level = RANKS.get(target_rank, 0)
 
 
-    # لازم رتبة المنفذ أعلى من الهدف
+    print("ACTOR:", actor_id, actor_rank)
+    print("TARGET:", target_id, target_rank)
+
+
     return actor_level > target_level
 
 
