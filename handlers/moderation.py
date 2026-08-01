@@ -20,13 +20,13 @@ RANKS = {
 
 def has_permission(actor_id, target_id):
 
-    # المالك لا يُمس
+    # لا أحد يقدر على المطور
     if target_id == OWNER_ID:
         return False
 
-    # المالك يقدر على الجميع
-    if actor_id == OWNER_ID:
-        return True
+    # لا أحد يكتم أو يحظر نفسه
+    if actor_id == target_id:
+        return False
 
 
     actor_rank = get_rank(actor_id)
@@ -37,11 +37,39 @@ def has_permission(actor_id, target_id):
     target_level = RANKS.get(target_rank, 0)
 
 
-    print("ACTOR:", actor_id, actor_rank)
-    print("TARGET:", target_id, target_rank)
-
-
     return actor_level > target_level
+
+
+async def can_bot_action(update, context):
+
+    bot = await context.bot.get_me()
+
+    # إذا الهدف هو البوت
+    if update.message.reply_to_message:
+        if update.message.reply_to_message.from_user.id == bot.id:
+            await update.message.reply_text(
+                "❌ لا يمكن كتم أو حظر البوت"
+            )
+            return False
+
+
+    member = await context.bot.get_chat_member(
+        update.effective_chat.id,
+        bot.id
+    )
+
+
+    if not member.can_restrict_members:
+
+        await update.message.reply_text(
+            "❌ أعطِ البوت صلاحية حظر وكتم الأعضاء"
+        )
+
+        return False
+
+
+    return True
+
 
 def get_duration(text):
 
@@ -283,7 +311,8 @@ async def ban_user(update, context):
             "❌ استخدم: حظر بالرد أو الآيدي"
         )
         return
-
+    if not await can_bot_action(update, context):
+        return
 
     if not has_permission(
         update.effective_user.id,
@@ -338,6 +367,10 @@ async def ban_user(update, context):
     conn.commit()
     conn.close()
 
+    await context.bot.ban_chat_member(
+        chat_id=update.effective_chat.id,
+        user_id=target.id
+    )
 
     await update.message.reply_text(
         f"🚫 تم حظر {target.first_name}"
@@ -430,6 +463,8 @@ async def mute_user(update, context):
         )
         return
 
+    if not await can_bot_action(update, context):
+        return
 
 
     if not has_permission(
@@ -512,7 +547,10 @@ async def mute_user(update, context):
     conn.commit()
     conn.close()
 
-
+    await context.bot.ban_chat_member(
+        chat_id=update.effective_chat.id,
+        user_id=target.id
+    )
 
     await update.message.reply_text(
         f"🔇 تم كتم {target.first_name} لمدة ساعة"
