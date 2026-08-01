@@ -320,6 +320,51 @@ def create_tables():
     )
     """)
 
+    # =====================
+    # المحظورون
+    # =====================
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS bans
+    (
+        user_id INTEGER PRIMARY KEY,
+        ban_type TEXT,
+        reason TEXT,
+        admin_id INTEGER
+    )
+    """)
+
+
+    # =====================
+    # المكتومون
+    # =====================
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS mutes
+    (
+        user_id INTEGER PRIMARY KEY,
+        mute_type TEXT,
+        reason TEXT,
+        admin_id INTEGER
+    )
+    """)
+
+
+    # =====================
+    # السجل الإداري
+    # =====================
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS admin_logs
+    (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        admin_id INTEGER,
+        target_id INTEGER,
+        action TEXT,
+        date TEXT
+    )
+    """)
+
 
     conn.commit()
     conn.close()
