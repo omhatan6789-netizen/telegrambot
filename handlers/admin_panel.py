@@ -1,12 +1,32 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
-from permissions import is_admin, is_owner
+from handlers.roles import get_rank
 
 
-# =====================
-# لوحة الادمن
-# =====================
+OWNER_ID = 8453977662
+
+
+RANKS = {
+    "عضو": 0,
+    "💎 مميز": 1,
+    "🛡 ادمن": 2,
+    "🟣 ادمن أساسي": 3,
+    "🤍 نائب المالك": 4,
+    "👑 المالك": 5
+}
+
+
+def can_open_admin(user_id):
+
+    if user_id == OWNER_ID:
+        return True
+
+    rank = get_rank(user_id)
+
+    return RANKS.get(rank, 0) >= 2
+
+
 
 async def admin_panel(
     update: Update,
@@ -20,11 +40,12 @@ async def admin_panel(
     user_id = update.effective_user.id
 
 
-    if not await is_admin(user_id):
+    if not can_open_admin(user_id):
 
         await update.message.reply_text(
-            "❌ هذه اللوحة للأدمن فقط"
+            "❌ هذه اللوحة للأدمن وفوق فقط"
         )
+
         return
 
 
@@ -33,32 +54,15 @@ async def admin_panel(
 
         [
             InlineKeyboardButton(
-                "👤 كشف مستخدم",
-                callback_data="admin_check"
+                "🛡 الرتب",
+                callback_data="admin_ranks"
             )
         ],
 
         [
             InlineKeyboardButton(
-                "🔇 كتم",
-                callback_data="admin_mute"
-            ),
-
-            InlineKeyboardButton(
-                "🔊 فك الكتم",
-                callback_data="admin_unmute"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🚫 حظر",
-                callback_data="admin_ban"
-            ),
-
-            InlineKeyboardButton(
-                "✅ رفع الحظر",
-                callback_data="admin_unban"
+                "🚫 الحظر والكتم",
+                callback_data="admin_ban_mute"
             )
         ],
 
@@ -71,98 +75,15 @@ async def admin_panel(
 
         [
             InlineKeyboardButton(
-                "📋 الرتب",
-                callback_data="admin_roles"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
                 "💬 الردود",
                 callback_data="admin_replies"
             )
-        ]
-
-    ]
-
-
-    await update.message.reply_text(
-        "🛡 لوحة الادمن\n\n"
-        "اختر الأمر الذي تريد:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-
-
-
-
-# =====================
-# لوحة المطور
-# =====================
-
-async def developer_panel(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-
-    if not update.message:
-        return
-
-
-    user_id = update.effective_user.id
-
-
-    owner = await is_owner(user_id)
-
-        
-    admin = await is_admin(user_id)
-
-
-    if not owner:
-
-        if not admin:
-
-            await update.message.reply_text(
-                "❌ هذه اللوحة للمطور ونائب المالك فقط"
-            )
-
-            return
-
-
-
-    keyboard = [
-
-        [
-            InlineKeyboardButton(
-                "👑 إدارة الرتب",
-                callback_data="dev_ranks"
-            )
         ],
 
         [
             InlineKeyboardButton(
-                "👮 إدارة الأدمنية",
-                callback_data="dev_admins"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🚫 إدارة الحظر",
-                callback_data="dev_bans"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🎮 إدارة الألعاب",
-                callback_data="dev_games"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "⚙️ إعدادات البوت",
-                callback_data="dev_settings"
+                "🔎 الكشف",
+                callback_data="admin_check"
             )
         ]
 
@@ -170,18 +91,12 @@ async def developer_panel(
 
 
     await update.message.reply_text(
-        "👑 لوحة المطور\n\n"
-        "كل أدوات التحكم هنا:",
+        "🛡 اوامر الأدمن\n\nاختر القسم:",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
 
 
-
-
-# =====================
-# ضغط الأزرار
-# =====================
 
 async def admin_buttons(
     update: Update,
@@ -190,95 +105,148 @@ async def admin_buttons(
 
     query = update.callback_query
 
-    if not query:
-        return
-
-
     await query.answer()
 
 
-    data = query.data
+    if query.data == "admin_ranks":
+
+    text = """
+🛡 أوامر الرتب:
+
+📌 رفع الرتب:
+رفع مميز
+رفع ادمن
+رفع ادمن اساسي
+رفع نائب المالك
+
+
+📌 تنزيل الرتب:
+تنزيل مميز
+تنزيل ادمن
+تنزيل ادمن اساسي
+تنزيل نائب المالك
+
+
+طريقة الاستخدام:
+↩️ رد على رسالة الشخص ثم اكتب الأمر
+
+مثال:
+رفع ادمن
+"""
+
+
+    elif query.data == "admin_ban_mute":
+
+    text = """
+🚫 أوامر الحماية:
+
+📌 الحظر:
+حظر (بالرد أو الآيدي)
+رفع الحظر (بالرد أو الآيدي)
+
+🌍 الحظر العام:
+حظر عام (بالرد أو الآيدي)
+
+📌 الكتم:
+كتم (بالرد أو الآيدي)
+رفع الكتم (بالرد أو الآيدي)
+
+🌍 الكتم العام:
+كتم عام (بالرد أو الآيدي)
+
+🔎 الكشف:
+كشف (بالرد أو الآيدي أو اليوزر)
+
+⏱ المدة:
+مثال:
+كتم 10د
+كتم 1س
+كتم 30ث
+كتم 1ي
+"""
+
+
+    elif query.data == "admin_games":
+
+    text = """
+🎮 أوامر الألعاب:
+
+📌 إضافة لعبة:
+اضف لعبة
+
+📌 حذف لعبة:
+حذف لعبة اسم اللعبة
+
+📌 عرض الألعاب:
+الالعاب
+
+📌 إضافة سؤال:
+اضف سؤال اسم اللعبة
+
+📌 عرض أسئلة لعبة:
+اسئلة اسم اللعبة
+
+📌 حذف سؤال:
+حذف سؤال اسم اللعبة رقم السؤال
+
+📌 تفعيل لعبة:
+تفعيل لعبة اسم اللعبة
+
+📌 تعطيل لعبة:
+تعطيل لعبة اسم اللعبة
+
+📌 تفعيل جميع الألعاب:
+تفعيل الالعاب
+
+📌 تعطيل جميع الألعاب:
+تعطيل الالعاب
+"""
 
 
 
-    texts = {
+    elif query.data == "admin_replies":
 
-        "admin_check":
-        "👤 كشف المستخدم\n\n"
-        "استخدم الأمر:\n"
-        "كشف بالرد على المستخدم أو باليوزر أو الايدي",
+    text = """
+💬 أوامر الردود:
 
+📌 الردود العادية:
 
-        "admin_mute":
-        "🔇 الكتم\n\n"
-        "استخدم:\n"
-        "كتم بالرد على الشخص",
-
-
-        "admin_unmute":
-        "🔊 فك الكتم\n\n"
-        "استخدم:\n"
-        "فك كتم بالرد",
+اضف رد
+تعديل رد
+مسح رد
+الردود
 
 
-        "admin_ban":
-        "🚫 الحظر\n\n"
-        "استخدم:\n"
-        "حظر بالرد",
+⭐ الردود المميزة:
+
+اضف رد مميز
+تعديل رد مميز
+مسح رد مميز
+الردود المميزة
 
 
-        "admin_unban":
-        "✅ رفع الحظر\n\n"
-        "استخدم:\n"
-        "رفع حظر بالرد",
+🗑 حذف الكل:
+
+مسح الردود
+مسح الردودالمميزة
+"""
 
 
-        "admin_games":
-        "🎮 إدارة الألعاب\n\n"
-        "اضف لعبة\n"
-        "حذف لعبة\n"
-        "تفعيل لعبة\n"
-        "تعطيل لعبة",
+    elif query.data == "admin_check":
+
+        text = """
+🔎 أمر الكشف:
+
+كشف بالرد
+كشف بالآيدي
+كشف باليوزر
+"""
 
 
-        "admin_roles":
-        "📋 الرتب\n\n"
-        "رفع ادمن\n"
-        "رفع ادمن اساسي\n"
-        "رفع نائب المالك",
+    else:
+        text = "❌ لا يوجد"
 
 
-        "admin_replies":
-        "💬 الردود\n\n"
-        "اضف رد\n"
-        "تعديل رد\n"
-        "مسح رد",
-
-
-        "dev_ranks":
-        "👑 إدارة جميع الرتب",
-
-
-        "dev_admins":
-        "👮 إدارة الأدمنية",
-
-
-        "dev_bans":
-        "🚫 التحكم الكامل بالحظر",
-
-
-        "dev_games":
-        "🎮 جميع إعدادات الألعاب",
-
-
-        "dev_settings":
-        "⚙️ إعدادات البوت"
-    }
-
-
-
-    if data in texts:
-
-        await query.edit_message_text(
-            texts[data]
-        )
+    await query.edit_message_text(
+        text
+    )
