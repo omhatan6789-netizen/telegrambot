@@ -392,6 +392,69 @@ async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🚫 تم حظر {target.first_name}"
     )
 
+async def unban_user(update, context):
+
+    if not update.message:
+        return
+
+
+    target = await get_target(update)
+
+
+    if not target:
+        await update.message.reply_text(
+            "❌ استخدم رفع الحظر بالرد على الشخص أو الآيدي"
+        )
+        return
+
+
+    if target.id == OWNER_ID:
+        await update.message.reply_text(
+            "❌ لا يمكن تعديل حظر المطور"
+        )
+        return
+
+
+    if not has_permission(
+        update.effective_user.id,
+        target.id
+    ):
+        await update.message.reply_text(
+            "❌ لا تملك صلاحية رفع الحظر عن هذا الشخص"
+        )
+        return
+
+
+    try:
+        await context.bot.unban_chat_member(
+            chat_id=update.effective_chat.id,
+            user_id=target.id
+        )
+
+    except Exception:
+        pass
+
+
+    conn = connect()
+    cur = conn.cursor()
+
+
+    cur.execute(
+        """
+        DELETE FROM bans
+        WHERE user_id=?
+        """,
+        (target.id,)
+    )
+
+
+    conn.commit()
+    conn.close()
+
+
+    await update.message.reply_text(
+        f"✅ تم رفع الحظر عن {target.first_name}"
+    )
 
 async def global_ban(update, context):
 
