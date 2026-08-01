@@ -43,6 +43,15 @@ def has_permission(actor_id, target_id):
 
     return actor_level > target_level
 
+def get_duration(text):
+
+    parts = text.split()
+
+    for part in parts:
+        if part.endswith(("ث", "د", "س", "ي")):
+            return parse_time(part)
+
+    return None
 
 async def get_target(update: Update):
 
@@ -444,9 +453,12 @@ async def mute_user(update, context):
 
     import datetime
 
-    until = datetime.datetime.now() + datetime.timedelta(
-        hours=1
-    )
+    until = get_duration(update.message.text)
+
+    if not until:
+        until = datetime.datetime.now() + datetime.timedelta(
+            hours=1
+        )
 
 
 
