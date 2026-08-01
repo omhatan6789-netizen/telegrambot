@@ -113,10 +113,7 @@ async def developer_panel(
 
     owner = await is_owner(user_id)
 
-
-    # نائب المالك مسموح
-    from permission import is_admin
-
+        
     admin = await is_admin(user_id)
 
 
