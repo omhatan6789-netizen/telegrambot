@@ -531,15 +531,13 @@ async def mute_user(update, context):
         INSERT OR REPLACE INTO mutes
         (
             user_id,
-            mute_type,
-            until_time
+            mute_type
         )
-        VALUES (?, ?, ?)
+        VALUES (?,?)
         """,
         (
             target.id,
-            "normal",
-            str(until)
+            "normal"
         )
     )
 
