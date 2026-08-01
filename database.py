@@ -411,5 +411,32 @@ def create_tables():
     )
     """)
 
+    # =====================
+    # الحظر
+    # =====================
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS bans
+    (
+        user_id INTEGER PRIMARY KEY,
+        ban_type TEXT,
+        until_time TEXT
+    )
+    """)
+
+
+    # =====================
+    # الكتم
+    # =====================
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS mutes
+    (
+        user_id INTEGER PRIMARY KEY,
+        mute_type TEXT,
+        until_time TEXT
+    )
+    """)
+
     conn.commit()
     conn.close()
