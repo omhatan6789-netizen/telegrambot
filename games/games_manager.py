@@ -43,7 +43,7 @@ async def is_game_admin(user_id):
 
     return data[0] in [
         "🤍 نائب المالك",
-        "ادمن اساسي",
+        "ادمن أساسي",
         "ادمن"
     ]
 

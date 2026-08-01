@@ -6,10 +6,6 @@ def connect():
     return sqlite3.connect("database.db")
 
 
-def create_tables():
-    conn = connect()
-    cur = conn.cursor()
-
     
 
 def create_tables():
@@ -262,6 +258,67 @@ def create_tables():
     )
     """)
 
+
+    # =====================
+    # الحظر
+    # =====================
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS bans
+    (
+        user_id INTEGER PRIMARY KEY,
+
+        type TEXT,
+
+        reason TEXT,
+
+        by_user INTEGER,
+
+        date TEXT
+    )
+    """)
+
+
+
+    # =====================
+    # الكتم
+    # =====================
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS mutes
+    (
+        user_id INTEGER PRIMARY KEY,
+
+        type TEXT,
+
+        reason TEXT,
+
+        by_user INTEGER,
+
+        date TEXT
+    )
+    """)
+
+
+
+    # =====================
+    # سجل الإدارة
+    # =====================
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS moderation_logs
+    (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        action TEXT,
+
+        user_id INTEGER,
+
+        by_user INTEGER,
+
+        date TEXT
+    )
+    """)
 
 
     conn.commit()
