@@ -1,0 +1,268 @@
+import sqlite3
+
+DB_NAME = "bot.db"
+
+def connect():
+    return sqlite3.connect("database.db")
+
+
+def create_tables():
+    conn = connect()
+    cur = conn.cursor()
+
+    
+
+def create_tables():
+
+    conn = connect()
+    cur = conn.cursor()
+
+
+    # =====================
+    # المستخدمين
+    # =====================
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS users
+    (
+        user_id INTEGER PRIMARY KEY,
+
+        username TEXT,
+
+        first_name TEXT,
+
+        messages INTEGER DEFAULT 0,
+
+        rank TEXT DEFAULT 'عضو',
+
+        joined_date TEXT
+    )
+    """)
+
+
+
+    cur.execute(
+        """
+        INSERT OR IGNORE INTO users
+        (
+            user_id,
+            rank
+        )
+        VALUES
+        (
+            8453977662,
+            'القوت نواف 🎖️'
+        )
+        """
+    )
+
+
+
+    # =====================
+    # الردود العادية
+    # =====================
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS replies
+    (
+        name TEXT PRIMARY KEY,
+
+        text TEXT,
+
+        type TEXT,
+
+        caption TEXT
+    )
+    """)
+
+
+
+    # =====================
+    # الردود المميزة
+    # =====================
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS special_replies
+    (
+        name TEXT PRIMARY KEY,
+
+        text TEXT,
+
+        type TEXT,
+
+        caption TEXT
+    )
+    """)
+
+
+
+    # =====================
+    # النقاط
+    # =====================
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS points
+    (
+        user_id INTEGER PRIMARY KEY,
+
+        points INTEGER DEFAULT 0
+    )
+    """)
+
+
+
+    # =====================
+    # الألعاب
+    # =====================
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS games
+    (
+        name TEXT PRIMARY KEY,
+
+        image TEXT,
+
+        status TEXT DEFAULT 'on'
+    )
+    """)
+
+
+
+    # =====================
+    # أسئلة الألعاب
+    # =====================
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS game_questions
+    (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        game_name TEXT,
+
+        question TEXT,
+
+        image TEXT,
+
+        caption TEXT,
+
+        answers TEXT
+    )
+    """)
+
+
+
+    # =====================
+    # إعدادات الألعاب
+    # =====================
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS games_settings
+    (
+        id INTEGER PRIMARY KEY,
+
+        status TEXT DEFAULT 'on'
+    )
+    """)
+
+
+
+    cur.execute(
+        """
+        INSERT OR IGNORE INTO games_settings
+        (
+            id,
+            status
+        )
+        VALUES
+        (
+            1,
+            'on'
+        )
+        """
+    )
+
+
+
+    # =====================
+    # سجل الفائزين
+    # =====================
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS winners
+    (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        user_id INTEGER,
+
+        game_name TEXT,
+
+        points INTEGER DEFAULT 3,
+
+        date TEXT
+    )
+    """)
+
+
+
+    # =====================
+    # سلسلة الانتصارات
+    # =====================
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS win_streaks
+    (
+        user_id INTEGER PRIMARY KEY,
+
+        streak INTEGER DEFAULT 0
+    )
+    """)
+
+
+
+    # =====================
+    # الجوائز اليومية
+    # =====================
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS daily_rewards
+    (
+        user_id INTEGER PRIMARY KEY,
+
+        last_reward TEXT
+    )
+    """)
+
+
+
+    # =====================
+    # الرتب
+    # =====================
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS ranks
+    (
+        user_id INTEGER PRIMARY KEY,
+
+        rank TEXT
+    )
+    """)
+
+
+
+    # =====================
+    # المشرفين
+    # =====================
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS admins
+    (
+        user_id INTEGER PRIMARY KEY,
+
+        rank TEXT
+    )
+    """)
+
+
+
+    conn.commit()
+    conn.close()

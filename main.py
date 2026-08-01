@@ -1,0 +1,515 @@
+from telegram import Update
+
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    ContextTypes,
+    ChatMemberHandler,
+    filters
+)
+
+from config import BOT_TOKEN
+
+from database import create_tables
+from games.anime_game import (
+    start_anime_quiz,
+    check_anime_answer
+)
+
+from handlers.start import start
+
+
+from handlers.points import (
+    my_points,
+    top_points
+)
+
+
+from handlers.users import (
+    user_id_command,
+    save_join_date,
+    save_user_message
+)
+
+
+from handlers.roles import (
+    roles_command,
+    change_rank
+)
+
+
+from handlers.replies import (
+    add_reply_start,
+    add_reply_handler,
+    check_replies,
+    replies_list,
+
+    add_special_reply_start,
+    add_special_reply_handler,
+    special_replies_list,
+
+    edit_special_reply_start,
+    edit_special_reply_handler,
+
+    edit_reply_start,
+    edit_reply_handler,
+
+    delete_special_reply_start,
+    delete_special_reply_handler,
+
+    delete_reply_start,
+    delete_reply_handler,
+
+    delete_all_replies,
+    delete_all_special_replies
+)
+
+
+from games.speed_words import (
+    start_speed_words,
+    check_speed_words
+)
+
+
+from games.games_manager import (
+    add_game_start,
+    add_game_handler,
+
+    games_list,
+    delete_game,
+    enable_game,
+    disable_game,
+    enable_all_games,
+    disable_all_games,
+
+    add_question_start,
+    add_question_handler,
+
+    questions_list,
+    delete_question,
+
+    play_game,
+    check_game_answer
+)
+
+
+
+def main():
+
+    create_tables()
+
+    app = Application.builder().token(BOT_TOKEN).build()
+
+
+    # =====================
+    # start
+    # =====================
+
+    app.add_handler(
+        CommandHandler(
+            "start",
+            start
+        )
+    )
+
+
+    # =====================
+    # المستخدم
+    # =====================
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex("^ايدي$"),
+            user_id_command
+        )
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex("^(رتبتي|كشف المجموعة)$"),
+            roles_command
+        )
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(
+                "^(رفع نائب المالك|تنزيل نائب المالك|رفع ادمن اساسي|تنزيل ادمن اساسي|رفع ادمن|تنزيل ادمن|رفع مميز|تنزيل مميز)$"
+            ),
+            change_rank
+        )
+    )
+
+
+    # =====================
+    # الردود المميزة
+    # =====================
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex("^اضف رد مميز$"),
+            add_special_reply_start
+        )
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.ALL,
+            add_special_reply_handler
+        ),
+        group=1
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex("^تعديل رد مميز$"),
+            edit_special_reply_start
+        )
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.ALL,
+            edit_special_reply_handler
+        ),
+        group=2
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex("^مسح رد مميز$"),
+            delete_special_reply_start
+        )
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.ALL,
+            delete_special_reply_handler
+        ),
+        group=3
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex("^الردود المميزة$"),
+            special_replies_list
+        )
+    )
+
+
+
+    # =====================
+    # الردود العادية
+    # =====================
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex("^اضف رد$"),
+            add_reply_start
+        )
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.ALL,
+            add_reply_handler
+        ),
+        group=4
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex("^تعديل رد$"),
+            edit_reply_start
+        )
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.ALL,
+            edit_reply_handler
+        ),
+        group=5
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex("^مسح رد$"),
+            delete_reply_start
+        )
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.ALL,
+            delete_reply_handler
+        ),
+        group=6
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex("^الردود$"),
+            replies_list
+        )
+    )
+
+
+
+    # =====================
+    # النقاط
+    # =====================
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex("^نقاطي$"),
+            my_points
+        )
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex("^توب$"),
+            top_points
+        )
+    )
+
+
+
+    # =====================
+    # أسرع كلمة
+    # =====================
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex("^كلمات$"),
+            start_speed_words
+        )
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            check_speed_words
+        ),
+        group=10
+    )
+
+
+
+    # =====================
+    # الألعاب
+    # =====================
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex("^اضف لعبة$"),
+            add_game_start
+        ),
+        group=20
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            add_game_handler
+        ),
+        group=21
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex("^الالعاب$"),
+            games_list
+        )
+    )
+
+
+
+    # =====================
+    # إضافة الأسئلة
+    # =====================
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex("^اضف سؤال"),
+            add_question_start
+        ),
+        group=22
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            (filters.TEXT | filters.PHOTO) & ~filters.COMMAND,
+            add_question_handler
+        ),
+    group=23
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex("^اسئلة"),
+            questions_list
+        )
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex("^حذف سؤال"),
+            delete_question
+        )
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex("^حذف لعبة"),
+            delete_game
+        )
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex("^تفعيل لعبة"),
+            enable_game
+        )
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex("^تعطيل لعبة"),
+            disable_game
+        )
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex("^تفعيل الالعاب$"),
+            enable_all_games
+        )
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex("^تعطيل الالعاب$"),
+            disable_all_games
+        )
+    )
+
+
+    # =====================
+    # لعبة الأنمي
+    # =====================
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex("^انمي$"),
+            start_anime_quiz
+        )
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            check_anime_answer
+        ),
+         group=32
+    )                       
+
+
+    # =====================
+    # تشغيل الألعاب
+    # =====================
+
+    app.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            play_game
+        ),
+        group=30
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            check_game_answer
+        ),
+        group=31
+    )
+
+
+
+    # =====================
+    # تشغيل الردود
+    # =====================
+
+    app.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            check_replies
+        ),
+        group=40
+    )
+
+
+
+    # =====================
+    # المستخدمين
+    # =====================
+
+    app.add_handler(
+        ChatMemberHandler(
+            save_join_date,
+            ChatMemberHandler.CHAT_MEMBER
+        )
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            save_user_message
+        ),
+        group=50
+    )
+
+
+
+    print("🤖 Bot Started...")
+
+
+    app.run_polling()
+
+
+
+if __name__ == "__main__":
+    main()
