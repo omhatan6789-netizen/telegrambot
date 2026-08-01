@@ -347,6 +347,11 @@ async def ban_user(update, context):
     conn = connect()
     cur = conn.cursor()
 
+    await context.bot.unban_chat_member(
+        chat_id=update.effective_chat.id,
+        user_id=target.id
+    )
+
     cur.execute(
         """
         INSERT OR REPLACE INTO bans
@@ -597,44 +602,37 @@ async def unmute_user(update, context):
 
     target = await get_target(update)
 
-
     if not target:
-        return
-
-
-
-    if not has_permission(
-        update.effective_user.id,
-        target.id
-    ):
         await update.message.reply_text(
-            "❌ لا تملك صلاحية"
+            "❌ استخدم الرد على الشخص أو الآيدي"
         )
         return
 
 
-
+    # فك الكتم من تيليجرام
     from telegram import ChatPermissions
 
 
-    try:
+    await context.bot.restrict_chat_member(
+        chat_id=update.effective_chat.id,
+        user_id=target.id,
 
-        await context.bot.restrict_chat_member(
-            chat_id=update.effective_chat.id,
-            user_id=target.id,
-            permissions=ChatPermissions(
-                can_send_messages=True,
-                can_send_media_messages=True,
-                can_send_other_messages=True,
-                can_add_web_page_previews=True
-            )
+        permissions=ChatPermissions(
+            can_send_messages=True,
+            can_send_audios=True,
+            can_send_documents=True,
+            can_send_photos=True,
+            can_send_videos=True,
+            can_send_video_notes=True,
+            can_send_voice_notes=True,
+            can_send_polls=True,
+            can_send_other_messages=True,
+            can_add_web_page_previews=True
         )
-
-    except:
-        pass
+    )
 
 
-
+    # حذف الكتم من قاعدة البيانات
     conn = connect()
     cur = conn.cursor()
 
@@ -650,9 +648,8 @@ async def unmute_user(update, context):
     conn.close()
 
 
-
     await update.message.reply_text(
-        "🔊 تم رفع الكتم"
+        f"🔊 تم رفع الكتم عن {target.first_name}"
     )
 
 
