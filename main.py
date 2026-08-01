@@ -138,6 +138,13 @@ def main():
         )
     )
 
+    app.add_handler(
+        MessageHandler(
+            filters.Regex("^كشف"),
+            check_user
+        )
+    )
+
 
     app.add_handler(
         MessageHandler(
@@ -529,13 +536,7 @@ def main():
         )
     )
 
-    app.add_handler(
-        MessageHandler(
-            filters.Regex("^كشف"),
-            check_user
-        )
-    )
-
+    
     print("🤖 Bot Started...")
 
 
