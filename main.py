@@ -340,7 +340,20 @@ def main():
         )
     )
 
+    app.add_handler(
+        MessageHandler(
+            filters.Regex("^مسح الردود$"),
+            delete_all_replies
+        )
+    )
 
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex("^مسح الردود المميزة$"),
+            delete_all_special_replies
+        )
+    )
 
     # =====================
     # النقاط

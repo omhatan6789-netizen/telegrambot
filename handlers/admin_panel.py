@@ -242,13 +242,72 @@ async def admin_buttons(
     كشف باليوزر
     """
 
+    elif query.data == "admin_back":
+
+        keyboard = [
+
+            [
+                InlineKeyboardButton(
+                    "🛡 الرتب",
+                    callback_data="admin_ranks"
+                )
+            ],
+
+            [
+                InlineKeyboardButton(
+                    "🚫 الحظر والكتم",
+                    callback_data="admin_ban_mute"
+                )
+            ],
+
+            [
+                InlineKeyboardButton(
+                    "🎮 الألعاب",
+                    callback_data="admin_games"
+                )
+            ],
+
+            [
+                InlineKeyboardButton(
+                    "💬 الردود",
+                    callback_data="admin_replies"
+                )
+            ],
+
+            [
+                InlineKeyboardButton(
+                    "⭐ النقاط والألعاب",
+                    callback_data="admin_extra"
+                )
+            ]
+
+        ]
+
+
+        await query.edit_message_text(
+            "🛡 لوحة الأدمن\n\nاختر القسم:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+        return
 
     else:
         text = "❌ لا يوجد"
 
 
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "🔙 رجوع",
+                callback_data="admin_back"
+            )
+        ]
+    ]
+
+
     await query.edit_message_text(
-        text
+        text,
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
 
