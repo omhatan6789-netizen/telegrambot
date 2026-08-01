@@ -24,7 +24,7 @@ from handlers.admin_panel import (
     developer_panel,
     admin_buttons
 )
-
+from handlers.moderation import check_user
 from handlers.points import (
     my_points,
     top_points
@@ -526,6 +526,13 @@ def main():
     app.add_handler(
         CallbackQueryHandler(
             admin_buttons
+        )
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex("^كشف"),
+            check_user
         )
     )
 
