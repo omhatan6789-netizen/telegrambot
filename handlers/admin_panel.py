@@ -1,7 +1,7 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
-from permission import is_admin, is_owner
+from permissions import is_admin, is_owner
 
 
 # =====================
