@@ -18,6 +18,7 @@ RANKS = {
 }
 
 
+
 def has_permission(actor_id, target_id):
 
     # لا أحد يقدر على المطور
@@ -36,9 +37,11 @@ def has_permission(actor_id, target_id):
     actor_level = RANKS.get(actor_rank, 0)
     target_level = RANKS.get(target_rank, 0)
 
-
+    print("Actor:", actor_id, actor_rank)
+    print("Target:", target_id, target_rank)
+    
     return actor_level > target_level
-
+    
 
 async def can_bot_action(update, context):
 
@@ -381,6 +384,23 @@ async def ban_user(update, context):
         f"🚫 تم حظر {target.first_name}"
     )
 
+    # بعد الحصول على target مباشرة
+
+    if target.id == update.effective_user.id:
+        await update.message.reply_text("❌ ما يمديك تكتم أو تحظر نفسك.")
+        return
+
+    if target.id == context.bot.id:
+        await update.message.reply_text("❌ ما يمديك تكتم أو تحظر البوت.")
+        return
+
+    if target.id == OWNER_ID:
+        await update.message.reply_text("❌ لا يمكن معاقبة المالك.")
+        return
+
+    if not has_permission(update.effective_user.id, target.id):
+        await update.message.reply_text("❌ لا تملك صلاحية استخدام هذا الأمر.")
+        return
 
 
 async def unban_user(update, context):

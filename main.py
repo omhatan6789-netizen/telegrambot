@@ -148,7 +148,7 @@ def main():
 
     app.add_handler(
         MessageHandler(
-            filters.Regex("^كشف"),
+            filters.Regex(r"^كشف($|\s)"),
             check_user
         )
     )
@@ -159,48 +159,43 @@ def main():
 
     app.add_handler(
         MessageHandler(
-            filters.Regex("^حظر"),
-            ban_user
-        )
-    )
-
-
-    app.add_handler(
-        MessageHandler(
-            filters.Regex("^رفع الحظر"),
-            unban_user
-        )
-    )
-
-
-    app.add_handler(
-        MessageHandler(
-            filters.Regex("^حظر عام"),
+            filters.Regex(r"^حظر عام($|\s)"),
             global_ban
         )
     )
 
-
     app.add_handler(
         MessageHandler(
-            filters.Regex("^كتم"),
-            mute_user
+            filters.Regex(r"^كتم عام($|\s)"),
+            global_mute
         )
     )
 
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^رفع الحظر($|\s)"),
+            unban_user
+        )
+    )
 
     app.add_handler(
         MessageHandler(
-            filters.Regex("^رفع الكتم"),
+            filters.Regex(r"^رفع الكتم($|\s)"),
             unmute_user
         )
     )
 
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^حظر($|\s)"),
+            ban_user
+        )
+    )
 
     app.add_handler(
         MessageHandler(
-            filters.Regex("^كتم عام"),
-            global_mute
+            filters.Regex(r"^كتم($|\s)"),
+            mute_user
         )
     )
 
