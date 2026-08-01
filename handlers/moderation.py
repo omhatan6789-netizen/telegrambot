@@ -459,69 +459,92 @@ async def mute_user(update, context):
 
     if not target:
         await update.message.reply_text(
-            "❌ استخدم: كتم بالرد أو الآيدي"
+            "❌ استخدم الكتم بالرد على الشخص أو الآيدي"
         )
         return
 
-    if not await can_bot_action(update, context):
+
+    # منع كتم المطور أو النفس أو البوت
+    bot = await context.bot.get_me()
+
+    if target.id == OWNER_ID:
+        await update.message.reply_text(
+            "❌ لا يمكن كتم المطور"
+        )
         return
 
 
+    if target.id == update.effective_user.id:
+        await update.message.reply_text(
+            "❌ لا يمكنك كتم نفسك"
+        )
+        return
+
+
+    if target.id == bot.id:
+        await update.message.reply_text(
+            "❌ لا يمكن كتم البوت"
+        )
+        return
+
+
+    # فحص الصلاحيات
     if not has_permission(
         update.effective_user.id,
         target.id
     ):
         await update.message.reply_text(
-            "❌ لا تملك صلاحية"
+            "❌ لا تملك صلاحية كتم هذا الشخص"
         )
         return
 
 
 
-    if target.id == OWNER_ID:
+    # التأكد أن البوت لديه صلاحية الكتم
+    bot_member = await context.bot.get_chat_member(
+        update.effective_chat.id,
+        bot.id
+    )
+
+
+    if not bot_member.can_restrict_members:
         await update.message.reply_text(
-            "❌ لا يمكن كتم المالك"
+            "❌ أعطِ البوت صلاحية تقييد الأعضاء"
         )
         return
 
 
 
-    import datetime
+    # قراءة المدة
+    until_date = None
 
-    until = get_duration(update.message.text)
+    parts = update.message.text.split()
 
-    if not until:
-        until = datetime.datetime.now() + datetime.timedelta(
-            hours=1
-        )
+    if len(parts) >= 2:
+        until_date = parse_time(parts[1])
 
 
 
     from telegram import ChatPermissions
 
 
-    try:
+    await context.bot.restrict_chat_member(
+        chat_id=update.effective_chat.id,
+        user_id=target.id,
 
-        await context.bot.restrict_chat_member(
-            chat_id=update.effective_chat.id,
-            user_id=target.id,
-            permissions=ChatPermissions(
-                can_send_messages=False
-            ),
-            until_date=until
-        )
+        permissions=ChatPermissions(
+            can_send_messages=False,
+            can_send_media_messages=False,
+            can_send_other_messages=False,
+            can_add_web_page_previews=False
+        ),
 
-
-    except:
-
-        await update.message.reply_text(
-            "❌ تأكد أن البوت مشرف ولديه صلاحية الكتم"
-        )
-
-        return
+        until_date=until_date
+    )
 
 
 
+    # حفظ في قاعدة البيانات
     conn = connect()
     cur = conn.cursor()
 
@@ -545,14 +568,18 @@ async def mute_user(update, context):
     conn.commit()
     conn.close()
 
-    await context.bot.ban_chat_member(
-        chat_id=update.effective_chat.id,
-        user_id=target.id
-    )
 
-    await update.message.reply_text(
-        f"🔇 تم كتم {target.first_name} لمدة ساعة"
-    )
+
+    if until_date:
+        await update.message.reply_text(
+            f"🔇 تم كتم {target.first_name}\n"
+            f"⏱ المدة: {update.message.text.split()[-1]}"
+        )
+
+    else:
+        await update.message.reply_text(
+            f"🔇 تم كتم {target.first_name}"
+        )
 
 
 
