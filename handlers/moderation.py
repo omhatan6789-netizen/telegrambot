@@ -210,25 +210,275 @@ async def check_user(
     )
 
 
+import datetime
+
+
+def parse_time(text):
+
+    if not text:
+        return None
+
+    try:
+        if text.endswith("ث"):
+            return datetime.datetime.now() + datetime.timedelta(
+                seconds=int(text[:-1])
+            )
+
+        if text.endswith("د"):
+            return datetime.datetime.now() + datetime.timedelta(
+                minutes=int(text[:-1])
+            )
+
+        if text.endswith("س"):
+            return datetime.datetime.now() + datetime.timedelta(
+                hours=int(text[:-1])
+            )
+
+        if text.endswith("ي"):
+            return datetime.datetime.now() + datetime.timedelta(
+                days=int(text[:-1])
+            )
+
+    except:
+        return None
+
+
+    return None
+
+
+
 async def ban_user(update, context):
-    await update.message.reply_text("🚫 أمر الحظر جاهز")
+
+    if not update.message:
+        return
+
+    target = await get_target(update)
+
+    if not target:
+        await update.message.reply_text(
+            "❌ استخدم: حظر بالرد أو الآيدي"
+        )
+        return
+
+
+    if not has_permission(
+        update.effective_user.id,
+        target.id
+    ):
+        await update.message.reply_text(
+            "❌ لا تملك صلاحية"
+        )
+        return
+
+
+    parts = update.message.text.split()
+
+    until = None
+
+    if len(parts) >= 3:
+        until = parse_time(parts[2])
+
+
+    conn = connect()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        INSERT OR REPLACE INTO bans
+        (
+            user_id,
+            ban_type,
+            until_time
+        )
+        VALUES (?, ?, ?)
+        """,
+        (
+            target.id,
+            "normal",
+            str(until) if until else None
+        )
+    )
+
+    conn.commit()
+    conn.close()
+
+
+    await update.message.reply_text(
+        f"🚫 تم حظر {target.first_name}"
+    )
+
 
 
 async def unban_user(update, context):
-    await update.message.reply_text("✅ أمر فك الحظر جاهز")
+
+    target = await get_target(update)
+
+    if not target:
+        await update.message.reply_text(
+            "❌ استخدم الرد أو الآيدي"
+        )
+        return
+
+
+    conn = connect()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        DELETE FROM bans
+        WHERE user_id=?
+        """,
+        (target.id,)
+    )
+
+    conn.commit()
+    conn.close()
+
+
+    await update.message.reply_text(
+        "✅ تم رفع الحظر"
+    )
+
 
 
 async def global_ban(update, context):
-    await update.message.reply_text("🌍 أمر الحظر العام جاهز")
+
+    target = await get_target(update)
+
+    if not target:
+        return
+
+
+    conn = connect()
+    cur = conn.cursor()
+
+
+    cur.execute(
+        """
+        INSERT OR REPLACE INTO bans
+        (
+            user_id,
+            ban_type
+        )
+        VALUES (?,?)
+        """,
+        (
+            target.id,
+            "global"
+        )
+    )
+
+
+    conn.commit()
+    conn.close()
+
+
+    await update.message.reply_text(
+        "🌍 تم حظره عام"
+    )
+
 
 
 async def mute_user(update, context):
-    await update.message.reply_text("🔇 أمر الكتم جاهز")
+
+    target = await get_target(update)
+
+    if not target:
+        return
+
+
+    conn = connect()
+    cur = conn.cursor()
+
+
+    cur.execute(
+        """
+        INSERT OR REPLACE INTO mutes
+        (
+            user_id,
+            mute_type
+        )
+        VALUES (?,?)
+        """,
+        (
+            target.id,
+            "normal"
+        )
+    )
+
+
+    conn.commit()
+    conn.close()
+
+
+    await update.message.reply_text(
+        "🔇 تم كتم المستخدم"
+    )
+
 
 
 async def unmute_user(update, context):
-    await update.message.reply_text("🔊 أمر فك الكتم جاهز")
+
+    target = await get_target(update)
+
+    if not target:
+        return
+
+
+    conn = connect()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        DELETE FROM mutes
+        WHERE user_id=?
+        """,
+        (target.id,)
+    )
+
+
+    conn.commit()
+    conn.close()
+
+
+    await update.message.reply_text(
+        "🔊 تم رفع الكتم"
+    )
+
 
 
 async def global_mute(update, context):
-    await update.message.reply_text("🌍 أمر الكتم العام جاهز")
+
+    target = await get_target(update)
+
+    if not target:
+        return
+
+
+    conn = connect()
+    cur = conn.cursor()
+
+
+    cur.execute(
+        """
+        INSERT OR REPLACE INTO mutes
+        (
+            user_id,
+            mute_type
+        )
+        VALUES (?,?)
+        """,
+        (
+            target.id,
+            "global"
+        )
+    )
+
+
+    conn.commit()
+    conn.close()
+
+
+    await update.message.reply_text(
+        "🌍 تم إضافة كتم عام"
+    )
