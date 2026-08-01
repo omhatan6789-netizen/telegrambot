@@ -365,25 +365,25 @@ def create_tables():
     )
     """)
 
-try:
-    cur.execute("ALTER TABLE users ADD COLUMN is_banned INTEGER DEFAULT 0")
-except:
-    pass
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN is_banned INTEGER DEFAULT 0")
+    except:
+        pass
 
-try:
-    cur.execute("ALTER TABLE users ADD COLUMN ban_type TEXT DEFAULT ''")
-except:
-    pass
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN ban_type TEXT DEFAULT ''")
+    except:
+        pass
 
-try:
-    cur.execute("ALTER TABLE users ADD COLUMN is_muted INTEGER DEFAULT 0")
-except:
-    pass
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN is_muted INTEGER DEFAULT 0")
+    except:
+        pass
 
-try:
-    cur.execute("ALTER TABLE users ADD COLUMN mute_type TEXT DEFAULT ''")
-except:
-    pass
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN mute_type TEXT DEFAULT ''")
+    except:
+        pass
 
     conn.commit()
     conn.close()
