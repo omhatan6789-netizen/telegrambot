@@ -122,6 +122,14 @@ def main():
 
     app.add_handler(
         MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            command_guard
+        ),
+        group=-1
+    )
+
+    app.add_handler(
+        MessageHandler(
             filters.Regex(r"^قفل امر "),
             lock_command
         )
