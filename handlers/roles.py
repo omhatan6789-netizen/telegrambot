@@ -90,7 +90,7 @@ async def roles_command(
     text = update.message.text
     user = update.effective_user
 
-
+    print(repr(text))
     # =================
     # رتبتي
     # =================
