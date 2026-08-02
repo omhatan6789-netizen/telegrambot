@@ -238,7 +238,4 @@ async def check_custom_commands(
     old_command = result[0]
 
 
-    # تشغيل الأمر القديم كأنه انكتب
     update.message.text = old_command
-
-    await context.application.process_update(update)    

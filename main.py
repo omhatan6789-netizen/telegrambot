@@ -204,6 +204,14 @@ def main():
         )
     )
 
+    app.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            check_custom_commands
+        ),
+        group=-3
+    )
+
     # =====================
     # حراسة الأوامر
     # =====================
