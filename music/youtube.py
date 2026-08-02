@@ -64,6 +64,11 @@ async def youtube_search(
 
             "quiet": True,
 
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["android"]
+                }
+            }
         }
 
 
