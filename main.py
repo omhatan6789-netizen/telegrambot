@@ -190,7 +190,7 @@ def main():
 
     app.add_handler(
         MessageHandler(
-            filters.Regex(r"^كشف(?! المجموعة)($|\s)")
+            filters.Regex(r"^كشف(?! المجموعة)($|\s)"),
             check_user
         )
     )
