@@ -191,7 +191,6 @@ async def check_user(
     cur = conn.cursor()
 
 
-
     # الرتبة
     cur.execute(
         """
@@ -245,79 +244,75 @@ async def check_user(
 
 
 
-    ban_text = "❌ لا"
-
-    if ban:
-
-        ban_text = "✅ نعم"
-
-        if ban[0] == "global":
-            ban_text += " (عام)"
-        else:
-            ban_text += " (عادي)"
-
-
-
-    mute_text = "❌ لا"
-
-    if mute:
-
-        mute_text = "✅ نعم"
-
-        if mute[0] == "global":
-            mute_text += " (عام)"
-        else:
-            mute_text += " (عادي)"
-
-
-
     text = f"""
 👤 {target.first_name}
 
 🆔 {target.id}
 
 🛡 الرتبة: {rank}
-
-
-🚫 الحظر: {ban_text}
 """
 
+
+
+    # معلومات الحظر
 
     if ban:
 
+        ban_type = "عام" if ban[0] == "global" else "عادي"
+
         text += f"""
-⏱ المدة: {ban[1] if ban[1] else "دائم"}
-📝 السبب: {ban[2] if ban[2] else "بدون سبب"}
+
+🚫 الحظر: ✅ {ban_type}
+
+⏱ المدة:
+{ban[1] if ban[1] else "دائم"}
+
+📝 السبب:
+{ban[2] if ban[2] else "بدون سبب"}
+
+👮 بواسطة:
+{ban[3] if ban[3] else "غير معروف"}
+"""
+
+    else:
+
+        text += """
+
+🚫 الحظر: ❌ لا
 """
 
 
-        if ban[3]:
 
-            text += f"👮 بواسطة: {ban[3]}\n"
+    # معلومات الكتم
 
+    if mute:
 
+        mute_type = "عام" if mute[0] == "global" else "عادي"
 
-    text += f"""
+        text += f"""
 
-🔇 الكتم: {mute_text}
+🔇 الكتم: ✅ {mute_type}
+
+⏱ المدة:
+{mute[1] if mute[1] else "دائم"}
+
+📝 السبب:
+{mute[2] if mute[2] else "بدون سبب"}
+
+👮 بواسطة:
+{mute[3] if mute[3] else "غير معروف"}
+"""
+
+    else:
+
+        text += """
+
+🔇 الكتم: ❌ لا
 """
 
 
-        if mute:
 
-            text += f"""
-⏱ المدة: {mute[1] if mute[1] else "دائم"}
-📝 السبب: {mute[2] if mute[2] else "بدون سبب"}
-    """
-
-
-    if mute[3]:
-
-        text += f"👮 بواسطة: {mute[3]}\n"
-
-
-
-await update.message.reply_text(text)
+    await update.message.reply_text(text)
 
 
 import datetime
