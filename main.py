@@ -197,7 +197,7 @@ def main():
 
     app.add_handler(
         MessageHandler(
-            filters.Regex(r"^كشف($|\s)"),
+            filters.Regex(r"^كشف\s+(?!المجموعة)"),
             check_user
         )
     )
