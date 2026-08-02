@@ -420,9 +420,16 @@ def create_tables():
     (
         user_id INTEGER PRIMARY KEY,
         ban_type TEXT,
-        until_time TEXT
+        until_time TEXT,
+        reason TEXT
     )
     """)
+    try:
+        cur.execute(
+            "ALTER TABLE bans ADD COLUMN reason TEXT"
+        )
+    except:
+        pass
 
 
     # =====================
@@ -434,9 +441,17 @@ def create_tables():
     (
         user_id INTEGER PRIMARY KEY,
         mute_type TEXT,
-        until_time TEXT
+        until_time TEXT,
+        reason TEXT
     )
     """)
+    try:
+        cur.execute(
+            "ALTER TABLE mutes ADD COLUMN reason TEXT"
+        )
+    except:
+        pass
 
+        
     conn.commit()
     conn.close()
