@@ -152,7 +152,7 @@ def main():
             filters.TEXT & ~filters.COMMAND,
             save_lock_rank
         ),
-        group=60
+        group=-10
     )
 
     # =====================
