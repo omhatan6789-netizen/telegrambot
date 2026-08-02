@@ -30,6 +30,9 @@ from handlers.command_lock import (
     save_lock_rank,
     open_command
 )
+
+from handlers.command_guard import command_guard
+
 from handlers.moderation import (
     check_user,
     ban_user,
