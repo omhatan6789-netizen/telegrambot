@@ -175,21 +175,24 @@ async def check_user(
     if not update.message:
         return
 
+
     target = await get_target(update)
 
-    if not target:
 
+    if not target:
         await update.message.reply_text(
             "❌ استخدم الأمر بالرد أو الآيدي أو اليوزر."
         )
-
         return
+
 
 
     conn = connect()
     cur = conn.cursor()
 
 
+
+    # الرتبة
     cur.execute(
         """
         SELECT rank
@@ -202,9 +205,11 @@ async def check_user(
     rank = cur.fetchone()
 
 
+
+    # الحظر
     cur.execute(
         """
-        SELECT ban_type
+        SELECT ban_type, until_time, reason, by_user
         FROM bans
         WHERE user_id=?
         """,
@@ -214,9 +219,11 @@ async def check_user(
     ban = cur.fetchone()
 
 
+
+    # الكتم
     cur.execute(
         """
-        SELECT mute_type
+        SELECT mute_type, until_time, reason, by_user
         FROM mutes
         WHERE user_id=?
         """,
@@ -226,7 +233,9 @@ async def check_user(
     mute = cur.fetchone()
 
 
+
     conn.close()
+
 
 
     if rank:
@@ -235,32 +244,80 @@ async def check_user(
         rank = "عضو"
 
 
-    ban_text = "لا"
+
+    ban_text = "❌ لا"
 
     if ban:
+
+        ban_text = "✅ نعم"
+
         if ban[0] == "global":
-            ban_text = "عام"
+            ban_text += " (عام)"
         else:
-            ban_text = "عادي"
+            ban_text += " (عادي)"
 
 
-    mute_text = "لا"
+
+    mute_text = "❌ لا"
 
     if mute:
+
+        mute_text = "✅ نعم"
+
         if mute[0] == "global":
-            mute_text = "عام"
+            mute_text += " (عام)"
         else:
-            mute_text = "عادي"
+            mute_text += " (عادي)"
 
 
-    await update.message.reply_text(
-        f"""👤 {target.first_name}
+
+    text = f"""
+👤 {target.first_name}
 
 🆔 {target.id}
-🛡 {rank}
+
+🛡 الرتبة: {rank}
+
+
 🚫 الحظر: {ban_text}
-🔇 الكتم: {mute_text}"""
-    )
+"""
+
+
+    if ban:
+
+        text += f"""
+⏱ المدة: {ban[1] if ban[1] else "دائم"}
+📝 السبب: {ban[2] if ban[2] else "بدون سبب"}
+"""
+
+
+        if ban[3]:
+
+            text += f"👮 بواسطة: {ban[3]}\n"
+
+
+
+    text += f"""
+
+🔇 الكتم: {mute_text}
+"""
+
+
+        if mute:
+
+            text += f"""
+⏱ المدة: {mute[1] if mute[1] else "دائم"}
+📝 السبب: {mute[2] if mute[2] else "بدون سبب"}
+    """
+
+
+    if mute[3]:
+
+        text += f"👮 بواسطة: {mute[3]}\n"
+
+
+
+await update.message.reply_text(text)
 
 
 import datetime
@@ -380,19 +437,21 @@ async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cur.execute(
         """
         INSERT OR REPLACE INTO bans
-    (
-        user_id,
-        ban_type,
-        until_time,
-        reason
-    )
-    VALUES (?, ?, ?, ?)
+        (
+            user_id,
+            ban_type,
+            until_time,
+            reason,
+            by_user
+        )
+        VALUES (?,?,?,?,?)
         """,
         (
             target.id,
             "normal",
             str(until) if until else None,
-            reason
+            reason,
+            update.effective_user.id
         )
     )
 
@@ -624,20 +683,22 @@ async def mute_user(update, context):
     cur.execute(
         """
         INSERT OR REPLACE INTO mutes
-    (
-        user_id,
-        mute_type,
-        until_time,
-        reason
-    )
-    VALUES (?,?,?,?)
+        (
+            user_id,
+            mute_type,
+            until_time,
+            reason,
+            by_user
+        )
+        VALUES (?,?,?,?,?)
         """,
         (
-        target.id,
-        "normal",
-        str(until_date) if until_date else None,
-        reason
-    )
+            target.id,
+            "normal",
+            str(until_date) if until_date else None,
+            reason,
+            update.effective_user.id
+        )
     )
 
 

@@ -349,6 +349,9 @@ def create_tables():
     )
     """)
 
+    
+    except:
+        pass
 
     # =====================
     # السجل الإداري
@@ -439,7 +442,12 @@ def create_tables():
     except:
         pass
 
-
+    try:
+        cur.execute(
+            "ALTER TABLE bans ADD COLUMN by_user INTEGER"
+        )
+    except:
+        pass
     # =====================
     # الكتم
     # =====================
@@ -475,6 +483,12 @@ def create_tables():
     except:
         pass
 
-
+    try:
+        cur.execute(
+            "ALTER TABLE mutes ADD COLUMN by_user INTEGER"
+        )
+    except:
+        pass
+        
     conn.commit()
     conn.close()
