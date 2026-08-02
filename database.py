@@ -460,7 +460,7 @@ def create_tables():
     except:
         pass
 
-        try:
+    try:
         cur.execute(
             "ALTER TABLE mutes ADD COLUMN until_time TEXT"
         )
