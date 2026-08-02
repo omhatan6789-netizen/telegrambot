@@ -5,7 +5,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 
-BOT_USERNAME = "@lnll0bot"
+BOT_USERNAME = "lnll0bot"
 
 
 async def youtube_search(
@@ -17,6 +17,7 @@ async def youtube_search(
         return
 
     text = update.message.text
+
 
     if not text.startswith("بحث "):
         return
@@ -32,20 +33,27 @@ async def youtube_search(
     if not query:
 
         await update.message.reply_text(
-            "❌ اكتب اسم البحث"
+            "❌ اكتب اسم البحث بعد كلمة بحث"
         )
-
         return
 
 
+
     await update.message.reply_text(
-        "🔎 جاري البحث..."
+        "🔎 جاري البحث وتحميل الصوت..."
     )
+
 
 
     try:
 
-        ydl_opts = {
+        os.makedirs(
+            "downloads",
+            exist_ok=True
+        )
+
+
+        options = {
 
             "format": "bestaudio/best",
 
@@ -54,29 +62,27 @@ async def youtube_search(
 
             "noplaylist": True,
 
-            "quiet": True
+            "quiet": True,
 
         }
 
 
-        os.makedirs(
-            "downloads",
-            exist_ok=True
-        )
+
+        with yt_dlp.YoutubeDL(options) as ydl:
 
 
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-
-            info = ydl.extract_info(
+            data = ydl.extract_info(
                 f"ytsearch1:{query}",
                 download=True
             )
 
 
-            video = info["entries"][0]
+            video = data["entries"][0]
 
 
-            file_path = ydl.prepare_filename(video)
+            file_path = ydl.prepare_filename(
+                video
+            )
 
 
             title = video.get(
@@ -85,18 +91,13 @@ async def youtube_search(
             )
 
 
-            duration = video.get(
-                "duration",
-                0
-            )
-
 
         buttons = InlineKeyboardMarkup(
             [
                 [
                     InlineKeyboardButton(
                         "🔵 فتح البوت",
-                        url=f"https://t.me/{lnll0bot}"
+                        url=f"https://t.me/{BOT_USERNAME}"
                     )
                 ]
             ]
@@ -111,7 +112,7 @@ async def youtube_search(
 
             caption=(
                 f"🎵 {title}\n"
-                f"⏱ المدة: {duration} ثانية"
+                "📥 تم التحميل من اليوتيوب"
             ),
 
             reply_markup=buttons
@@ -122,9 +123,10 @@ async def youtube_search(
         os.remove(file_path)
 
 
+
     except Exception as e:
 
 
         await update.message.reply_text(
-            f"❌ حصل خطأ:\n{e}"
+            f"❌ خطأ:\n{e}"
         )

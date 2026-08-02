@@ -642,6 +642,10 @@ def main():
         group=35
     )
 
+    # =====================
+    # يوتيوب - بحث صوت
+    # =====================
+
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^بحث "),
