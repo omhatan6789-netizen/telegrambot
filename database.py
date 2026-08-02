@@ -426,6 +426,14 @@ def create_tables():
     """)
     try:
         cur.execute(
+            "ALTER TABLE bans ADD COLUMN until_time TEXT"
+        )
+    except:
+        pass
+
+
+    try:
+        cur.execute(
             "ALTER TABLE bans ADD COLUMN reason TEXT"
         )
     except:
@@ -452,6 +460,21 @@ def create_tables():
     except:
         pass
 
-        
+        try:
+        cur.execute(
+            "ALTER TABLE mutes ADD COLUMN until_time TEXT"
+        )
+    except:
+        pass
+
+
+    try:
+        cur.execute(
+            "ALTER TABLE mutes ADD COLUMN reason TEXT"
+        )
+    except:
+        pass
+
+
     conn.commit()
     conn.close()
