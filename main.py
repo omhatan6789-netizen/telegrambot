@@ -183,7 +183,7 @@ def main():
 
     app.add_handler(
         MessageHandler(
-            filters.Regex("^(رتبتي|كشف المجموعة)$"),
+            filters.Regex(r"^(رتبتي|كشف\s+المجموعة)$"),
             roles_command
         )
     )

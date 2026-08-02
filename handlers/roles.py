@@ -87,7 +87,7 @@ async def roles_command(
     if not update.message:
         return
 
-    text = update.message.text
+    text = update.message.text.strip()
     user = update.effective_user
 
     # =================
@@ -106,7 +106,7 @@ async def roles_command(
     # =================
     # كشف المجموعة
     # =================
-    if text == "كشف المجموعة":
+    if text.startswith("كشف المجموعة"):
 
         allowed, required = check_command_permission(
             user.id,
