@@ -636,24 +636,21 @@ def main():
 
     app.add_handler(
         MessageHandler(
+            filters.Regex(r"^بحث "),
+            youtube_search
+        ),
+        group=35
+    )
+    
+    app.add_handler(
+        MessageHandler(
             filters.TEXT & ~filters.COMMAND,
             check_custom_commands
         ),
         group=35
     )
 
-    # =====================
-    # يوتيوب - بحث صوت
-    # =====================
-
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(r"^بحث "),
-            youtube_search
-        ),
-        group=35
-    )
-
+    
     # =====================
     # تشغيل الردود
     # =====================
