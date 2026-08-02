@@ -96,7 +96,7 @@ async def youtube_search(
                 [
                     InlineKeyboardButton(
                         "🔵 فتح البوت",
-                        url=f"https://t.me/{@lnll0bot}"
+                        url=f"https://t.me/{lnll0bot}"
                     )
                 ]
             ]
