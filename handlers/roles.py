@@ -20,7 +20,7 @@ RANK_LEVELS = {
 def get_rank(user_id):
 
     if user_id == OWNER_ID:
-        return "المطور نواف"
+        return "المالك"
 
     conn = connect()
     cur = conn.cursor()
