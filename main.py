@@ -41,6 +41,7 @@ from custom_commands import (
     delete_command_start,
     delete_command,
     delete_all_commands,
+    check_custom_commands,
     WAIT_OLD,
     WAIT_NEW
 )
@@ -625,7 +626,13 @@ def main():
         group=31
     )
 
-
+    app.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            check_custom_commands
+        ),
+        group=35
+    )
 
     # =====================
     # تشغيل الردود

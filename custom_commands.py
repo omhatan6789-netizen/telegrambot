@@ -193,3 +193,52 @@ async def delete_all_commands(update: Update, context: ContextTypes.DEFAULT_TYPE
     await update.message.reply_text(
         "✅ تم حذف جميع الأوامر المضافة"
     )    
+
+
+
+async def check_custom_commands(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not update.message:
+        return
+
+    if not update.message.text:
+        return
+
+
+    text = update.message.text.strip()
+
+
+    conn = connect()
+    cur = conn.cursor()
+
+
+    cur.execute(
+        """
+        SELECT old_command
+        FROM custom_commands
+        WHERE new_command = ?
+        """,
+        (text,)
+    )
+
+
+    result = cur.fetchone()
+
+
+    conn.close()
+
+
+    if not result:
+        return
+
+
+    old_command = result[0]
+
+
+    # تشغيل الأمر القديم كأنه انكتب
+    update.message.text = old_command
+
+    await context.application.process_update(update)    
