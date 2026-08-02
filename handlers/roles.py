@@ -143,7 +143,7 @@ async def roles_command(
                 vip.append(name)
 
 
-
+     المجموعة كشف📋:
         msg = """
 • قائمة المالك الوحيد
 ━━━━━━━━━━━━
@@ -304,5 +304,5 @@ async def change_rank(
 
     await update.message.reply_text(
         f"تم تعديل رتبة {target.first_name}\n"
-        f"الرتبةالجديدة: {new_rank}"
+        f"الرتبة الجديدة: {new_rank}"
     )  
