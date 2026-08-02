@@ -24,6 +24,12 @@ from handlers.admin_panel import (
     developer_panel,
     admin_buttons
 )
+
+from handlers.command_lock import (
+    lock_command_start,
+    choose_lock_rank
+)
+
 from handlers.moderation import (
     check_user,
     ban_user,
@@ -208,6 +214,26 @@ def main():
         )
     )
 
+    # =====================
+    # قفل الأوامر
+    # =====================
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^قفل امر "),
+            lock_command_start
+        )
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(
+                "^(المالك|نائب المالك|ادمن اساسي|ادمن|مميز)$"
+            ),
+            choose_lock_rank
+        )
+    )
 
     # =====================
     # الردود المميزة

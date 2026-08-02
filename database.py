@@ -488,5 +488,18 @@ def create_tables():
     except:
         pass
 
+    # =====================
+    # قفل الأوامر
+    # =====================
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS command_locks
+    (
+        command TEXT PRIMARY KEY,
+
+        min_rank TEXT
+    )
+    """)
+
     conn.commit()
     conn.close()
