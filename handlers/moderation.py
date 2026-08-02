@@ -353,8 +353,18 @@ async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     parts = update.message.text.split()
 
+    until = None
+    reason = None
+
+
     if len(parts) >= 2:
         until = parse_time(parts[1])
+
+
+    if len(parts) >= 3:
+        reason = " ".join(parts[2:])
+    else:
+        reason = "بدون سبب"
 
 
     await context.bot.ban_chat_member(
@@ -370,17 +380,19 @@ async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cur.execute(
         """
         INSERT OR REPLACE INTO bans
-        (
-            user_id,
-            ban_type,
-            until_time
-        )
-        VALUES (?, ?, ?)
+    (
+        user_id,
+        ban_type,
+        until_time,
+        reason
+    )
+    VALUES (?, ?, ?, ?)
         """,
         (
             target.id,
             "normal",
-            str(until) if until else None
+            str(until) if until else None,
+            reason
         )
     )
 
@@ -389,7 +401,8 @@ async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
     await update.message.reply_text(
-        f"🚫 تم حظر {target.first_name}"
+        f"🚫 تم حظر {target.first_name}\n"
+        f"📝 السبب: {reason}"
     )
 
 async def unban_user(update, context):
@@ -571,14 +584,20 @@ async def mute_user(update, context):
 
 
 
-    # قراءة المدة
     until_date = None
+    reason = None
 
     parts = update.message.text.split()
+
 
     if len(parts) >= 2:
         until_date = parse_time(parts[1])
 
+
+    if len(parts) >= 3:
+        reason = " ".join(parts[2:])
+    else:
+        reason = "بدون سبب"
 
 
     from telegram import ChatPermissions
@@ -605,18 +624,20 @@ async def mute_user(update, context):
     cur.execute(
         """
         INSERT OR REPLACE INTO mutes
-        (
-            user_id,
-            mute_type,
-            until_time
-        )
-        VALUES (?,?,?)
+    (
+        user_id,
+        mute_type,
+        until_time,
+        reason
+    )
+    VALUES (?,?,?,?)
         """,
         (
-            target.id,
-            "normal",
-            str(until_date) if until_date else None
-        )
+        target.id,
+        "normal",
+        str(until_date) if until_date else None,
+        reason
+    )
     )
 
 
@@ -626,16 +647,16 @@ async def mute_user(update, context):
 
 
     if until_date:
-
         await update.message.reply_text(
             f"🔇 تم كتم {target.first_name}\n"
-            f"⏱ المدة: {parts[1]}"
+            f"⏱ المدة: {parts[1]}\n"
+            f"📝 السبب: {reason}"
         )
 
     else:
-
         await update.message.reply_text(
-            f"🔇 تم كتم {target.first_name}"
+            f"🔇 تم كتم {target.first_name}\n"
+            f"📝 السبب: {reason}"
         )
 
 
