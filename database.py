@@ -350,9 +350,7 @@ def create_tables():
     """)
 
     
-    except:
-        pass
-
+   
     # =====================
     # السجل الإداري
     # =====================
@@ -489,6 +487,6 @@ def create_tables():
         )
     except:
         pass
-        
+
     conn.commit()
     conn.close()
