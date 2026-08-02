@@ -9,18 +9,18 @@ OWNER_ID = 8453977662
 
 RANK_LEVELS = {
     "عضو": 0,
-    "💎 مميز": 1,
-    "🛡 ادمن": 2,
-    "🟣 ادمن أساسي": 3,
-    "🤍 نائب المالك": 4,
-    "👑 المالك": 5
+    "مميز": 1,
+    "ادمن": 2,
+    "ادمن اساسي": 3,
+    "نائب المالك": 4,
+    "المالك": 5
 }
 
 
 def get_rank(user_id):
 
     if user_id == OWNER_ID:
-        return "👑 المالك"
+        return "المطور نواف"
 
     conn = connect()
     cur = conn.cursor()
@@ -63,7 +63,7 @@ async def roles_command(
     if text == "رتبتي":
 
         await update.message.reply_text(
-            f"🛡 رتبتك: {get_rank(user.id)}"
+            f"رتبتك: {get_rank(user.id)}"
         )
 
         return
@@ -126,22 +126,22 @@ async def roles_command(
             item = f"• {name}"
 
 
-            if rank == "🤍 نائب المالك":
+            if rank == "نائب المالك":
 
                 deputy.append(item)
 
 
-            elif rank == "🟣 ادمن أساسي":
+            elif rank == "ادمن اساسي":
 
                 basic.append(item)
 
 
-            elif rank == "🛡 ادمن":
+            elif rank == "ادمن":
 
                 admins.append(item)
 
 
-            elif rank == "💎 مميز":
+            elif rank == "مميز":
 
                 vip.append(item)
 
@@ -153,29 +153,29 @@ async def roles_command(
 
 
         msg = f"""
-📋 كشف رتب المجموعة
+ كشف رتب المجموعة 📋
 
-👑 المالك:
+ المالك:
 {chr(10).join(owner)}
 
 
-🤍 نائب المالك:
+ نائب المالك:
 {chr(10).join(deputy) if deputy else "لا يوجد"}
 
 
-🟣 الادمن الأساسي:
+الادمن الأساسي:
 {chr(10).join(basic) if basic else "لا يوجد"}
 
 
-🛡 الادمن:
+الادمن:
 {chr(10).join(admins) if admins else "لا يوجد"}
 
 
-💎 المميزين:
+المميزين:
 {chr(10).join(vip) if vip else "لا يوجد"}
 
 
-👤 الأعضاء:
+الأعضاء:
 {chr(10).join(members) if members else "لا يوجد"}
 """
 
@@ -197,16 +197,16 @@ async def change_rank(
 
 
     if text.startswith("رفع نائب المالك"):
-        new_rank = "🤍 نائب المالك"
+        new_rank = "نائب المالك"
 
     elif text.startswith("رفع ادمن اساسي"):
-        new_rank = "🟣 ادمن أساسي"
+        new_rank = "ادمن اساسي"
 
     elif text.startswith("رفع ادمن"):
-        new_rank = "🛡 ادمن"
+        new_rank = "ادمن"
 
     elif text.startswith("رفع مميز"):
-        new_rank = "💎 مميز"
+        new_rank = "مميز"
 
     elif text.startswith("تنزيل نائب المالك"):
         new_rank = "عضو"
