@@ -27,7 +27,7 @@ async def add_reply_start(
     user_id = update.effective_user.id
 
 
-    if not is_admin(user_id):
+    if not await is_admin(user_id):
 
         await update.message.reply_text(
             "❌ ليس لديك صلاحية"

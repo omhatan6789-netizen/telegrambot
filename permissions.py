@@ -61,7 +61,7 @@ async def is_admin(user_id):
     return result[0] in [
         "مالك",
         "🤍 نائب المالك",
-        "🟣 ادمن أساسي",
+        "🟣 ادمن اساسي",
         "🛡 ادمن"
     ]
 
