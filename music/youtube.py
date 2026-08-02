@@ -54,19 +54,16 @@ async def youtube_search(
 
 
         options = {
-
             "format": "bestaudio/best",
-
-            "outtmpl":
-            "downloads/%(title)s.%(ext)s",
-
+            "outtmpl": "downloads/%(title)s.%(ext)s",
             "noplaylist": True,
-
             "quiet": True,
-
             "extractor_args": {
                 "youtube": {
-                    "player_client": ["android"]
+                    "player_client": [
+                        "android",
+                        "web"
+                    ]
                 }
             }
         }
