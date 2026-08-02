@@ -1,5 +1,5 @@
 from telegram import Update
-
+from telegram.ext import ApplicationHandlerStop
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -26,10 +26,10 @@ from handlers.admin_panel import (
 )
 
 from handlers.command_lock import (
-    lock_command_start,
-    choose_lock_rank
+    lock_command,
+    save_lock_rank,
+    open_command
 )
-
 from handlers.moderation import (
     check_user,
     ban_user,
@@ -120,6 +120,29 @@ def main():
 
     app = Application.builder().token(BOT_TOKEN).build()
 
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^قفل امر "),
+            lock_command
+        )
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^فتح امر "),
+            open_command
+        )
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            save_lock_rank
+        ),
+        group=60
+    )
 
     # =====================
     # start
@@ -214,27 +237,7 @@ def main():
         )
     )
 
-    # =====================
-    # قفل الأوامر
-    # =====================
-
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(r"^قفل امر "),
-            lock_command_start
-        )
-    )
-
-
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(
-                "^(المالك|نائب المالك|ادمن اساسي|ادمن|مميز)$"
-            ),
-            choose_lock_rank
-        )
-    )
-
+        
     # =====================
     # الردود المميزة
     # =====================

@@ -5,86 +5,43 @@ from database import connect
 from handlers.roles import get_rank
 
 
-OWNER_ID = 8453977662
+RANKS = [
+    "المالك",
+    "نائب المالك",
+    "ادمن اساسي",
+    "ادمن",
+    "مميز"
+]
 
 
-RANKS = {
-    "عضو": 0,
-    "مميز": 1,
-    "ادمن": 2,
-    "ادمن اساسي": 3,
-    "نائب المالك": 4,
-    "المالك": 5
-}
-
-
-# حفظ عمليات القفل المؤقتة
-lock_sessions = {}
-
-
-
-def can_lock(user_id):
-
-    if user_id == OWNER_ID:
-        return True
-
-    rank = get_rank(user_id)
-
-    return RANKS.get(rank, 0) >= RANKS["نائب المالك"]
-
-
-
-async def lock_command_start(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
+async def lock_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not update.message:
         return
 
+    text = update.message.text
 
-    user_id = update.effective_user.id
+    command = text.replace("قفل امر ", "").strip()
 
-
-    if not can_lock(user_id):
-
+    if not command:
         await update.message.reply_text(
-            "❌ هذا الأمر للمالك ونائب المالك فقط"
+            "❌ اكتب اسم الأمر\nمثال:\nقفل امر اضف رد"
         )
-
         return
 
 
-
-    text = update.message.text.split(maxsplit=2)
-
-
-    if len(text) < 3:
-
-        await update.message.reply_text(
-            "❌ مثال:\nقفل امر ايدي"
-        )
-
-        return
-
-
-
-    command = text[2]
-
-
-    lock_sessions[user_id] = command
-
+    context.user_data["lock_command"] = command
 
 
     await update.message.reply_text(
         f"""
 • حسنًا اختر الرتبة التي تريدها :
 
-1- `المالك`
-2- `نائب المالك`
-3- `ادمن اساسي`
-4- `ادمن`
-5- `مميز`
+1- `{RANKS[0]}`
+2 - `{RANKS[1]}`
+3 - `{RANKS[2]}`
+4 - `{RANKS[3]}`
+5 - `{RANKS[4]}`
 
 
 - سيتم وضع امر ↤︎ `{command}` له فقط
@@ -94,56 +51,29 @@ async def lock_command_start(
 
 
 
+async def save_lock_rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-
-async def choose_lock_rank(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-
-    if not update.message:
+    if "lock_command" not in context.user_data:
         return
-
-
-    user_id = update.effective_user.id
-
-
-    if user_id not in lock_sessions:
-        return
-
 
 
     rank = update.message.text.strip()
 
 
-
-    if rank not in [
-        "المالك",
-        "نائب المالك",
-        "ادمن اساسي",
-        "ادمن",
-        "مميز"
-    ]:
+    if rank not in RANKS:
         return
 
 
-
-    command = lock_sessions[user_id]
-
+    command = context.user_data["lock_command"]
 
 
     conn = connect()
     cur = conn.cursor()
 
-
-
     cur.execute(
         """
         INSERT OR REPLACE INTO command_locks
-        (
-            command,
-            min_rank
-        )
+        (command, min_rank)
         VALUES (?,?)
         """,
         (
@@ -153,24 +83,48 @@ async def choose_lock_rank(
     )
 
 
+    conn.commit()
+    conn.close()
+
+
+    del context.user_data["lock_command"]
+
+
+    await update.message.reply_text(
+        f"✅ تم قفل الأمر `{command}` على رتبة `{rank}` وفوق",
+        parse_mode="Markdown"
+    )
+
+
+
+async def open_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    text = update.message.text
+
+    command = text.replace("فتح امر ", "").strip()
+
+
+    if not command:
+        return
+
+
+    conn = connect()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        DELETE FROM command_locks
+        WHERE command=?
+        """,
+        (command,)
+    )
+
 
     conn.commit()
     conn.close()
 
 
-
-    del lock_sessions[user_id]
-
-
-
     await update.message.reply_text(
-        f"""
-🔒 تم قفل الأمر:
-
-`{command}`
-
-الرتبة المطلوبة:
-`{rank}`
-""",
+        f"✅ تم فتح الأمر `{command}`",
         parse_mode="Markdown"
     )

@@ -493,11 +493,9 @@ def create_tables():
     # =====================
 
     cur.execute("""
-    CREATE TABLE IF NOT EXISTS command_locks
-    (
+    CREATE TABLE IF NOT EXISTS command_locks (
         command TEXT PRIMARY KEY,
-
-        min_rank TEXT
+        rank TEXT NOT NULL
     )
     """)
 
