@@ -135,14 +135,7 @@ def main():
     # حفظ رتبة قفل الأمر
     # =====================
 
-    app.add_handler(
-        MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
-            save_lock_rank
-        ),
-        group=-10
-    )
-
+    
 
     # =====================
     # قفل وفتح الأوامر
@@ -197,7 +190,7 @@ def main():
 
     app.add_handler(
         MessageHandler(
-            filters.Regex(r"^كشف\s+(?!المجموعة)"),
+            filters.Regex(r"^كشف(?! المجموعة)($|\s)")
             check_user
         )
     )
@@ -651,7 +644,14 @@ def main():
         )
     )
 
-    
+    app.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            save_lock_rank
+        ),
+        group=60
+    )
+
     print("🤖 Bot Started...")
 
 
