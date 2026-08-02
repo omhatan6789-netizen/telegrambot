@@ -128,7 +128,13 @@ def main():
     # فحص صلاحيات الأوامر
     # =====================
 
-    
+    app.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            command_guard
+        ),
+        group=-1
+    )
 
 
     # =====================

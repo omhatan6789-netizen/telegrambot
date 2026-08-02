@@ -74,8 +74,8 @@ async def save_lock_rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cur.execute(
         """
         INSERT OR REPLACE INTO command_locks
-        (command, min_rank)
-        VALUES (?,?)
+        (command, rank)
+        VALUES (?, ?)
         """,
         (
             command,

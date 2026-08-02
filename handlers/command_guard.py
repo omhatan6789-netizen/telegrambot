@@ -17,12 +17,21 @@ async def command_guard(
     if not text:
         return
 
+    command = text.strip().split()[0]
+
+    if text.startswith("كشف المجموعة"):
+        command = "كشف المجموعة"
+
+    elif text.startswith("فتح امر"):
+        command = "فتح امر"
+
+    elif text.startswith("قفل امر"):
+        command = "قفل امر"
 
     allowed, required = check_command_permission(
         update.effective_user.id,
-        text
+        command
     )
-
 
     if not allowed:
 

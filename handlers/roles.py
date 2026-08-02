@@ -50,7 +50,7 @@ def check_command_permission(user_id, command):
 
     cur.execute(
         """
-        SELECT min_rank
+        SELECT rank
         FROM command_locks
         WHERE command=?
         """,
