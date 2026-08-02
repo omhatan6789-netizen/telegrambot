@@ -70,56 +70,6 @@ async def roles_command(
 
 
 
-   async def roles_command(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-
-    if not update.message:
-        return
-
-    text = update.message.text
-    user = update.effective_user
-
-
-    # =================
-    # رتبتي
-    # =================
-    if text == "رتبتي":
-
-        await update.message.reply_text(
-            f"رتبتك: {get_rank(user.id)}"
-        )
-
-        return
-
-
-
-async def roles_command(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-
-    if not update.message:
-        return
-
-    text = update.message.text
-    user = update.effective_user
-
-
-    # =================
-    # رتبتي
-    # =================
-    if text == "رتبتي":
-
-        await update.message.reply_text(
-            f"رتبتك: {get_rank(user.id)}"
-        )
-
-        return
-
-
-
     # =================
     # كشف المجموعة
     # =================
