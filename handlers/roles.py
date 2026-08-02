@@ -95,7 +95,7 @@ async def roles_command(
 
 
 
-    async def roles_command(
+async def roles_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
