@@ -33,6 +33,15 @@ from handlers.command_lock import (
 
 from handlers.command_guard import command_guard
 
+from custom_commands import (
+    add_command_start,
+    receive_old_command,
+    receive_new_command,
+    WAIT_OLD,
+    WAIT_NEW
+)
+
+from telegram.ext import ConversationHandler
 from handlers.moderation import (
     check_user,
     ban_user,
@@ -186,6 +195,42 @@ def main():
         )
     )
 
+    # =====================
+    # الأوامر المضافة
+    # =====================
+
+
+    add_command_conv = ConversationHandler(
+        entry_points=[
+            MessageHandler(
+                filters.Regex("^اضف امر$"),
+                add_command_start
+            )
+        ],
+
+        states={
+            WAIT_OLD: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    receive_old_command
+                )
+            ],
+
+            WAIT_NEW: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    receive_new_command
+                )
+            ]
+        },
+
+        fallbacks=[]
+    )
+
+
+    app.add_handler(
+        add_command_conv
+    )
 
     app.add_handler(
         MessageHandler(

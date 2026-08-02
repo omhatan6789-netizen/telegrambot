@@ -499,5 +499,20 @@ def create_tables():
     )
     """)
 
+    # =====================
+    # الأوامر المضافة
+    # =====================
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS custom_commands
+    (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        old_command TEXT,
+
+        new_command TEXT UNIQUE
+    )
+    """)
+
     conn.commit()
     conn.close()
