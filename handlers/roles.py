@@ -70,7 +70,57 @@ async def roles_command(
 
 
 
+   async def roles_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not update.message:
+        return
+
+    text = update.message.text
+    user = update.effective_user
+
+
     # =================
+    # رتبتي
+    # =================
+    if text == "رتبتي":
+
+        await update.message.reply_text(
+            f"رتبتك: {get_rank(user.id)}"
+        )
+
+        return
+
+
+
+    async def roles_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not update.message:
+        return
+
+    text = update.message.text
+    user = update.effective_user
+
+
+    # =================
+    # رتبتي
+    # =================
+    if text == "رتبتي":
+
+        await update.message.reply_text(
+            f"رتبتك: {get_rank(user.id)}"
+        )
+
+        return
+
+
+
+        # =================
     # كشف المجموعة
     # =================
     if text == "كشف المجموعة":
@@ -78,10 +128,9 @@ async def roles_command(
         conn = connect()
         cur = conn.cursor()
 
-
         cur.execute(
             """
-            SELECT first_name, rank, user_id
+            SELECT rank, user_id
             FROM users
             """
         )
@@ -96,88 +145,121 @@ async def roles_command(
         basic = []
         admins = []
         vip = []
-        members = []
 
 
-        # المالك الحقيقي
-        try:
-            owner_info = await context.bot.get_chat(OWNER_ID)
+        async def get_name(user_id):
 
-            owner.append(
-                f"• {owner_info.first_name}"
-            )
+            try:
+                info = await context.bot.get_chat(user_id)
 
-        except:
+                if info.username:
+                    return f"@{info.username}"
 
-            owner.append(
-                "• المالك"
-            )
+                return str(user_id)
+
+            except:
+                return str(user_id)
 
 
 
-        for name, rank, user_id in users:
+        # المالك
+        owner.append(
+            await get_name(OWNER_ID)
+        )
 
 
-            # تجاهل المالك لأنه انضاف فوق
+        for rank, user_id in users:
+
             if user_id == OWNER_ID:
                 continue
 
 
-            item = f"• {name}"
+            name = await get_name(user_id)
 
 
             if rank == "نائب المالك":
-
-                deputy.append(item)
+                deputy.append(name)
 
 
             elif rank == "ادمن اساسي":
-
-                basic.append(item)
+                basic.append(name)
 
 
             elif rank == "ادمن":
-
-                admins.append(item)
+                admins.append(name)
 
 
             elif rank == "مميز":
-
-                vip.append(item)
-
-
-            else:
-
-                members.append(item)
+                vip.append(name)
 
 
 
-        msg = f"""
- كشف رتب المجموعة 📋
-
- المالك:
-{chr(10).join(owner)}
-
-
- نائب المالك:
-{chr(10).join(deputy) if deputy else "لا يوجد"}
-
-
-الادمن الأساسي:
-{chr(10).join(basic) if basic else "لا يوجد"}
-
-
-الادمن:
-{chr(10).join(admins) if admins else "لا يوجد"}
-
-
-المميزين:
-{chr(10).join(vip) if vip else "لا يوجد"}
-
-
-الأعضاء:
-{chr(10).join(members) if members else "لا يوجد"}
+        msg = """
+• قائمة المالك الوحيد
+━━━━━━━━━━━━
 """
+
+
+        for i, x in enumerate(owner, 1):
+            msg += f"{i} - {x}\n"
+
+
+
+        msg += """
+
+• قائمة نُوَّاب المالك
+━━━━━━━━━━━━
+"""
+
+        if deputy:
+            for i, x in enumerate(deputy, 1):
+                msg += f"{i} - {x}\n"
+        else:
+            msg += "لا يوجد\n"
+
+
+
+        msg += """
+
+• قائمة الادمنية الاساسيين
+━━━━━━━━━━━━
+"""
+
+        if basic:
+            for i, x in enumerate(basic, 1):
+                msg += f"{i} - {x}\n"
+        else:
+            msg += "لا يوجد\n"
+
+
+
+        msg += """
+
+• قائمة الادمنية
+━━━━━━━━━━━━
+"""
+
+        if admins:
+            for i, x in enumerate(admins, 1):
+                msg += f"{i} - {x}\n"
+        else:
+            msg += "لا يوجد\n"
+
+
+
+        msg += """
+
+• قائمة المميزين
+━━━━━━━━━━━━
+"""
+
+        if vip:
+            for i, x in enumerate(vip, 1):
+                msg += f"{i} - {x}\n"
+        else:
+            msg += "لا يوجد\n"
+
+
 
         await update.message.reply_text(msg)
 
@@ -271,6 +353,6 @@ async def change_rank(
 
 
     await update.message.reply_text(
-        f"✅ تم تعديل رتبة {target.first_name}\n"
-        f"🛡 الرتبة: {new_rank}"
+        f"تم تعديل رتبة {target.first_name}\n"
+        f"الرتبةالجديدة: {new_rank}"
     )  
