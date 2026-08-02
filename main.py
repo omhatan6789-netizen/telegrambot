@@ -134,6 +134,47 @@ def main():
 
 
     # =====================
+    # الأوامر المضافة
+    # لازم تكون قبل أوامر المستخدم
+    # =====================
+
+    add_command_conv = ConversationHandler(
+
+        entry_points=[
+            MessageHandler(
+                filters.Regex("^اضف امر$"),
+                add_command_start
+            )
+        ],
+
+        states={
+
+            WAIT_OLD: [
+                MessageHandler(
+                    filters.TEXT,
+                    receive_old_command
+                )
+            ],
+
+            WAIT_NEW: [
+                MessageHandler(
+                    filters.TEXT,
+                    receive_new_command
+                )
+            ]
+        },
+
+        fallbacks=[]
+    )
+
+
+    app.add_handler(
+        add_command_conv,
+        group=-2
+    )
+
+
+    # =====================
     # فحص صلاحيات الأوامر
     # =====================
 
@@ -145,12 +186,6 @@ def main():
         group=-1
     )
 
-
-    # =====================
-    # حفظ رتبة قفل الأمر
-    # =====================
-
-    
 
     # =====================
     # قفل وفتح الأوامر
@@ -195,42 +230,6 @@ def main():
         )
     )
 
-    # =====================
-    # الأوامر المضافة
-    # =====================
-
-
-    add_command_conv = ConversationHandler(
-        entry_points=[
-            MessageHandler(
-                filters.Regex("^اضف امر$"),
-                add_command_start
-            )
-        ],
-
-        states={
-            WAIT_OLD: [
-                MessageHandler(
-                    filters.TEXT & ~filters.COMMAND,
-                    receive_old_command
-                )
-            ],
-
-            WAIT_NEW: [
-                MessageHandler(
-                    filters.TEXT & ~filters.COMMAND,
-                    receive_new_command
-                )
-            ]
-        },
-
-        fallbacks=[]
-    )
-
-
-    app.add_handler(
-        add_command_conv
-    )
 
     app.add_handler(
         MessageHandler(
@@ -239,12 +238,14 @@ def main():
         )
     )
 
+
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^كشف(?! المجموعة)($|\s)"),
             check_user
         )
     )
+
 
     # =====================
     # الحظر والكتم
@@ -257,12 +258,14 @@ def main():
         )
     )
 
+
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^كتم عام($|\s)"),
             global_mute
         )
     )
+
 
     app.add_handler(
         MessageHandler(
@@ -271,12 +274,14 @@ def main():
         )
     )
 
+
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^رفع الكتم($|\s)"),
             unmute_user
         )
     )
+
 
     app.add_handler(
         MessageHandler(
@@ -285,12 +290,14 @@ def main():
         )
     )
 
+
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^كتم($|\s)"),
             mute_user
         )
     )
+
 
     app.add_handler(
         MessageHandler(
@@ -301,7 +308,7 @@ def main():
         )
     )
 
-        
+
     # =====================
     # الردود المميزة
     # =====================
