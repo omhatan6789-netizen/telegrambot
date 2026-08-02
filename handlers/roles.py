@@ -43,7 +43,41 @@ def get_rank(user_id):
 
     return "عضو"
 
+def check_command_permission(user_id, command):
 
+    conn = connect()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        SELECT min_rank
+        FROM command_locks
+        WHERE command=?
+        """,
+        (command,)
+    )
+
+    data = cur.fetchone()
+
+    conn.close()
+
+
+    # الأمر غير مقفول
+    if not data:
+        return True, None
+
+
+    required_rank = data[0]
+
+
+    user_rank = get_rank(user_id)
+
+
+    if RANK_LEVELS.get(user_rank, 0) >= RANK_LEVELS.get(required_rank, 0):
+        return True, None
+
+
+    return False, required_rank
 
 async def roles_command(
     update: Update,
@@ -74,6 +108,18 @@ async def roles_command(
     # كشف المجموعة
     # =================
     if text == "كشف المجموعة":
+
+        allowed, required = check_command_permission(
+            user.id,
+            "كشف المجموعة"
+        )
+
+        if not allowed:
+            await update.message.reply_text(
+                f"❌ هذا الأمر لـ `{required}` وفوق فقط",
+                parse_mode="Markdown"
+            )
+            return
 
         conn = connect()
         cur = conn.cursor()
