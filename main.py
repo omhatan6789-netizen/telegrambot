@@ -123,6 +123,11 @@ def main():
 
     app = Application.builder().token(BOT_TOKEN).build()
 
+
+    # =====================
+    # فحص صلاحيات الأوامر
+    # =====================
+
     app.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND,
@@ -130,6 +135,24 @@ def main():
         ),
         group=-1
     )
+
+
+    # =====================
+    # حفظ رتبة قفل الأمر
+    # =====================
+
+    app.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            save_lock_rank
+        ),
+        group=-10
+    )
+
+
+    # =====================
+    # قفل وفتح الأوامر
+    # =====================
 
     app.add_handler(
         MessageHandler(
@@ -146,14 +169,6 @@ def main():
         )
     )
 
-
-    app.add_handler(
-        MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
-            save_lock_rank
-        ),
-        group=-10
-    )
 
     # =====================
     # start

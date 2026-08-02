@@ -56,6 +56,9 @@ async def save_lock_rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if "lock_command" not in context.user_data:
         return
 
+    if not update.message or not update.message.text:
+        return
+
     rank = update.message.text.strip()
 
     if rank not in RANKS:
