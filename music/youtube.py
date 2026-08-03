@@ -39,14 +39,14 @@ async def youtube_search(
 
     if not query:
         await update.message.reply_text(
-            "❌ اكتب اسم البحث بعد كلمة بحث"
+            "❌ اكتب اسم الأغنية بعد بحث"
         )
         return
 
 
 
     msg = await update.message.reply_text(
-        "🔎 جاري البحث..."
+        "🔎 جاري البحث وتحميل الأغنية..."
     )
 
 
@@ -57,10 +57,6 @@ async def youtube_search(
             "downloads",
             exist_ok=True
         )
-
-
-        search = f"{query} audio"
-
 
 
         ydl_opts = {
@@ -82,6 +78,20 @@ async def youtube_search(
             "ffmpeg_location":
             "/usr/bin",
 
+
+            "postprocessors": [
+                {
+                    "key":
+                    "FFmpegExtractAudio",
+
+                    "preferredcodec":
+                    "mp3",
+
+                    "preferredquality":
+                    "192",
+                }
+            ]
+
         }
 
 
@@ -89,57 +99,68 @@ async def youtube_search(
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
 
 
-            info = ydl.extract_info(
-                f"ytsearch5:{search}",
-                download=True
+            search = ydl.extract_info(
+                f"ytsearch10:{query}",
+                download=False
             )
 
 
-
-            entries = info.get(
+            entries = search.get(
                 "entries",
                 []
             )
 
 
-            if not entries:
+            video = None
+
+
+            for item in entries:
+
+                if item and item.get("webpage_url"):
+                    video = item
+                    break
+
+
+
+            if not video:
 
                 await msg.edit_text(
-                    "❌ لم يتم العثور على الأغنية"
+                    "❌ لم أجد أغنية متاحة"
                 )
-
                 return
 
 
 
-            video = entries[0]
+            info = ydl.extract_info(
+                video["webpage_url"],
+                download=True
+            )
 
 
 
-            title = video.get(
+            title = info.get(
                 "title",
                 "صوت"
             )
 
 
-            duration = video.get(
-                "duration_string",
-                ""
+            duration = info.get(
+                "duration",
+                0
             )
 
 
 
         files = glob.glob(
-            "downloads/*"
+            "downloads/*.mp3"
         )
 
 
         if not files:
 
             await msg.edit_text(
-                "❌ فشل تحميل الملف"
+                "❌ لم يتم إنشاء الملف"
             )
-
             return
 
 
@@ -165,18 +186,21 @@ async def youtube_search(
 
 
         caption = (
-            f"• 𝑁𝐴𝑊𝐴𝐹 . ↠ {duration}"
+            f"• 𝑁𝐴𝑊𝐴𝐹 . ↠ {duration // 60}:{duration % 60:02d}"
         )
 
 
 
         await update.message.reply_audio(
+
             audio=open(
                 file_path,
                 "rb"
             ),
 
             title=title,
+
+            duration=duration,
 
             caption=caption,
 
@@ -195,7 +219,6 @@ async def youtube_search(
 
 
     except Exception as e:
-
 
         await msg.edit_text(
             f"❌ خطأ:\n{e}"
