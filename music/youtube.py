@@ -51,7 +51,7 @@ async def youtube_search(
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
 
             info = ydl.extract_info(
-                f"ytsearch10:{query}"
+                f"ytsearch10:{query}",
                 download=True
             )
 
