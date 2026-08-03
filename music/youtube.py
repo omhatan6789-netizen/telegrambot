@@ -45,7 +45,7 @@ async def youtube_search(
             "quiet": True,
             "no_warnings": True,
             "cookiefile": "./cookies.txt",
-            "ffmpeg_location": "/usr/bin",
+            "ffmpeg_location": "/usr/bin/ffmpeg",
 
             "postprocessors": [
                 {
