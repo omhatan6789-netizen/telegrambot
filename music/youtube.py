@@ -98,7 +98,7 @@ async def youtube_search(
             [
                 [
                     InlineKeyboardButton(
-                        "🔵 فتح البوت",
+                        "بوت نواف واميره",
                         url=f"https://t.me/{BOT_USERNAME}"
                     )
                 ]
@@ -110,13 +110,7 @@ async def youtube_search(
 
             audio=file_path,
 
-            title=title,
-
-            caption=(
-                f"🎵 {title}\n"
-                "📥 تم التحميل من اليوتيوب"
-            ),
-
+            
             reply_markup=buttons
 
         )
