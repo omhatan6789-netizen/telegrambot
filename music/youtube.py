@@ -60,14 +60,16 @@ async def youtube_search(
             "outtmpl": "downloads/%(title)s.%(ext)s",
             "noplaylist": True,
             "quiet": True,
-
+            "ignoreerrors": True,
+            "socket_timeout": 30,
             "extractor_args": {
-            "youtube": {
-                "player_client": [
-                    "android"
-                ]
+                "youtube": {
+                    "player_client": [
+                        "android"
+                    ]
+                }
             }
-        },
+        }
 
         "nocheckcertificate": True,
 
@@ -86,13 +88,20 @@ async def youtube_search(
         with yt_dlp.YoutubeDL(options) as ydl:
 
 
-            data = ydl.extract_info(
-                f"ytsearch1:{query}",
-                download=True
+        data = ydl.extract_info(
+            f"ytsearch5:{query}",
+            download=True
+        )
+
+        entries = data.get("entries")
+
+        if not entries:
+            await update.message.reply_text(
+                "❌ لم أجد نتيجة للبحث"
             )
+            return
 
-
-            video = data["entries"][0]
+        video = entries[0]
 
 
             file_path = ydl.prepare_filename(
