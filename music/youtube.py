@@ -7,6 +7,7 @@ from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup
 )
+
 from telegram.ext import ContextTypes
 
 
@@ -21,56 +22,134 @@ async def youtube_search(
     if not update.message:
         return
 
+
     text = update.message.text or ""
+
 
     if not text.startswith("بحث "):
         return
 
-    query = text.replace("بحث ", "", 1).strip()
+
+    query = text.replace(
+        "بحث ",
+        "",
+        1
+    ).strip()
+
 
     if not query:
-        await update.message.reply_text("❌ اكتب اسم البحث بعد كلمة بحث")
+        await update.message.reply_text(
+            "❌ اكتب اسم البحث بعد كلمة بحث"
+        )
         return
 
-    msg = await update.message.reply_text("🔎 جاري البحث...")
+
+
+    msg = await update.message.reply_text(
+        "🔎 جاري البحث..."
+    )
+
+
 
     try:
 
-        os.makedirs("downloads", exist_ok=True)
+        os.makedirs(
+            "downloads",
+            exist_ok=True
+        )
+
+
+        search = f"{query} audio"
+
+
 
         ydl_opts = {
+
             "format": "bestaudio/best",
-            "outtmpl": "downloads/%(id)s.%(ext)s",
+
+            "outtmpl":
+            "downloads/%(id)s.%(ext)s",
+
             "noplaylist": True,
+
             "quiet": True,
+
             "no_warnings": True,
-            "cookiefile": "./cookies.txt",
-            "ffmpeg_location": "/usr/bin",
+
+            "cookiefile":
+            "./cookies.txt",
+
+            "ffmpeg_location":
+            "/usr/bin",
+
         }
+
+
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
 
+
             info = ydl.extract_info(
-                f"ytsearch1:{query}",
+                f"ytsearch5:{search}",
                 download=True
             )
 
-            if not info.get("entries"):
-                await msg.edit_text("❌ لم يتم العثور على نتائج")
+
+
+            entries = info.get(
+                "entries",
+                []
+            )
+
+
+            if not entries:
+
+                await msg.edit_text(
+                    "❌ لم يتم العثور على الأغنية"
+                )
+
                 return
 
-            video = info["entries"][0]
 
-            title = video.get("title", "صوت")
-            duration = video.get("duration_string", "")
 
-        files = glob.glob("downloads/*")
+            video = entries[0]
+
+
+
+            title = video.get(
+                "title",
+                "صوت"
+            )
+
+
+            duration = video.get(
+                "duration_string",
+                ""
+            )
+
+
+
+        files = glob.glob(
+            "downloads/*"
+        )
+
 
         if not files:
-            await msg.edit_text("❌ لم يتم العثور على الملف بعد التحميل")
+
+            await msg.edit_text(
+                "❌ فشل تحميل الملف"
+            )
+
             return
 
-        file_path = max(files, key=os.path.getmtime)
+
+
+        file_path = max(
+            files,
+            key=os.path.getmtime
+        )
+
+
 
         keyboard = InlineKeyboardMarkup(
             [
@@ -83,15 +162,41 @@ async def youtube_search(
             ]
         )
 
+
+
+        caption = (
+            f"• 𝑁𝐴𝑊𝐴𝐹 . ↠ {duration}"
+        )
+
+
+
         await update.message.reply_audio(
-            audio=open(file_path, "rb"),
+            audio=open(
+                file_path,
+                "rb"
+            ),
+
             title=title,
-            caption=f"• 𝑁𝐴𝑊𝐴𝐹 . ↠ {duration}",
+
+            caption=caption,
+
             reply_markup=keyboard
         )
 
-        os.remove(file_path)
+
+
+        os.remove(
+            file_path
+        )
+
+
         await msg.delete()
 
+
+
     except Exception as e:
-        await msg.edit_text(f"❌ خطأ:\n{e}")
+
+
+        await msg.edit_text(
+            f"❌ خطأ:\n{e}"
+        )
