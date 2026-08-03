@@ -16,6 +16,7 @@ async def youtube_search(
     if not update.message:
         return
 
+
     text = update.message.text
 
 
@@ -35,11 +36,12 @@ async def youtube_search(
         await update.message.reply_text(
             "❌ اكتب اسم البحث بعد كلمة بحث"
         )
+
         return
 
 
 
-    await update.message.reply_text(
+    loading = await update.message.reply_text(
         "🔎 جاري البحث وتحميل الصوت..."
     )
 
@@ -54,10 +56,15 @@ async def youtube_search(
 
 
         options = {
+
             "format": "bestaudio/best",
+
             "outtmpl": "downloads/%(title)s.%(ext)s",
+
             "noplaylist": True,
+
             "quiet": True,
+
             "extractor_args": {
                 "youtube": {
                     "player_client": [
@@ -87,10 +94,26 @@ async def youtube_search(
             )
 
 
-            title = video.get(
-                "title",
-                "صوت"
+            duration = video.get(
+                "duration",
+                0
             )
+
+
+            minutes = duration // 60
+
+            seconds = duration % 60
+
+
+            time_text = (
+                f"{minutes}:{seconds:02d}"
+            )
+
+
+
+        caption = (
+            f"• 𝑁𝐴𝑊𝐴𝐹 . ↠ {time_text}"
+        )
 
 
 
@@ -106,21 +129,39 @@ async def youtube_search(
         )
 
 
+
+        await loading.delete()
+
+
+
         await update.message.reply_audio(
 
-            audio=file_path,
+            audio=open(
+                file_path,
+                "rb"
+            ),
 
-            
+            caption=caption,
+
             reply_markup=buttons
 
         )
 
 
-        os.remove(file_path)
+
+        os.remove(
+            file_path
+        )
 
 
 
     except Exception as e:
+
+
+        try:
+            await loading.delete()
+        except:
+            pass
 
 
         await update.message.reply_text(
