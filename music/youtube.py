@@ -45,22 +45,13 @@ async def youtube_search(
             "quiet": True,
             "no_warnings": True,
             "cookiefile": "./cookies.txt",
-
             "ffmpeg_location": "/usr/bin",
-
-            "postprocessors": [
-                {
-                    "key": "FFmpegExtractAudio",
-                    "preferredcodec": "mp3",
-                    "preferredquality": "192",
-                }
-            ]
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
 
             info = ydl.extract_info(
-                f"ytsearch10:{query}",
+                f"ytsearch10:{query}"
                 download=True
             )
 
@@ -73,7 +64,7 @@ async def youtube_search(
             title = video.get("title", "صوت")
             duration = video.get("duration_string", "")
 
-        files = glob.glob("downloads/*.mp3")
+        files = glob.glob("downloads/*")
 
         if not files:
             await msg.edit_text("❌ لم يتم العثور على الملف بعد التحميل")
@@ -93,12 +84,12 @@ async def youtube_search(
         )
 
         await update.message.reply_audio(
-            udio=open(file_path, "rb"),
+            audio=open(file_path, "rb"),
             title=title,
-            duration=video.get("duration", 0),
             caption=f"• 𝑁𝐴𝑊𝐴𝐹 . ↠ {duration}",
             reply_markup=keyboard
         )
+
         os.remove(file_path)
         await msg.delete()
 
