@@ -1,8 +1,15 @@
 import os
 import yt_dlp
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup
+)
+
+from telegram.ext import (
+    ContextTypes
+)
 
 
 BOT_USERNAME = "lnll0bot"
@@ -33,15 +40,16 @@ async def youtube_search(
 
     if not query:
         await update.message.reply_text(
-            "❌ اكتب اسم البحث بعد بحث"
+            "❌ اكتب اسم البحث بعد كلمة بحث"
         )
         return
 
 
 
     msg = await update.message.reply_text(
-        "🔎 جاري التحميل..."
+        "🔎 جاري البحث وتحميل الصوت..."
     )
+
 
 
     try:
@@ -52,19 +60,40 @@ async def youtube_search(
         )
 
 
-        options = {
+
+        ydl_opts = {
+
+            # تحميل صوت فقط
             "format": "bestaudio/best",
-            "outtmpl": "downloads/%(title)s.%(ext)s",
-            "noplaylist": True,
-            "cookiefile": "cookies.txt",
-            "quiet": True,
+
+
+            # تحويله mp3
             "postprocessors": [
                 {
                     "key": "FFmpegExtractAudio",
                     "preferredcodec": "mp3",
-                    "preferredquality": "192"
+                    "preferredquality": "192",
                 }
-            ]
+            ],
+
+
+            "outtmpl":
+            "downloads/%(title)s.%(ext)s",
+
+
+            "noplaylist": True,
+
+
+            # ملف الكوكيز
+            "cookiefile":
+            "./cookies.txt",
+
+
+            "quiet": True,
+
+
+            "no_warnings": True,
+
         }
 
 
@@ -72,22 +101,21 @@ async def youtube_search(
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
 
 
-            result = ydl.extract_info(
+            info = ydl.extract_info(
                 f"ytsearch1:{query}",
                 download=True
             )
 
 
-            if not result.get("entries"):
-
+            if not info.get("entries"):
                 await msg.edit_text(
-                    "❌ لم أجد نتيجة"
+                    "❌ لم يتم العثور على المقطع"
                 )
                 return
 
 
 
-            video = result["entries"][0]
+            video = info["entries"][0]
 
 
             title = video.get(
@@ -97,24 +125,13 @@ async def youtube_search(
 
 
             duration = video.get(
-                "duration",
-                0
-            )
-
-
-            minutes = duration // 60
-            seconds = duration % 60
-
-
-            time = (
-                f"{minutes}:{seconds:02d}"
-                if duration
-                else "غير معروف"
+                "duration_string",
+                ""
             )
 
 
             file_path = (
-                f"downloads/{video['id']}.mp3"
+                f"downloads/{title}.mp3"
             )
 
 
@@ -122,17 +139,23 @@ async def youtube_search(
         if not os.path.exists(file_path):
 
             await msg.edit_text(
-                "❌ فشل إنشاء الملف"
+                "❌ لم يتم إنشاء الملف الصوتي"
             )
             return
 
 
 
-        keyboard = InlineKeyboardMarkup(
+        caption = (
+            f"• 𝑁𝐴𝑊𝐴𝐹 . ↠ {duration}"
+        )
+
+
+
+        buttons = InlineKeyboardMarkup(
             [
                 [
                     InlineKeyboardButton(
-                        "• 𝑁𝐴𝑊𝐴𝐹 . ↠",
+                        "• 𝑁𝐴𝑊𝐴𝐹",
                         url=f"https://t.me/{BOT_USERNAME}"
                     )
                 ]
@@ -141,27 +164,24 @@ async def youtube_search(
 
 
 
-        await msg.delete()
-
-
-
         await update.message.reply_audio(
 
-            audio=file_path,
+            audio=open(
+                file_path,
+                "rb"
+            ),
 
-            title=title,
+            caption=caption,
 
-            performer="𝑁𝐴𝑊𝐴𝐹",
-
-            caption=f"• 𝑁𝐴𝑊𝐴𝐹 . ↠ {time}",
-
-            reply_markup=keyboard
-
+            reply_markup=buttons
         )
 
 
 
         os.remove(file_path)
+
+
+        await msg.delete()
 
 
 
