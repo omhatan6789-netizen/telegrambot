@@ -52,35 +52,19 @@ async def youtube_search(
         )
 
 
-        ydl_opts = {
-
+        options = {
             "format": "bestaudio/best",
-
-            "outtmpl":
-            "downloads/%(id)s.%(ext)s",
-
+            "outtmpl": "downloads/%(title)s.%(ext)s",
             "noplaylist": True,
-
-
+            "cookiefile": "cookies.txt",
             "quiet": True,
-
-
             "postprocessors": [
                 {
                     "key": "FFmpegExtractAudio",
                     "preferredcodec": "mp3",
                     "preferredquality": "192"
                 }
-            ],
-
-
-            "extractor_args": {
-                "youtube": {
-                    "player_client": [
-                        "android"
-                    ]
-                }
-            }
+            ]
         }
 
 
