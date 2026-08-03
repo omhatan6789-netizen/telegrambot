@@ -24,11 +24,13 @@ async def youtube_search(
         return
 
 
+
     query = text.replace(
         "بحث ",
         "",
         1
     ).strip()
+
 
 
     if not query:
@@ -42,12 +44,13 @@ async def youtube_search(
 
 
     loading = await update.message.reply_text(
-        "🔎 جاري البحث وتحميل الصوت..."
+        "🔎 جاري تحميل الصوت..."
     )
 
 
 
     try:
+
 
         os.makedirs(
             "downloads",
@@ -55,58 +58,101 @@ async def youtube_search(
         )
 
 
+
         options = {
+
             "format": "bestaudio/best",
-            "outtmpl": "downloads/%(title)s.%(ext)s",
+
+            "outtmpl":
+            "downloads/%(id)s.%(ext)s",
+
             "noplaylist": True,
+
             "quiet": True,
+
             "ignoreerrors": True,
+
             "socket_timeout": 30,
+
+
             "extractor_args": {
+
                 "youtube": {
+
                     "player_client": [
                         "android"
                     ]
+
                 }
+
             }
+
         }
 
-        "nocheckcertificate": True,
-
-        "http_headers": {
-            "User-Agent": (
-                "Mozilla/5.0 "
-                "(Linux; Android 10; K) "
-                "AppleWebKit/537.36 "
-                "Chrome/120 Mobile Safari/537.36"
-            )
-        }
-      
 
 
 
         with yt_dlp.YoutubeDL(options) as ydl:
 
 
-        data = ydl.extract_info(
-            f"ytsearch5:{query}",
-            download=True
-        )
-
-        entries = data.get("entries")
-
-        if not entries:
-            await update.message.reply_text(
-                "❌ لم أجد نتيجة للبحث"
+            data = ydl.extract_info(
+                f"ytsearch5:{query}",
+                download=True
             )
-            return
 
-        video = entries[0]
+
+
+            entries = data.get(
+                "entries"
+            )
+
+
+
+            if not entries:
+
+                await loading.edit_text(
+                    "❌ لم أجد نتيجة"
+                )
+
+                return
+
+
+
+            video = None
+
+
+            for item in entries:
+
+                if item:
+
+                    video = item
+
+                    break
+
+
+
+            if not video:
+
+                await loading.edit_text(
+                    "❌ لم أجد مقطع مناسب"
+                )
+
+                return
+
+
 
 
             file_path = ydl.prepare_filename(
                 video
             )
+
+
+
+            title = video.get(
+                "title",
+                "صوت"
+            )
+
 
 
             duration = video.get(
@@ -115,19 +161,24 @@ async def youtube_search(
             )
 
 
-            minutes = duration // 60
 
-            seconds = duration % 60
+            if duration:
 
+                minutes = duration // 60
 
-            time_text = (
-                f"{minutes}:{seconds:02d}"
-            )
+                seconds = duration % 60
+
+                time = f"{minutes}:{seconds:02d}"
+
+            else:
+
+                time = "غير معروف"
+
 
 
 
         caption = (
-            f"• 𝑁𝐴𝑊𝐴𝐹 . ↠ {time_text}"
+            f"• 𝑁𝐴𝑊𝐴𝐹 . ↠ {time}"
         )
 
 
@@ -151,10 +202,7 @@ async def youtube_search(
 
         await update.message.reply_audio(
 
-            audio=open(
-                file_path,
-                "rb"
-            ),
+            audio=file_path,
 
             caption=caption,
 
@@ -164,9 +212,9 @@ async def youtube_search(
 
 
 
-        os.remove(
-            file_path
-        )
+        if os.path.exists(file_path):
+
+            os.remove(file_path)
 
 
 
@@ -174,11 +222,13 @@ async def youtube_search(
 
 
         try:
-            await loading.delete()
+
+            await loading.edit_text(
+                f"❌ خطأ:\n{e}"
+            )
+
         except:
-            pass
 
-
-        await update.message.reply_text(
-            f"❌ خطأ:\n{e}"
-        )
+            await update.message.reply_text(
+                f"❌ خطأ:\n{e}"
+            )
