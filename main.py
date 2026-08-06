@@ -11,7 +11,7 @@ from telegram.ext import (
 )
 
 from config import BOT_TOKEN
-from music.youtube import youtube_search
+
 from database import create_tables
 from games.anime_game import (
     start_anime_quiz,
@@ -634,14 +634,7 @@ def main():
         group=31
     )
 
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(r"^بحث "),
-            youtube_search
-        ),
-        group=35
-    )
-    
+       
     app.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND,
