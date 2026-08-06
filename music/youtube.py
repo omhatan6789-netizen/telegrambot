@@ -7,10 +7,13 @@ from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup
 )
+
 from telegram.ext import ContextTypes
 
 
 BOT_USERNAME = "lnll0bot"
+
+CACHE_DIR = "youtube_cache"
 
 
 async def youtube_search(
@@ -21,56 +24,166 @@ async def youtube_search(
     if not update.message:
         return
 
+
     text = update.message.text or ""
+
 
     if not text.startswith("بحث "):
         return
 
-    query = text.replace("بحث ", "", 1).strip()
+
+    query = text.replace(
+        "بحث ",
+        "",
+        1
+    ).strip()
+
 
     if not query:
-        await update.message.reply_text("❌ اكتب اسم البحث بعد كلمة بحث")
+        await update.message.reply_text(
+            "❌ اكتب اسم البحث بعد كلمة بحث"
+        )
         return
 
-    msg = await update.message.reply_text("🔎 جاري البحث...")
+
+
+    await update.message.reply_text(
+        "🔎 جاري البحث..."
+    )
+
+
+    os.makedirs(
+        CACHE_DIR,
+        exist_ok=True
+    )
+
 
     try:
 
-        os.makedirs("downloads", exist_ok=True)
 
         ydl_opts = {
-            "format": "bestaudio/best",
-            "outtmpl": "downloads/%(id)s.%(ext)s",
-            "noplaylist": True,
-            "quiet": True,
-            "no_warnings": True,
-            "cookiefile": "./cookies.txt",
-            "ffmpeg_location": "/usr/bin",
+
+            "format":
+            "bestaudio/best",
+
+
+            "outtmpl":
+            f"{CACHE_DIR}/%(id)s.%(ext)s",
+
+
+            "noplaylist":
+            True,
+
+
+            "quiet":
+            True,
+
+
+            "no_warnings":
+            True,
+
+
+            "cookiefile":
+            "./cookies.txt",
+
+
+            "ffmpeg_location":
+            "/usr/bin",
+
+
+            "postprocessors":
+            [
+                {
+                    "key":
+                    "FFmpegExtractAudio",
+
+                    "preferredcodec":
+                    "mp3",
+
+                    "preferredquality":
+                    "192",
+                }
+            ]
+
         }
+
+
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
 
-            info = ydl.extract_info(
-                f"ytsearch10:{query}",
-                download=True
+
+            search = ydl.extract_info(
+                f"ytsearch5:{query}",
+                download=False
             )
 
-            if not info.get("entries"):
-                await msg.edit_text("❌ لم يتم العثور على نتائج")
+
+            entries = search.get(
+                "entries",
+                []
+            )
+
+
+            video = None
+
+
+            for item in entries:
+
+                if item:
+                    video = item
+                    break
+
+
+
+            if not video:
+
+                await update.message.reply_text(
+                    "❌ لم يتم العثور على الأغنية"
+                )
                 return
 
-            video = info["entries"][0]
 
-            title = video.get("title", "صوت")
-            duration = video.get("duration_string", "")
 
-        files = glob.glob("downloads/*")
+            video_id = video.get(
+                "id"
+            )
 
-        if not files:
-            await msg.edit_text("❌ لم يتم العثور على الملف بعد التحميل")
-            return
 
-        file_path = max(files, key=os.path.getmtime)
+            cached = glob.glob(
+                f"{CACHE_DIR}/{video_id}.mp3"
+            )
+
+
+            if cached:
+
+                file_path = cached[0]
+
+
+            else:
+
+
+                info = ydl.extract_info(
+                    video["webpage_url"],
+                    download=True
+                )
+
+
+                file_path = (
+                    f"{CACHE_DIR}/{video_id}.mp3"
+                )
+
+
+            title = video.get(
+                "title",
+                "صوت"
+            )
+
+
+            duration = video.get(
+                "duration",
+                0
+            )
+
 
         keyboard = InlineKeyboardMarkup(
             [
@@ -83,15 +196,27 @@ async def youtube_search(
             ]
         )
 
+
         await update.message.reply_audio(
-            audio=open(file_path, "rb"),
+
+            audio=open(
+                file_path,
+                "rb"
+            ),
+
             title=title,
-            caption=f"• 𝑁𝐴𝑊𝐴𝐹 . ↠ {duration}",
+
+            duration=duration,
+
+            caption=f"• 𝑁𝐴𝑊𝐴𝐹 . ↠ {duration//60}:{duration%60:02d}",
+
             reply_markup=keyboard
         )
 
-        os.remove(file_path)
-        await msg.delete()
+
 
     except Exception as e:
-        await msg.edit_text(f"❌ خطأ:\n{e}")
+
+        await update.message.reply_text(
+            f"❌ خطأ:\n{e}"
+        )
