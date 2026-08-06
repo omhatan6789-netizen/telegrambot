@@ -46,9 +46,11 @@ async def youtube_search(
         return
 
 
+
     msg = await update.message.reply_text(
         "🔎 جاري البحث..."
     )
+
 
 
     try:
@@ -61,22 +63,39 @@ async def youtube_search(
 
         ydl_opts = {
 
-            "format": "bestaudio/best",
+            "format":
+            "bestaudio[ext=m4a]/bestaudio/best",
+
 
             "outtmpl":
             f"{CACHE_DIR}/%(id)s.%(ext)s",
 
-            "noplaylist": True,
 
-            "quiet": True,
+            "noplaylist":
+            True,
 
-            "no_warnings": True,
+
+            "quiet":
+            True,
+
+
+            "no_warnings":
+            True,
+
 
             "cookiefile":
             "./cookies.txt",
 
+
             "ffmpeg_location":
             "/usr/bin",
+
+
+            "js_runtimes":
+            {
+                "node": {}
+            },
+
 
             "postprocessors":
             [
@@ -88,10 +107,16 @@ async def youtube_search(
                     "mp3",
 
                     "preferredquality":
-                    "192",
+                    "192"
                 }
             ]
         }
+
+
+
+        file_path = None
+        title = "صوت"
+        duration = 0
 
 
 
@@ -108,22 +133,6 @@ async def youtube_search(
                 "entries",
                 []
             )
-
-
-            if not videos:
-
-                await msg.edit_text(
-                    "❌ لا توجد نتائج"
-                )
-                return
-
-
-
-            file_path = None
-
-            title = "صوت"
-
-            duration = 0
 
 
 
@@ -150,29 +159,29 @@ async def youtube_search(
 
                         file_path = cached[0]
 
+
                     else:
 
-
-                        info = ydl.extract_info(
-                            video["webpage_url"],
+                        ydl.extract_info(
+                            f"https://www.youtube.com/watch?v={video_id}",
                             download=True
                         )
 
 
-                        possible = glob.glob(
+                        files = glob.glob(
                             f"{CACHE_DIR}/{video_id}*"
                         )
 
 
-                        mp3_files = [
-                            x for x in possible
-                            if x.endswith(".mp3")
+                        mp3 = [
+                            f for f in files
+                            if f.endswith(".mp3")
                         ]
 
 
-                        if mp3_files:
+                        if mp3:
 
-                            file_path = mp3_files[0]
+                            file_path = mp3[0]
 
 
 
@@ -194,22 +203,29 @@ async def youtube_search(
 
                 except Exception as e:
 
-                    print("تحميل فشل:", e)
+                    print(
+                        "فشل تحميل نتيجة:",
+                        e
+                    )
+
                     continue
 
 
 
         if not file_path:
 
+
             await msg.edit_text(
                 "❌ لم أجد أغنية قابلة للتحميل"
             )
+
             return
 
 
 
         minutes = duration // 60
         seconds = duration % 60
+
 
 
         keyboard = InlineKeyboardMarkup(
@@ -248,7 +264,6 @@ async def youtube_search(
 
 
     except Exception as e:
-
 
         await msg.edit_text(
             f"❌ خطأ:\n{e}"
