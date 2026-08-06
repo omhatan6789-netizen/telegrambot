@@ -41,55 +41,42 @@ async def youtube_search(
 
     if not query:
         await update.message.reply_text(
-            "❌ اكتب اسم البحث بعد كلمة بحث"
+            "❌ اكتب اسم الأغنية بعد بحث"
         )
         return
 
 
-
-    await update.message.reply_text(
+    msg = await update.message.reply_text(
         "🔎 جاري البحث..."
-    )
-
-
-    os.makedirs(
-        CACHE_DIR,
-        exist_ok=True
     )
 
 
     try:
 
+        os.makedirs(
+            CACHE_DIR,
+            exist_ok=True
+        )
+
 
         ydl_opts = {
 
-            "format":
-            "bestaudio/best",
-
+            "format": "bestaudio/best",
 
             "outtmpl":
             f"{CACHE_DIR}/%(id)s.%(ext)s",
 
+            "noplaylist": True,
 
-            "noplaylist":
-            True,
+            "quiet": True,
 
-
-            "quiet":
-            True,
-
-
-            "no_warnings":
-            True,
-
+            "no_warnings": True,
 
             "cookiefile":
             "./cookies.txt",
 
-
             "ffmpeg_location":
             "/usr/bin",
-
 
             "postprocessors":
             [
@@ -104,7 +91,6 @@ async def youtube_search(
                     "192",
                 }
             ]
-
         }
 
 
@@ -118,71 +104,111 @@ async def youtube_search(
             )
 
 
-            entries = search.get(
+            videos = search.get(
                 "entries",
                 []
             )
 
 
-            video = None
+            if not videos:
 
-
-            for item in entries:
-
-                if item:
-                    video = item
-                    break
-
-
-
-            if not video:
-
-                await update.message.reply_text(
-                    "❌ لم يتم العثور على الأغنية"
+                await msg.edit_text(
+                    "❌ لا توجد نتائج"
                 )
                 return
 
 
 
-            video_id = video.get(
-                "id"
+            file_path = None
+
+            title = "صوت"
+
+            duration = 0
+
+
+
+            for video in videos:
+
+
+                if not video:
+                    continue
+
+
+                try:
+
+                    video_id = video.get(
+                        "id"
+                    )
+
+
+                    cached = glob.glob(
+                        f"{CACHE_DIR}/{video_id}.mp3"
+                    )
+
+
+                    if cached:
+
+                        file_path = cached[0]
+
+                    else:
+
+
+                        info = ydl.extract_info(
+                            video["webpage_url"],
+                            download=True
+                        )
+
+
+                        possible = glob.glob(
+                            f"{CACHE_DIR}/{video_id}*"
+                        )
+
+
+                        mp3_files = [
+                            x for x in possible
+                            if x.endswith(".mp3")
+                        ]
+
+
+                        if mp3_files:
+
+                            file_path = mp3_files[0]
+
+
+
+                    if file_path and os.path.exists(file_path):
+
+                        title = video.get(
+                            "title",
+                            "صوت"
+                        )
+
+                        duration = video.get(
+                            "duration",
+                            0
+                        )
+
+                        break
+
+
+
+                except Exception:
+
+                    continue
+
+
+
+        if not file_path:
+
+            await msg.edit_text(
+                "❌ لم أجد أغنية قابلة للتحميل"
             )
+            return
 
 
-            cached = glob.glob(
-                f"{CACHE_DIR}/{video_id}.mp3"
-            )
 
-
-            if cached:
-
-                file_path = cached[0]
-
-
-            else:
-
-
-                info = ydl.extract_info(
-                    video["webpage_url"],
-                    download=True
-                )
-
-
-                file_path = (
-                    f"{CACHE_DIR}/{video_id}.mp3"
-                )
-
-
-            title = video.get(
-                "title",
-                "صوت"
-            )
-
-
-            duration = video.get(
-                "duration",
-                0
-            )
+        minutes = duration // 60
+        seconds = duration % 60
 
 
         keyboard = InlineKeyboardMarkup(
@@ -197,6 +223,7 @@ async def youtube_search(
         )
 
 
+
         await update.message.reply_audio(
 
             audio=open(
@@ -208,15 +235,20 @@ async def youtube_search(
 
             duration=duration,
 
-            caption=f"• 𝑁𝐴𝑊𝐴𝐹 . ↠ {duration//60}:{duration%60:02d}",
+            caption=
+            f"• 𝑁𝐴𝑊𝐴𝐹 . ↠ {minutes}:{seconds:02d}",
 
             reply_markup=keyboard
         )
 
 
+        await msg.delete()
+
+
 
     except Exception as e:
 
-        await update.message.reply_text(
+
+        await msg.edit_text(
             f"❌ خطأ:\n{e}"
         )
