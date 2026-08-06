@@ -192,8 +192,9 @@ async def youtube_search(
 
 
 
-                except Exception:
+                except Exception as e:
 
+                    print("تحميل فشل:", e)
                     continue
 
 
