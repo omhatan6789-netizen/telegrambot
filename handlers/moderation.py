@@ -175,35 +175,32 @@ async def check_user(
     if not update.message:
         return
 
+    # ==========================================
+    # تحديد الشخص
+    # ==========================================
 
     target = await get_target(update)
 
-
     if not target:
+
         await update.message.reply_text(
             "❌ استخدم الأمر بالرد أو الآيدي أو اليوزر."
         )
+
         return
 
+    # ==========================================
+    # جلب الرتبة الحالية
+    # ==========================================
 
+    rank = get_rank(target.id)
+
+    # ==========================================
+    # قاعدة البيانات
+    # ==========================================
 
     conn = connect()
     cur = conn.cursor()
-
-
-    # الرتبة
-    cur.execute(
-        """
-        SELECT rank
-        FROM users
-        WHERE user_id=?
-        """,
-        (target.id,)
-    )
-
-    rank = cur.fetchone()
-
-
 
     # الحظر
     cur.execute(
@@ -217,8 +214,6 @@ async def check_user(
 
     ban = cur.fetchone()
 
-
-
     # الكتم
     cur.execute(
         """
@@ -231,34 +226,36 @@ async def check_user(
 
     mute = cur.fetchone()
 
-
-
     conn.close()
 
+    # ==========================================
+    # معلومات الشخص
+    # ==========================================
 
+    username = ""
 
-    if rank:
-        rank = rank[0]
-    else:
-        rank = "عضو"
-
-
+    if getattr(target, "username", None):
+        username = f"\n🔗 @{target.username}"
 
     text = f"""
-👤 {target.first_name}
+👤 {target.first_name}{username}
 
 🆔 {target.id}
 
 🛡 الرتبة: {rank}
 """
 
-
-
-    # معلومات الحظر
+    # ==========================================
+    # الحظر
+    # ==========================================
 
     if ban:
 
-        ban_type = "عام" if ban[0] == "global" else "عادي"
+        ban_type = (
+            "عام"
+            if ban[0] == "global"
+            else "عادي"
+        )
 
         text += f"""
 
@@ -281,13 +278,17 @@ async def check_user(
 🚫 الحظر: ❌ لا
 """
 
-
-
-    # معلومات الكتم
+    # ==========================================
+    # الكتم
+    # ==========================================
 
     if mute:
 
-        mute_type = "عام" if mute[0] == "global" else "عادي"
+        mute_type = (
+            "عام"
+            if mute[0] == "global"
+            else "عادي"
+        )
 
         text += f"""
 
@@ -310,7 +311,9 @@ async def check_user(
 🔇 الكتم: ❌ لا
 """
 
-
+    # ==========================================
+    # إرسال الكشف
+    # ==========================================
 
     await update.message.reply_text(text)
 
