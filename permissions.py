@@ -437,16 +437,11 @@ async def permission_command(
         )
 
 
-async def is_admin(user_id):
-    """
-    هل المستخدم يملك صلاحيات الإدارة؟
+# ==================================================
+# التحقق من الأدمن
+# ==================================================
 
-    الترتيب:
-    Dev الأساسي
-    Dev المساعد
-    المالك
-    ثم الرتب الإدارية العادية
-    """
+def is_admin(user_id):
 
     # Dev الأساسي
     if is_primary_developer(user_id):
@@ -456,14 +451,7 @@ async def is_admin(user_id):
     if is_secondary_developer(user_id):
         return True
 
-    # المالك
-    if get_rank(user_id) == "المالك":
-        return True
-
-    # الرتب الإدارية العادية
+    # الرتبة العادية
     rank = get_rank(user_id)
 
-    return RANK_LEVELS.get(rank, 0) >= RANK_LEVELS.get(
-        "ادمن",
-        0
-    )        
+    return RANK_LEVELS.get(rank, 0) >= RANK_LEVELS.get("ادمن", 0)
