@@ -265,12 +265,33 @@ def main():
     )
 
    
+    # رتبتي / رتبته
     app.add_handler(
         MessageHandler(
             filters.Regex(
-                r"^(رتبتي|رتبته(?:\s+@[A-Za-z0-9_]+|\s+\d+)?|كشف\s+المجموعة)$"
+                r"^(رتبتي|رتبته(?:\s+@[A-Za-z0-9_]+|\s+\d+)?)$"
             ),
             roles_command
+        )
+    )
+
+    # كشف المجموعة
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(
+                r"^كشف المجموعة$"
+            ),
+            roles_command
+        )
+    )
+
+    # كشف شخص
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(
+                r"^كشف(?:\s+.*)?$"
+            ),
+            check_user
         )
     )
 

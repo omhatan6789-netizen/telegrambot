@@ -22,6 +22,7 @@ RANK_LEVELS = {
     "ادمن اساسي": 3,
     "نائب المالك": 4,
     "المالك": 5,
+    "Dev": 6
 }
 
 
@@ -80,16 +81,7 @@ def is_secondary_developer(user_id):
 
 def get_rank(user_id):
 
-    # المطور الأساسي
     if user_id == OWNER_ID:
-        return "Dev"
-
-    developer_type = is_developer(user_id)
-
-    if developer_type in (
-        DEV_PRIMARY,
-        DEV_SECONDARY
-    ):
         return "Dev"
 
     conn = connect()
@@ -505,7 +497,7 @@ async def roles_command(
     # كشف المجموعة
     # ==============================================
 
-    if text.startswith("كشف المجموعة"):
+    if text == "كشف المجموعة":
 
         allowed, required = check_command_permission(
             update.effective_user.id,
@@ -515,8 +507,7 @@ async def roles_command(
         if not allowed:
 
             await update.message.reply_text(
-                f"❌ هذا الأمر لـ `{required}` وفوق فقط",
-                parse_mode="Markdown"
+                f"❌ هذا الأمر لـ {required} وفوق فقط"
             )
 
             return
@@ -526,7 +517,7 @@ async def roles_command(
 
         cur.execute(
             """
-            SELECT rank, user_id
+            SELECT user_id, rank
             FROM users
             """
         )
@@ -552,35 +543,54 @@ async def roles_command(
                 if info.username:
                     return f"@{info.username}"
 
-                return str(user_id)
+                return (
+                    info.first_name
+                    or str(user_id)
+                )
 
             except Exception:
 
                 return str(user_id)
 
-        # المالك
-        owner.append(
-            await get_name(OWNER_ID)
-        )
-
-        for rank, user_id in users:
-
-            if user_id == OWNER_ID:
-                continue
+        for user_id, rank in users:
 
             name = await get_name(user_id)
 
-            if rank == "نائب المالك":
+            # ==================================
+            # المالك
+            # ==================================
+
+            if rank == "المالك":
+
+                owner.append(name)
+
+            # ==================================
+            # Dev لا تدخل ضمن المالك
+            # ==================================
+
+            elif rank == "Dev":
+                continue
+
+            elif rank == "نائب المالك":
+
                 deputy.append(name)
 
             elif rank == "ادمن اساسي":
+
                 basic.append(name)
 
             elif rank == "ادمن":
+
                 admins.append(name)
 
             elif rank == "مميز":
+
                 vip.append(name)
+
+        # ======================================
+        # إذا لم تكن هناك رتبة مالك في قاعدة
+        # البيانات، نعرض Dev كصاحب البوت فقط
+        # ======================================
 
         msg = """
 كشف المجموعة: 📋
@@ -589,19 +599,28 @@ async def roles_command(
 ━━━━━━━━━━━━
 """
 
-        for i, x in enumerate(owner, 1):
-            msg += f"{i} - {x}\n"
+        if owner:
+
+            for i, name in enumerate(owner, 1):
+                msg += f"{i} - {name}\n"
+
+        else:
+
+            msg += "لا يوجد\n"
 
         msg += """
-        
+
 • قائمة نواب المالك
 ━━━━━━━━━━━━
 """
 
         if deputy:
-            for i, x in enumerate(deputy, 1):
-                msg += f"{i} - {x}\n"
+
+            for i, name in enumerate(deputy, 1):
+                msg += f"{i} - {name}\n"
+
         else:
+
             msg += "لا يوجد\n"
 
         msg += """
@@ -611,9 +630,12 @@ async def roles_command(
 """
 
         if basic:
-            for i, x in enumerate(basic, 1):
-                msg += f"{i} - {x}\n"
+
+            for i, name in enumerate(basic, 1):
+                msg += f"{i} - {name}\n"
+
         else:
+
             msg += "لا يوجد\n"
 
         msg += """
@@ -623,9 +645,12 @@ async def roles_command(
 """
 
         if admins:
-            for i, x in enumerate(admins, 1):
-                msg += f"{i} - {x}\n"
+
+            for i, name in enumerate(admins, 1):
+                msg += f"{i} - {name}\n"
+
         else:
+
             msg += "لا يوجد\n"
 
         msg += """
@@ -635,9 +660,12 @@ async def roles_command(
 """
 
         if vip:
-            for i, x in enumerate(vip, 1):
-                msg += f"{i} - {x}\n"
+
+            for i, name in enumerate(vip, 1):
+                msg += f"{i} - {name}\n"
+
         else:
+
             msg += "لا يوجد\n"
 
         await update.message.reply_text(msg)
@@ -671,7 +699,7 @@ async def change_rank(
         return
 
     # ==============================================
-    # الهدف
+    # الهدف: رد / يوزر / آيدي
     # ==============================================
 
     target = await get_target_user(
@@ -699,6 +727,18 @@ async def change_rank(
 
         await update.message.reply_text(
             "❌ لا يمكنك تعديل رتبتك بنفسك."
+        )
+
+        return
+
+    # ==============================================
+    # حماية Dev الأساسي
+    # ==============================================
+
+    if target.id == OWNER_ID:
+
+        await update.message.reply_text(
+            "❌ لا يمكن تعديل رتبة الـDev الأساسي."
         )
 
         return
@@ -736,13 +776,16 @@ async def change_rank(
 
             return
 
+        old_rank = get_rank(target.id)
+
         update_user_rank(
             target.id,
             "عضو"
         )
 
         await update.message.reply_text(
-            f"✅ تم تنزيل {target.first_name} من Dev إلى عضو."
+            f"✅ تم تنزيل {target.first_name} من "
+            f"{old_rank} إلى عضو."
         )
 
         return
@@ -773,7 +816,7 @@ async def change_rank(
         return
 
     # ==============================================
-    # تحديث الرتبة
+    # تحديث الرتبة العادية
     # ==============================================
 
     old_rank = get_rank(target.id)
