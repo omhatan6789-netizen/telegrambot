@@ -11,7 +11,7 @@ from telegram.ext import (
 )
 
 from config import BOT_TOKEN
-
+from handlers.user_permissions import permission_command
 from database import create_tables
 from games.anime_game import (
     start_anime_quiz,
@@ -210,6 +210,20 @@ def main():
             check_custom_commands
         ),
         group=-3
+    )
+
+    # =====================
+    # منع / سماح الصلاحيات
+    # =====================
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(
+                r"^(منع|سماح)\s+.+"
+            ),
+            permission_command
+        ),
+        group=-2
     )
 
     # =====================

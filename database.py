@@ -502,5 +502,26 @@ def create_tables():
     # حفظ التغييرات
     # ==================================================
 
+    # ==================================================
+    # منع/سماح صلاحيات المستخدمين لكل قروب
+    # ==================================================
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS group_user_permissions
+    (
+        chat_id INTEGER,
+        user_id INTEGER,
+        permission TEXT,
+        allowed INTEGER DEFAULT 0,
+
+        PRIMARY KEY
+        (
+            chat_id,
+            user_id,
+            permission
+        )
+    )
+    """)
+
     conn.commit()
     conn.close()
