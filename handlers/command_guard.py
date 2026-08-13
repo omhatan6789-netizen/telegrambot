@@ -18,6 +18,13 @@ async def command_guard(
     if not text:
         return
 
+    # ==================================================
+    # أوامر الصلاحيات نفسها لا تدخل في الحارس
+    # ==================================================
+
+    if text.startswith("منع ") or text.startswith("سماح "):
+        return
+
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
 
@@ -27,26 +34,22 @@ async def command_guard(
 
     command = text.split()[0]
 
-    if text.startswith("كشف المجموعة"):
-        command = "كشف المجموعة"
+    multi_word_commands = (
+        "كشف المجموعة",
+        "رفع الحظر",
+        "رفع الكتم",
+        "حظر عام",
+        "كتم عام",
+        "قفل امر",
+        "فتح امر",
+    )
 
-    elif text.startswith("رفع الحظر"):
-        command = "رفع الحظر"
+    for item in multi_word_commands:
 
-    elif text.startswith("رفع الكتم"):
-        command = "رفع الكتم"
+        if text == item or text.startswith(item + " "):
 
-    elif text.startswith("حظر عام"):
-        command = "حظر عام"
-
-    elif text.startswith("كتم عام"):
-        command = "كتم عام"
-
-    elif text.startswith("قفل امر"):
-        command = "قفل امر"
-
-    elif text.startswith("فتح امر"):
-        command = "فتح امر"
+            command = item
+            break
 
     # ==================================================
     # منع / سماح خاص للشخص
@@ -58,9 +61,9 @@ async def command_guard(
         command
     )
 
-    # --------------------------------------------------
+    # ==================================================
     # منع خاص
-    # --------------------------------------------------
+    # ==================================================
 
     if special_permission is False:
 
@@ -70,11 +73,9 @@ async def command_guard(
 
         raise ApplicationHandlerStop()
 
-    # --------------------------------------------------
+    # ==================================================
     # سماح خاص
-    #
-    # يتجاوز قفل الرتبة
-    # --------------------------------------------------
+    # ==================================================
 
     if special_permission is True:
         return
@@ -91,8 +92,7 @@ async def command_guard(
     if not allowed:
 
         await update.message.reply_text(
-            f"❌ هذا الأمر مخصص لرتبة `{required}` وفوق",
-            parse_mode="Markdown"
+            f"❌ هذا الأمر مخصص لرتبة {required} وفوق."
         )
 
         raise ApplicationHandlerStop()
