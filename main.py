@@ -204,14 +204,7 @@ def main():
         )
     )
 
-    app.add_handler(
-        MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
-            check_custom_commands
-        ),
-        group=-3
-    )
-
+    
     # =====================
     # منع / سماح الصلاحيات
     # =====================
@@ -237,7 +230,6 @@ def main():
         ),
         group=-1
     )
-
     # =====================
     # قفل وفتح الأوامر
     # =====================

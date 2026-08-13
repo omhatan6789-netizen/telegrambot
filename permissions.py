@@ -15,14 +15,23 @@ OWNER_ID = 8453977662
 
 
 # ==================================================
-# مستوى الشخص في نظام الصلاحيات
+# توحيد اسم الأمر
 # ==================================================
-#
-# 3 = Dev الأساسي
-# 2 = Dev المساعد
-# 1 = المالك
-# 0 = باقي الأشخاص
-#
+
+def normalize_command(command):
+
+    if not command:
+        return ""
+
+    command = " ".join(
+        command.strip().split()
+    )
+
+    return command
+
+
+# ==================================================
+# مستوى الشخص
 # ==================================================
 
 def get_permission_level(user_id):
@@ -40,7 +49,7 @@ def get_permission_level(user_id):
 
 
 # ==================================================
-# هل يستطيع الشخص إدارة الصلاحيات؟
+# هل يستطيع إدارة الصلاحيات؟
 # ==================================================
 
 def can_manage_permissions(user_id):
@@ -49,67 +58,45 @@ def can_manage_permissions(user_id):
 
 
 # ==================================================
-# هل يستطيع الشخص تعديل صلاحيات شخص آخر؟
+# هل يستطيع تعديل صلاحيات شخص؟
 # ==================================================
 
 def can_manage_target(actor_id, target_id):
 
+    if actor_id == target_id:
+        return False
+
     actor_level = get_permission_level(actor_id)
     target_level = get_permission_level(target_id)
 
-    # ليس لديه صلاحية
     if actor_level == 0:
         return False
 
-    # ==============================================
     # Dev الأساسي
-    # ==============================================
-
     if actor_level == 3:
-
-        # يستطيع تعديل الجميع
         return True
 
-    # ==============================================
     # Dev المساعد
-    # ==============================================
-
     if actor_level == 2:
 
-        # لا يستطيع تعديل Dev الأساسي
-        if target_level == 3:
+        if target_level >= 2:
             return False
 
-        # لا يستطيع تعديل Dev مساعد آخر
-        if target_level == 2:
-            return False
-
-        # يستطيع تعديل المالك وباقي الرتب
         return True
 
-    # ==============================================
     # المالك
-    # ==============================================
-
     if actor_level == 1:
 
-        # المالك لا يستطيع تعديل Dev الأساسي
-        if target_level == 3:
+        if target_level >= 2:
             return False
 
-        # المالك لا يستطيع تعديل Dev المساعد
-        if target_level == 2:
-            return False
-
-        # يستطيع تعديل نفسه؟ لا
-        # يتم منع ذلك في permission_command
         return True
 
     return False
 
 
 # ==================================================
-# حفظ منع / سماح لشخص
+# حفظ الصلاحية
 # ==================================================
 
 def set_user_permission(
@@ -118,6 +105,11 @@ def set_user_permission(
     command,
     allowed
 ):
+
+    command = normalize_command(command)
+
+    if not command:
+        return
 
     conn = connect()
     cur = conn.cursor()
@@ -150,7 +142,11 @@ def set_user_permission(
 
 
 # ==================================================
-# فحص هل الشخص ممنوع من أمر معين
+# فحص صلاحية الشخص
+#
+# None  = لا يوجد تخصيص
+# False = ممنوع
+# True  = مسموح
 # ==================================================
 
 def check_user_permission(
@@ -159,7 +155,9 @@ def check_user_permission(
     command
 ):
 
-    # Dev الأساسي لا يمكن منعه
+    command = normalize_command(command)
+
+    # Dev الأساسي فوق النظام
     if is_primary_developer(user_id):
         return True
 
@@ -185,7 +183,6 @@ def check_user_permission(
 
     conn.close()
 
-    # لا يوجد منع أو سماح خاص
     if not result:
         return None
 
@@ -193,7 +190,7 @@ def check_user_permission(
 
 
 # ==================================================
-# استخراج الشخص المستهدف
+# استخراج الشخص
 # ==================================================
 
 async def get_permission_target(
@@ -216,7 +213,7 @@ async def get_permission_target(
         return message.reply_to_message.from_user
 
     # ==============================================
-    # باليوزر / الآيدي
+    # باليوزر أو الآيدي
     # ==============================================
 
     parts = text.split()
@@ -273,7 +270,9 @@ async def permission_command(
     if not update.message:
         return
 
-    text = (update.message.text or "").strip()
+    text = (
+        update.message.text or ""
+    ).strip()
 
     if not text:
         return
@@ -285,17 +284,13 @@ async def permission_command(
 
     action = parts[0]
 
-    # ==============================================
-    # نتأكد أنه منع أو سماح
-    # ==============================================
-
     if action not in ("منع", "سماح"):
         return
 
     actor = update.effective_user
 
     # ==============================================
-    # هل يملك صلاحية إدارة الصلاحيات؟
+    # صلاحية الإدارة
     # ==============================================
 
     if not can_manage_permissions(actor.id):
@@ -307,16 +302,13 @@ async def permission_command(
         return
 
     # ==============================================
-    # استخراج الأمر والهدف
+    # بالرد
+    #
+    # منع حظر
+    # سماح حظر
     # ==============================================
 
     if update.message.reply_to_message:
-
-        # مثال:
-        #
-        # منع حظر
-        #
-        # [منع] [حظر]
 
         if len(parts) < 2:
 
@@ -328,16 +320,24 @@ async def permission_command(
 
             return
 
-        target = update.message.reply_to_message.from_user
+        target = (
+            update.message
+            .reply_to_message
+            .from_user
+        )
 
-        command = " ".join(parts[1:]).strip()
+        command = " ".join(
+            parts[1:]
+        )
+
+    # ==============================================
+    # باليوزر / الآيدي
+    #
+    # منع حظر @username
+    # منع حظر 123456789
+    # ==============================================
 
     else:
-
-        # مثال:
-        #
-        # منع حظر @username
-        # منع حظر 123456789
 
         if len(parts) < 3:
 
@@ -345,13 +345,15 @@ async def permission_command(
                 "❌ الاستخدام:\n\n"
                 "منع حظر @username\n"
                 "منع حظر 123456789\n\n"
-                "أو بالرد:\n"
+                "أو بالرد على الشخص:\n"
                 "منع حظر"
             )
 
             return
 
-        command = " ".join(parts[1:-1]).strip()
+        command = " ".join(
+            parts[1:-1]
+        )
 
         target = await get_permission_target(
             update,
@@ -366,8 +368,10 @@ async def permission_command(
 
             return
 
+    command = normalize_command(command)
+
     # ==============================================
-    # تأكد من وجود أمر
+    # التأكد من وجود الأمر
     # ==============================================
 
     if not command:
@@ -379,7 +383,7 @@ async def permission_command(
         return
 
     # ==============================================
-    # لا يستطيع تعديل نفسه
+    # منع تعديل النفس
     # ==============================================
 
     if target.id == actor.id:
@@ -391,7 +395,19 @@ async def permission_command(
         return
 
     # ==============================================
-    # حماية المستويات
+    # حماية المطور الأساسي
+    # ==============================================
+
+    if target.id == OWNER_ID:
+
+        await update.message.reply_text(
+            "❌ لا يمكنك تعديل صلاحيات المطور الأساسي."
+        )
+
+        return
+
+    # ==============================================
+    # فحص صلاحية تعديل الهدف
     # ==============================================
 
     if not can_manage_target(
@@ -406,10 +422,10 @@ async def permission_command(
         return
 
     # ==============================================
-    # منع / سماح
+    # الحفظ
     # ==============================================
 
-    allowed = 0 if action == "منع" else 1
+    allowed = 1 if action == "سماح" else 0
 
     set_user_permission(
         update.effective_chat.id,
@@ -438,20 +454,20 @@ async def permission_command(
 
 
 # ==================================================
-# التحقق من الأدمن
+# هل الشخص أدمن؟
 # ==================================================
 
 def is_admin(user_id):
 
-    # Dev الأساسي
     if is_primary_developer(user_id):
         return True
 
-    # Dev المساعد
     if is_secondary_developer(user_id):
         return True
 
-    # الرتبة العادية
     rank = get_rank(user_id)
 
-    return RANK_LEVELS.get(rank, 0) >= RANK_LEVELS.get("ادمن", 0)
+    return (
+        RANK_LEVELS.get(rank, 0)
+        >= RANK_LEVELS.get("ادمن", 0)
+    )
