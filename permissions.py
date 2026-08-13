@@ -1,87 +1,121 @@
+from telegram import Update
+from telegram.ext import ContextTypes
+
 from database import connect
-from handlers.roles import get_rank, RANK_LEVELS
+from handlers.roles import (
+    is_developer,
+    is_primary_developer,
+    is_secondary_developer,
+    get_rank
+)
 
 
 OWNER_ID = 8453977662
 
 
 # ==================================================
-# التحقق من Dev
+# مستوى الشخص في نظام الصلاحيات
+# ==================================================
+#
+# 3 = Dev الأساسي
+# 2 = Dev المساعد
+# 1 = المالك
+# 0 = باقي الأشخاص
+#
 # ==================================================
 
-def is_developer(user_id):
+def get_permission_level(user_id):
 
-    # Dev الأساسي
-    if user_id == OWNER_ID:
-        return True
+    if is_primary_developer(user_id):
+        return 3
 
-    conn = connect()
-    cur = conn.cursor()
+    if is_secondary_developer(user_id):
+        return 2
 
-    cur.execute(
-        """
-        SELECT rank
-        FROM users
-        WHERE user_id=?
-        """,
-        (user_id,)
-    )
+    if get_rank(user_id) == "المالك":
+        return 1
 
-    result = cur.fetchone()
+    return 0
 
-    conn.close()
 
-    if not result:
+# ==================================================
+# هل يستطيع الشخص إدارة الصلاحيات؟
+# ==================================================
+
+def can_manage_permissions(user_id):
+
+    return get_permission_level(user_id) > 0
+
+
+# ==================================================
+# هل يستطيع الشخص تعديل صلاحيات شخص آخر؟
+# ==================================================
+
+def can_manage_target(actor_id, target_id):
+
+    actor_level = get_permission_level(actor_id)
+    target_level = get_permission_level(target_id)
+
+    # ليس لديه صلاحية
+    if actor_level == 0:
         return False
 
-    return result[0] == "Dev"
-
-
-# ==================================================
-# التحقق من المالك
-# ==================================================
-
-async def is_owner(user_id):
-
+    # ==============================================
     # Dev الأساسي
-    if user_id == OWNER_ID:
+    # ==============================================
+
+    if actor_level == 3:
+
+        # يستطيع تعديل الجميع
         return True
 
-    # Dev المساعد ليس مالكًا
-    rank = get_rank(user_id)
-
-    return rank == "المالك"
-
-
-# ==================================================
-# التحقق من الأدمن
-# ==================================================
-
-async def is_admin(user_id):
-
-    # Dev الأساسي
-    if user_id == OWNER_ID:
-        return True
-
-    rank = get_rank(user_id)
-
+    # ==============================================
     # Dev المساعد
-    if rank == "Dev":
+    # ==============================================
+
+    if actor_level == 2:
+
+        # لا يستطيع تعديل Dev الأساسي
+        if target_level == 3:
+            return False
+
+        # لا يستطيع تعديل Dev مساعد آخر
+        if target_level == 2:
+            return False
+
+        # يستطيع تعديل المالك وباقي الرتب
         return True
 
-    return RANK_LEVELS.get(rank, 0) >= RANK_LEVELS.get(
-        "ادمن",
-        0
-    )
+    # ==============================================
+    # المالك
+    # ==============================================
+
+    if actor_level == 1:
+
+        # المالك لا يستطيع تعديل Dev الأساسي
+        if target_level == 3:
+            return False
+
+        # المالك لا يستطيع تعديل Dev المساعد
+        if target_level == 2:
+            return False
+
+        # يستطيع تعديل نفسه؟ لا
+        # يتم منع ذلك في permission_command
+        return True
+
+    return False
 
 
 # ==================================================
-# صلاحية الأمر
+# حفظ منع / سماح لشخص
 # ==================================================
 
-async def check_command_permission(
+def set_user_permission(
+    chat_id,
     user_id,
-    command
+    command,
+    allowed
 ):
 
     conn = connect()
@@ -89,35 +123,314 @@ async def check_command_permission(
 
     cur.execute(
         """
-        SELECT rank
-        FROM command_locks
-        WHERE command=?
+        INSERT INTO group_user_permissions
+        (
+            chat_id,
+            user_id,
+            permission,
+            allowed
+        )
+        VALUES (?, ?, ?, ?)
+
+        ON CONFLICT(chat_id, user_id, permission)
+        DO UPDATE SET
+            allowed=excluded.allowed
         """,
-        (command,)
+        (
+            chat_id,
+            user_id,
+            command,
+            int(allowed)
+        )
+    )
+
+    conn.commit()
+    conn.close()
+
+
+# ==================================================
+# فحص هل الشخص ممنوع من أمر معين
+# ==================================================
+
+def check_user_permission(
+    chat_id,
+    user_id,
+    command
+):
+
+    # Dev الأساسي لا يمكن منعه
+    if is_primary_developer(user_id):
+        return True
+
+    conn = connect()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        SELECT allowed
+        FROM group_user_permissions
+        WHERE chat_id=?
+        AND user_id=?
+        AND permission=?
+        """,
+        (
+            chat_id,
+            user_id,
+            command
+        )
     )
 
     result = cur.fetchone()
 
     conn.close()
 
-    # الأمر غير مقفول
+    # لا يوجد منع أو سماح خاص
     if not result:
-        return True, None
+        return None
 
-    required_rank = result[0]
+    return bool(result[0])
 
-    user_rank = get_rank(user_id)
 
-    # Dev الأساسي والمساعد يتجاوزون قفل الأوامر
-    if is_developer(user_id):
-        return True, None
+# ==================================================
+# استخراج الشخص المستهدف
+# ==================================================
 
-    # الرتب العادية
-    if (
-        RANK_LEVELS.get(user_rank, 0)
-        >=
-        RANK_LEVELS.get(required_rank, 0)
+async def get_permission_target(
+    update,
+    context
+):
+
+    if not update.message:
+        return None
+
+    message = update.message
+    text = (message.text or "").strip()
+
+    # ==============================================
+    # بالرد
+    # ==============================================
+
+    if message.reply_to_message:
+
+        return message.reply_to_message.from_user
+
+    # ==============================================
+    # باليوزر / الآيدي
+    # ==============================================
+
+    parts = text.split()
+
+    if len(parts) < 3:
+        return None
+
+    target_text = parts[-1].strip()
+
+    # ==============================================
+    # آيدي
+    # ==============================================
+
+    if target_text.isdigit():
+
+        try:
+
+            return await context.bot.get_chat(
+                int(target_text)
+            )
+
+        except Exception:
+
+            return None
+
+    # ==============================================
+    # يوزر
+    # ==============================================
+
+    if target_text.startswith("@"):
+
+        try:
+
+            return await context.bot.get_chat(
+                target_text
+            )
+
+        except Exception:
+
+            return None
+
+    return None
+
+
+# ==================================================
+# منع / سماح
+# ==================================================
+
+async def permission_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not update.message:
+        return
+
+    text = (update.message.text or "").strip()
+
+    if not text:
+        return
+
+    parts = text.split()
+
+    if not parts:
+        return
+
+    action = parts[0]
+
+    # ==============================================
+    # نتأكد أنه منع أو سماح
+    # ==============================================
+
+    if action not in ("منع", "سماح"):
+        return
+
+    actor = update.effective_user
+
+    # ==============================================
+    # هل يملك صلاحية إدارة الصلاحيات؟
+    # ==============================================
+
+    if not can_manage_permissions(actor.id):
+
+        await update.message.reply_text(
+            "❌ هذا الأمر للمطور والمالك فقط."
+        )
+
+        return
+
+    # ==============================================
+    # استخراج الأمر والهدف
+    # ==============================================
+
+    if update.message.reply_to_message:
+
+        # مثال:
+        #
+        # منع حظر
+        #
+        # [منع] [حظر]
+
+        if len(parts) < 2:
+
+            await update.message.reply_text(
+                "❌ اكتب اسم الأمر.\n\n"
+                "مثال:\n"
+                "منع حظر"
+            )
+
+            return
+
+        target = update.message.reply_to_message.from_user
+
+        command = " ".join(parts[1:]).strip()
+
+    else:
+
+        # مثال:
+        #
+        # منع حظر @username
+        # منع حظر 123456789
+
+        if len(parts) < 3:
+
+            await update.message.reply_text(
+                "❌ الاستخدام:\n\n"
+                "منع حظر @username\n"
+                "منع حظر 123456789\n\n"
+                "أو بالرد:\n"
+                "منع حظر"
+            )
+
+            return
+
+        command = " ".join(parts[1:-1]).strip()
+
+        target = await get_permission_target(
+            update,
+            context
+        )
+
+        if not target:
+
+            await update.message.reply_text(
+                "❌ لم أستطع العثور على الشخص."
+            )
+
+            return
+
+    # ==============================================
+    # تأكد من وجود أمر
+    # ==============================================
+
+    if not command:
+
+        await update.message.reply_text(
+            "❌ اكتب اسم الأمر الذي تريد منعه أو السماح به."
+        )
+
+        return
+
+    # ==============================================
+    # لا يستطيع تعديل نفسه
+    # ==============================================
+
+    if target.id == actor.id:
+
+        await update.message.reply_text(
+            "❌ لا يمكنك تعديل صلاحيات نفسك."
+        )
+
+        return
+
+    # ==============================================
+    # حماية المستويات
+    # ==============================================
+
+    if not can_manage_target(
+        actor.id,
+        target.id
     ):
-        return True, None
 
-    return False, required_rank
+        await update.message.reply_text(
+            "❌ لا يمكنك تعديل صلاحيات هذا الشخص."
+        )
+
+        return
+
+    # ==============================================
+    # منع / سماح
+    # ==============================================
+
+    allowed = 0 if action == "منع" else 1
+
+    set_user_permission(
+        update.effective_chat.id,
+        target.id,
+        command,
+        allowed
+    )
+
+    # ==============================================
+    # الرد
+    # ==============================================
+
+    if action == "منع":
+
+        await update.message.reply_text(
+            f"🚫 تم منع {target.first_name} من الأمر:\n"
+            f"↤︎ {command}"
+        )
+
+    else:
+
+        await update.message.reply_text(
+            f"✅ تم السماح لـ {target.first_name} بالأمر:\n"
+            f"↤︎ {command}"
+        )
