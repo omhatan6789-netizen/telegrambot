@@ -2,7 +2,7 @@ from telegram import Update
 from telegram.ext import ContextTypes, ApplicationHandlerStop
 
 from handlers.roles import check_command_permission
-from handlers.permissions import check_user_permission
+from permissions import check_user_permission
 
 
 async def command_guard(
