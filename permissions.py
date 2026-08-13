@@ -6,7 +6,8 @@ from handlers.roles import (
     is_developer,
     is_primary_developer,
     is_secondary_developer,
-    get_rank
+    get_rank,
+    RANK_LEVELS
 )
 
 
@@ -434,3 +435,35 @@ async def permission_command(
             f"✅ تم السماح لـ {target.first_name} بالأمر:\n"
             f"↤︎ {command}"
         )
+
+
+async def is_admin(user_id):
+    """
+    هل المستخدم يملك صلاحيات الإدارة؟
+
+    الترتيب:
+    Dev الأساسي
+    Dev المساعد
+    المالك
+    ثم الرتب الإدارية العادية
+    """
+
+    # Dev الأساسي
+    if is_primary_developer(user_id):
+        return True
+
+    # Dev المساعد
+    if is_secondary_developer(user_id):
+        return True
+
+    # المالك
+    if get_rank(user_id) == "المالك":
+        return True
+
+    # الرتب الإدارية العادية
+    rank = get_rank(user_id)
+
+    return RANK_LEVELS.get(rank, 0) >= RANK_LEVELS.get(
+        "ادمن",
+        0
+    )        
