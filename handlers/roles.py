@@ -188,30 +188,29 @@ async def get_target_user(update, context):
         return None
 
     message = update.message
-    text = message.text or ""
+    text = (message.text or "").strip()
 
-    # ------------------------------------------
+    # ==========================================
     # 1 - بالرد
-    # ------------------------------------------
+    # ==========================================
 
     if message.reply_to_message:
-
         return message.reply_to_message.from_user
 
-    # ------------------------------------------
-    # 2 - باليوزر أو الآيدي
-    # ------------------------------------------
+    # ==========================================
+    # 2 - استخراج الكلمات
+    # ==========================================
 
-    parts = text.strip().split()
+    parts = text.split()
 
-    if len(parts) < 3:
+    if len(parts) < 2:
         return None
 
     target = parts[-1].strip()
 
-    # ------------------------------------------
-    # آيدي
-    # ------------------------------------------
+    # ==========================================
+    # 3 - الآيدي
+    # ==========================================
 
     if target.isdigit():
 
@@ -225,13 +224,16 @@ async def get_target_user(update, context):
         except Exception:
             return None
 
-    # ------------------------------------------
-    # يوزر
-    # ------------------------------------------
+    # ==========================================
+    # 4 - اليوزر
+    # ==========================================
 
     if target.startswith("@"):
 
-        username = target[1:]
+        username = target[1:].strip()
+
+        if not username:
+            return None
 
         try:
             user = await context.bot.get_chat(
@@ -469,7 +471,8 @@ async def roles_command(
         user = update.effective_user
 
         await update.message.reply_text(
-            f"• رتبتك هي ↤︎ {get_rank(user.id)}"
+            f"• رتبتك
+             هي ↤︎ {get_rank(user.id)}"
         )
 
         return
@@ -478,22 +481,29 @@ async def roles_command(
     # رتبته
     # ==============================================
 
-    if text == "رتبته":
+    if text == "رتبته" or text.startswith("رتبته "):
 
-        target = await get_target_user(
-            update,
-            context
-        )
+    target = await get_target_user(
+        update,
+        context
+    )
 
-        if not target:
-            return
+    if not target:
 
         await update.message.reply_text(
-            f"• رتبته هي ↤︎ {get_rank(target.id)}"
+            "❌ حدد الشخص بالرد أو اليوزر أو الآيدي."
         )
 
         return
 
+    rank = get_rank(target.id)
+
+    await update.message.reply_text(
+        f"• رتبته هي ↤︎ {rank}"
+    )
+
+    return
+    
     # ==============================================
     # كشف المجموعة
     # ==============================================

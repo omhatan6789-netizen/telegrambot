@@ -264,17 +264,13 @@ def main():
         )
     )
 
+   
     app.add_handler(
         MessageHandler(
-            filters.Regex(r"^(رتبتي|كشف\s+المجموعة)$"),
+            filters.Regex(
+                r"^(رتبتي|رتبته(?:\s+@[A-Za-z0-9_]+|\s+\d+)?|كشف\s+المجموعة)$"
+            ),
             roles_command
-        )
-    )
-
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(r"^كشف(?! المجموعة)($|\s)"),
-            check_user
         )
     )
 
