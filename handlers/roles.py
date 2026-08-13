@@ -460,7 +460,7 @@ async def roles_command(
     if not update.message:
         return
 
-    text = update.message.text.strip()
+    text = (update.message.text or "").strip()
 
     # ==============================================
     # رتبتي
@@ -471,8 +471,7 @@ async def roles_command(
         user = update.effective_user
 
         await update.message.reply_text(
-            f"• رتبتك
-             هي ↤︎ {get_rank(user.id)}"
+            f"• رتبتك هي ↤︎ {get_rank(user.id)}"
         )
 
         return
@@ -483,27 +482,25 @@ async def roles_command(
 
     if text == "رتبته" or text.startswith("رتبته "):
 
-    target = await get_target_user(
-        update,
-        context
-    )
+        target = await get_target_user(
+            update,
+            context
+        )
 
-    if not target:
+        if not target:
+            await update.message.reply_text(
+                "❌ حدد الشخص بالرد أو اليوزر أو الآيدي."
+            )
+            return
+
+        rank = get_rank(target.id)
 
         await update.message.reply_text(
-            "❌ حدد الشخص بالرد أو اليوزر أو الآيدي."
+            f"• رتبته هي ↤︎ {rank}"
         )
 
         return
 
-    rank = get_rank(target.id)
-
-    await update.message.reply_text(
-        f"• رتبته هي ↤︎ {rank}"
-    )
-
-    return
-    
     # ==============================================
     # كشف المجموعة
     # ==============================================
@@ -561,6 +558,7 @@ async def roles_command(
 
                 return str(user_id)
 
+        # المالك
         owner.append(
             await get_name(OWNER_ID)
         )
@@ -595,7 +593,7 @@ async def roles_command(
             msg += f"{i} - {x}\n"
 
         msg += """
-
+        
 • قائمة نواب المالك
 ━━━━━━━━━━━━
 """
