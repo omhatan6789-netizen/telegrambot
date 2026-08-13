@@ -1,18 +1,17 @@
 import sqlite3
 
-DB_NAME = "bot.db"
+
+DB_NAME = "database.db"
+
 
 def connect():
-    return sqlite3.connect("database.db")
+    return sqlite3.connect(DB_NAME)
 
-
-    
 
 def create_tables():
 
     conn = connect()
     cur = conn.cursor()
-
 
     # =====================
     # المستخدمين
@@ -22,20 +21,13 @@ def create_tables():
     CREATE TABLE IF NOT EXISTS users
     (
         user_id INTEGER PRIMARY KEY,
-
         username TEXT,
-
         first_name TEXT,
-
         messages INTEGER DEFAULT 0,
-
         rank TEXT DEFAULT 'عضو',
-
         joined_date TEXT
     )
     """)
-
-
 
     cur.execute(
         """
@@ -52,8 +44,6 @@ def create_tables():
         """
     )
 
-
-
     # =====================
     # الردود العادية
     # =====================
@@ -62,16 +52,11 @@ def create_tables():
     CREATE TABLE IF NOT EXISTS replies
     (
         name TEXT PRIMARY KEY,
-
         text TEXT,
-
         type TEXT,
-
         caption TEXT
     )
     """)
-
-
 
     # =====================
     # الردود المميزة
@@ -81,16 +66,11 @@ def create_tables():
     CREATE TABLE IF NOT EXISTS special_replies
     (
         name TEXT PRIMARY KEY,
-
         text TEXT,
-
         type TEXT,
-
         caption TEXT
     )
     """)
-
-
 
     # =====================
     # النقاط
@@ -100,12 +80,9 @@ def create_tables():
     CREATE TABLE IF NOT EXISTS points
     (
         user_id INTEGER PRIMARY KEY,
-
         points INTEGER DEFAULT 0
     )
     """)
-
-
 
     # =====================
     # الألعاب
@@ -115,14 +92,10 @@ def create_tables():
     CREATE TABLE IF NOT EXISTS games
     (
         name TEXT PRIMARY KEY,
-
         image TEXT,
-
         status TEXT DEFAULT 'on'
     )
     """)
-
-
 
     # =====================
     # أسئلة الألعاب
@@ -132,20 +105,13 @@ def create_tables():
     CREATE TABLE IF NOT EXISTS game_questions
     (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-
         game_name TEXT,
-
         question TEXT,
-
         image TEXT,
-
         caption TEXT,
-
         answers TEXT
     )
     """)
-
-
 
     # =====================
     # إعدادات الألعاب
@@ -155,12 +121,9 @@ def create_tables():
     CREATE TABLE IF NOT EXISTS games_settings
     (
         id INTEGER PRIMARY KEY,
-
         status TEXT DEFAULT 'on'
     )
     """)
-
-
 
     cur.execute(
         """
@@ -177,8 +140,6 @@ def create_tables():
         """
     )
 
-
-
     # =====================
     # سجل الفائزين
     # =====================
@@ -187,18 +148,12 @@ def create_tables():
     CREATE TABLE IF NOT EXISTS winners
     (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-
         user_id INTEGER,
-
         game_name TEXT,
-
         points INTEGER DEFAULT 3,
-
         date TEXT
     )
     """)
-
-
 
     # =====================
     # سلسلة الانتصارات
@@ -208,12 +163,9 @@ def create_tables():
     CREATE TABLE IF NOT EXISTS win_streaks
     (
         user_id INTEGER PRIMARY KEY,
-
         streak INTEGER DEFAULT 0
     )
     """)
-
-
 
     # =====================
     # الجوائز اليومية
@@ -223,12 +175,9 @@ def create_tables():
     CREATE TABLE IF NOT EXISTS daily_rewards
     (
         user_id INTEGER PRIMARY KEY,
-
         last_reward TEXT
     )
     """)
-
-
 
     # =====================
     # الرتب
@@ -238,12 +187,9 @@ def create_tables():
     CREATE TABLE IF NOT EXISTS ranks
     (
         user_id INTEGER PRIMARY KEY,
-
         rank TEXT
     )
     """)
-
-
 
     # =====================
     # المشرفين
@@ -253,11 +199,9 @@ def create_tables():
     CREATE TABLE IF NOT EXISTS admins
     (
         user_id INTEGER PRIMARY KEY,
-
         rank TEXT
     )
     """)
-
 
     # =====================
     # الحظر
@@ -267,18 +211,12 @@ def create_tables():
     CREATE TABLE IF NOT EXISTS bans
     (
         user_id INTEGER PRIMARY KEY,
-
-        type TEXT,
-
+        ban_type TEXT DEFAULT 'normal',
+        until_time TEXT,
         reason TEXT,
-
-        by_user INTEGER,
-
-        date TEXT
+        by_user INTEGER
     )
     """)
-
-
 
     # =====================
     # الكتم
@@ -288,18 +226,12 @@ def create_tables():
     CREATE TABLE IF NOT EXISTS mutes
     (
         user_id INTEGER PRIMARY KEY,
-
-        type TEXT,
-
+        mute_type TEXT DEFAULT 'normal',
+        until_time TEXT,
         reason TEXT,
-
-        by_user INTEGER,
-
-        date TEXT
+        by_user INTEGER
     )
     """)
-
-
 
     # =====================
     # سجل الإدارة
@@ -309,48 +241,13 @@ def create_tables():
     CREATE TABLE IF NOT EXISTS moderation_logs
     (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-
         action TEXT,
-
         user_id INTEGER,
-
         by_user INTEGER,
-
         date TEXT
     )
     """)
 
-    # =====================
-    # المحظورون
-    # =====================
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS bans
-    (
-        user_id INTEGER PRIMARY KEY,
-        ban_type TEXT,
-        reason TEXT,
-        admin_id INTEGER
-    )
-    """)
-
-
-    # =====================
-    # المكتومون
-    # =====================
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS mutes
-    (
-        user_id INTEGER PRIMARY KEY,
-        mute_type TEXT,
-        reason TEXT,
-        admin_id INTEGER
-    )
-    """)
-
-    
-   
     # =====================
     # السجل الإداري
     # =====================
@@ -366,134 +263,13 @@ def create_tables():
     )
     """)
 
-    try:
-        cur.execute("ALTER TABLE users ADD COLUMN is_banned INTEGER DEFAULT 0")
-    except:
-        pass
-
-    try:
-        cur.execute("ALTER TABLE users ADD COLUMN ban_type TEXT DEFAULT ''")
-    except:
-        pass
-
-    try:
-        cur.execute("ALTER TABLE users ADD COLUMN is_muted INTEGER DEFAULT 0")
-    except:
-        pass
-
-    try:
-        cur.execute("ALTER TABLE users ADD COLUMN mute_type TEXT DEFAULT ''")
-    except:
-        pass
-
-
-    # =====================
-    # الحظر
-    # =====================
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS bans
-    (
-        user_id INTEGER PRIMARY KEY,
-        ban_type TEXT DEFAULT 'normal'
-    )
-    """)
-
-
-    # =====================
-    # الكتم
-    # =====================
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS mutes
-    (
-        user_id INTEGER PRIMARY KEY,
-        mute_type TEXT DEFAULT 'normal'
-    )
-    """)
-
-    # =====================
-    # الحظر
-    # =====================
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS bans
-    (
-        user_id INTEGER PRIMARY KEY,
-        ban_type TEXT,
-        until_time TEXT,
-        reason TEXT
-    )
-    """)
-    try:
-        cur.execute(
-            "ALTER TABLE bans ADD COLUMN until_time TEXT"
-        )
-    except:
-        pass
-
-
-    try:
-        cur.execute(
-            "ALTER TABLE bans ADD COLUMN reason TEXT"
-        )
-    except:
-        pass
-
-    try:
-        cur.execute(
-            "ALTER TABLE bans ADD COLUMN by_user INTEGER"
-        )
-    except:
-        pass
-    # =====================
-    # الكتم
-    # =====================
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS mutes
-    (
-        user_id INTEGER PRIMARY KEY,
-        mute_type TEXT,
-        until_time TEXT,
-        reason TEXT
-    )
-    """)
-    try:
-        cur.execute(
-            "ALTER TABLE mutes ADD COLUMN reason TEXT"
-        )
-    except:
-        pass
-
-    try:
-        cur.execute(
-            "ALTER TABLE mutes ADD COLUMN until_time TEXT"
-        )
-    except:
-        pass
-
-
-    try:
-        cur.execute(
-            "ALTER TABLE mutes ADD COLUMN reason TEXT"
-        )
-    except:
-        pass
-
-    try:
-        cur.execute(
-            "ALTER TABLE mutes ADD COLUMN by_user INTEGER"
-        )
-    except:
-        pass
-
     # =====================
     # قفل الأوامر
     # =====================
 
     cur.execute("""
-    CREATE TABLE IF NOT EXISTS command_locks (
+    CREATE TABLE IF NOT EXISTS command_locks
+    (
         command TEXT PRIMARY KEY,
         rank TEXT NOT NULL
     )
@@ -507,12 +283,224 @@ def create_tables():
     CREATE TABLE IF NOT EXISTS custom_commands
     (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-
         old_command TEXT,
-
         new_command TEXT UNIQUE
     )
     """)
+
+    # ==================================================
+    # تحديثات آمنة للجدول القديم users
+    # ==================================================
+
+    user_columns = [
+        ("is_banned", "INTEGER DEFAULT 0"),
+        ("ban_type", "TEXT DEFAULT ''"),
+        ("is_muted", "INTEGER DEFAULT 0"),
+        ("mute_type", "TEXT DEFAULT ''")
+    ]
+
+    for column_name, column_type in user_columns:
+
+        try:
+            cur.execute(
+                f"ALTER TABLE users ADD COLUMN {column_name} {column_type}"
+            )
+        except sqlite3.OperationalError:
+            pass
+
+    # ==================================================
+    # نظام المطورين
+    # ==================================================
+    #
+    # primary:
+    # المطور الأساسي
+    #
+    # secondary:
+    # مطور مرفوع من المطور الأساسي
+    #
+    # هذا الجدول منفصل عن users حتى نقدر نعطي
+    # المطور المساعد صلاحيات قوية مع بقاء المطور
+    # الأساسي أعلى منه.
+    #
+    # ==================================================
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS developers
+    (
+        user_id INTEGER PRIMARY KEY,
+        developer_type TEXT NOT NULL DEFAULT 'secondary',
+        added_by INTEGER,
+        added_date TEXT
+    )
+    """)
+
+    # ==================================================
+    # صلاحيات المطورين
+    # ==================================================
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS developer_permissions
+    (
+        user_id INTEGER,
+        permission TEXT,
+        allowed INTEGER DEFAULT 1,
+
+        PRIMARY KEY
+        (
+            user_id,
+            permission
+        )
+    )
+    """)
+
+    # ==================================================
+    # منع/سماح صلاحيات الأشخاص
+    # ==================================================
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS user_permissions
+    (
+        user_id INTEGER,
+        permission TEXT,
+        allowed INTEGER DEFAULT 1,
+
+        PRIMARY KEY
+        (
+            user_id,
+            permission
+        )
+    )
+    """)
+
+    # ==================================================
+    # إعدادات القروبات
+    # ==================================================
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS group_settings
+    (
+        chat_id INTEGER PRIMARY KEY,
+        created_date TEXT
+    )
+    """)
+
+    # ==================================================
+    # إعدادات الحماية لكل قروب
+    # ==================================================
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS protection_settings
+    (
+        chat_id INTEGER PRIMARY KEY,
+
+        repetition_enabled INTEGER DEFAULT 0,
+        repetition_limit INTEGER DEFAULT 3,
+        repetition_seconds INTEGER DEFAULT 5,
+        repetition_action TEXT DEFAULT 'mute',
+
+        links_enabled INTEGER DEFAULT 0,
+        mentions_enabled INTEGER DEFAULT 0,
+        spam_enabled INTEGER DEFAULT 0
+    )
+    """)
+
+    # ==================================================
+    # الكلمات المحظورة
+    # ==================================================
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS blocked_words
+    (
+        chat_id INTEGER,
+        word TEXT,
+
+        PRIMARY KEY
+        (
+            chat_id,
+            word
+        )
+    )
+    """)
+
+    # ==================================================
+    # إعدادات الكلمات المحظورة
+    # ==================================================
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS blocked_words_settings
+    (
+        chat_id INTEGER PRIMARY KEY,
+        enabled INTEGER DEFAULT 0,
+        action TEXT DEFAULT 'mute'
+    )
+    """)
+
+    # ==================================================
+    # رسائل البوت القابلة للتعديل
+    # ==================================================
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS bot_messages
+    (
+        message_key TEXT PRIMARY KEY,
+        message_text TEXT
+    )
+    """)
+
+    # ==================================================
+    # إعدادات أزرار اللوحات
+    # ==================================================
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS panel_buttons
+    (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        panel TEXT,
+        button_key TEXT,
+        button_text TEXT,
+        button_url TEXT,
+        row_number INTEGER DEFAULT 0,
+        button_order INTEGER DEFAULT 0
+    )
+    """)
+
+    # ==================================================
+    # بيانات المطور والمالك
+    # ==================================================
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS profile_settings
+    (
+        profile_type TEXT PRIMARY KEY,
+
+        user_id INTEGER,
+        username TEXT
+    )
+    """)
+
+    # ==================================================
+    # المطور الأساسي
+    # ==================================================
+
+    cur.execute(
+        """
+        INSERT OR IGNORE INTO developers
+        (
+            user_id,
+            developer_type
+        )
+        VALUES
+        (
+            8453977662,
+            'primary'
+        )
+        """
+    )
+
+    # ==================================================
+    # حفظ التغييرات
+    # ==================================================
 
     conn.commit()
     conn.close()

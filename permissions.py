@@ -29,7 +29,7 @@ async def is_owner(user_id):
     if not result:
         return False
 
-    return result[0] == "مالك"
+    return result[0] == "المالك"
 
 
 
@@ -59,10 +59,10 @@ async def is_admin(user_id):
 
 
     return result[0] in [
-        "مالك",
-        "🤍 نائب المالك",
-        "🟣 ادمن اساسي",
-        "🛡 ادمن"
+        "المالك",
+        " نائب المالك",
+        " ادمن اساسي",
+        " ادمن"
     ]
 
 
