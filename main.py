@@ -212,11 +212,11 @@ def main():
     app.add_handler(
         MessageHandler(
             filters.Regex(
-                r"^(منع|سماح)\s+.+"
+                r"^(منع|سماح)(?:\s+.+)?$"
             ),
             permission_command
         ),
-        group=-2
+        group=-5
     )
 
     # =====================
