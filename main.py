@@ -726,13 +726,7 @@ def main():
     # حفظ رتب قفل الأوامر
     # =====================
 
-    app.add_handler(
-        MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
-            save_lock_rank
-        ),
-        group=60
-    )
+    
 
     # =====================
     # إيقاف المعالجات بعد الفوز
