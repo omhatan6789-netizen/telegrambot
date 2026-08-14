@@ -103,24 +103,6 @@ def get_rank(user_id):
     conn = connect()
     cur = conn.cursor()
 
-    # أولًا نقرأ الرتبة المحفوظة في جدول ranks
-    cur.execute(
-        """
-        SELECT rank
-        FROM ranks
-        WHERE user_id=?
-        """,
-        (user_id,)
-    )
-
-    data = cur.fetchone()
-
-    if data and data[0]:
-        rank = normalize_rank(data[0])
-        conn.close()
-        return rank
-
-    # إذا ما وجدناها في ranks نقرأ users
     cur.execute(
         """
         SELECT rank
@@ -132,37 +114,12 @@ def get_rank(user_id):
 
     data = cur.fetchone()
 
-    if data and data[0]:
-        rank = normalize_rank(data[0])
-
-        # نحفظها أيضًا في ranks
-        cur.execute(
-            """
-            INSERT INTO ranks
-            (
-                user_id,
-                rank
-            )
-            VALUES (?, ?)
-
-            ON CONFLICT(user_id)
-            DO UPDATE SET
-                rank=excluded.rank
-            """,
-            (
-                user_id,
-                rank
-            )
-        )
-
-        conn.commit()
-        conn.close()
-
-        return rank
-
     conn.close()
 
-    return "عضو"
+    if not data:
+        return "عضو"
+
+    return normalize_rank(data[0])
 
 
 # ==================================================
