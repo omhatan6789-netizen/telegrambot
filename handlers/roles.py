@@ -95,45 +95,17 @@ def is_secondary_developer(user_id):
 # الحصول على الرتبة
 # ==================================================
 
+
 def get_rank(user_id):
 
-    # ==================================================
-    # المالك الأساسي
-    # ==================================================
-
+    # المطور الأساسي ثابت
     if user_id == OWNER_ID:
         return "Dev"
 
     conn = connect()
     cur = conn.cursor()
 
-    # ==================================================
-    # أولاً: المطور المساعد
-    # ==================================================
-
-    cur.execute(
-        """
-        SELECT developer_type
-        FROM developers
-        WHERE user_id=?
-        """,
-        (user_id,)
-    )
-
-    developer = cur.fetchone()
-
-    if developer:
-        if developer[0] in (
-            DEV_PRIMARY,
-            DEV_SECONDARY
-        ):
-            conn.close()
-            return "Dev"
-
-    # ==================================================
-    # قراءة الرتبة من users
-    # ==================================================
-
+    # أولاً: البحث في users
     cur.execute(
         """
         SELECT rank
@@ -143,17 +115,16 @@ def get_rank(user_id):
         (user_id,)
     )
 
-    user_data = cur.fetchone()
+    data = cur.fetchone()
 
-    user_rank = None
+    if data and data[0]:
+        rank = normalize_rank(data[0])
 
-    if user_data:
-        user_rank = normalize_rank(user_data[0])
+        conn.close()
+        return rank
 
-    # ==================================================
-    # قراءة النسخة الاحتياطية من ranks
-    # ==================================================
-
+    # إذا لم توجد الرتبة في users
+    # نرجع للنسخة الدائمة في ranks
     cur.execute(
         """
         SELECT rank
@@ -165,51 +136,41 @@ def get_rank(user_id):
 
     rank_data = cur.fetchone()
 
-    saved_rank = None
+    if rank_data and rank_data[0]:
 
-    if rank_data:
-        saved_rank = normalize_rank(rank_data[0])
+        rank = normalize_rank(rank_data[0])
 
-    # ==================================================
-    # إذا ranks فيها رتبة أعلى من users
-    # نستخدم الرتبة المحفوظة
-    # ==================================================
-
-    if saved_rank:
-
-        user_level = RANK_LEVELS.get(
-            user_rank,
-            0
-        )
-
-        saved_level = RANK_LEVELS.get(
-            saved_rank,
-            0
-        )
-
-        if saved_level > user_level:
-
-            # إصلاح users أيضًا حتى تصير النسختان متطابقتين
-            cur.execute(
-                """
-                UPDATE users
-                SET rank=?
-                WHERE user_id=?
-                """,
-                (
-                    saved_rank,
-                    user_id
-                )
+        # إعادة إنشاء سجل المستخدم بالرتبة المحفوظة
+        cur.execute(
+            """
+            INSERT INTO users
+            (
+                user_id,
+                username,
+                first_name,
+                messages,
+                rank
             )
+            VALUES (?, '', '', 0, ?)
 
-            conn.commit()
-            conn.close()
+            ON CONFLICT(user_id)
+            DO UPDATE SET
+                rank=excluded.rank
+            """,
+            (
+                user_id,
+                rank
+            )
+        )
 
-            return saved_rank
+        conn.commit()
+        conn.close()
+
+        return rank
 
     conn.close()
 
-    return user_rank or saved_rank or "عضو"
+    return "عضو"
 
 
 # ==================================================
