@@ -39,6 +39,7 @@ DEV_SECONDARY = "secondary"
 # ==================================================
 
 def normalize_rank(rank):
+
     if not rank:
         return "عضو"
 
@@ -56,7 +57,7 @@ def normalize_rank(rank):
 
 def is_developer(user_id):
 
-    # المالك الأساسي ثابت
+    # المالك الأساسي ثابت دائمًا
     if user_id == OWNER_ID:
         return DEV_PRIMARY
 
@@ -96,12 +97,42 @@ def is_secondary_developer(user_id):
 
 def get_rank(user_id):
 
-    # المطور الأساسي ثابت
+    # ==================================================
+    # المالك الأساسي
+    # ==================================================
+
     if user_id == OWNER_ID:
         return "Dev"
 
     conn = connect()
     cur = conn.cursor()
+
+    # ==================================================
+    # أولاً: المطور المساعد
+    # ==================================================
+
+    cur.execute(
+        """
+        SELECT developer_type
+        FROM developers
+        WHERE user_id=?
+        """,
+        (user_id,)
+    )
+
+    developer = cur.fetchone()
+
+    if developer:
+        if developer[0] in (
+            DEV_PRIMARY,
+            DEV_SECONDARY
+        ):
+            conn.close()
+            return "Dev"
+
+    # ==================================================
+    # قراءة الرتبة من users
+    # ==================================================
 
     cur.execute(
         """
@@ -112,32 +143,95 @@ def get_rank(user_id):
         (user_id,)
     )
 
-    data = cur.fetchone()
+    user_data = cur.fetchone()
+
+    user_rank = None
+
+    if user_data:
+        user_rank = normalize_rank(user_data[0])
+
+    # ==================================================
+    # قراءة النسخة الاحتياطية من ranks
+    # ==================================================
+
+    cur.execute(
+        """
+        SELECT rank
+        FROM ranks
+        WHERE user_id=?
+        """,
+        (user_id,)
+    )
+
+    rank_data = cur.fetchone()
+
+    saved_rank = None
+
+    if rank_data:
+        saved_rank = normalize_rank(rank_data[0])
+
+    # ==================================================
+    # إذا ranks فيها رتبة أعلى من users
+    # نستخدم الرتبة المحفوظة
+    # ==================================================
+
+    if saved_rank:
+
+        user_level = RANK_LEVELS.get(
+            user_rank,
+            0
+        )
+
+        saved_level = RANK_LEVELS.get(
+            saved_rank,
+            0
+        )
+
+        if saved_level > user_level:
+
+            # إصلاح users أيضًا حتى تصير النسختان متطابقتين
+            cur.execute(
+                """
+                UPDATE users
+                SET rank=?
+                WHERE user_id=?
+                """,
+                (
+                    saved_rank,
+                    user_id
+                )
+            )
+
+            conn.commit()
+            conn.close()
+
+            return saved_rank
 
     conn.close()
 
-    if not data:
-        return "عضو"
+    return user_rank or saved_rank or "عضو"
 
-    return normalize_rank(data[0])
 
+# ==================================================
+# مستوى الرتبة
+# ==================================================
 
 def get_rank_level(user_id):
 
-    # المطور الأساسي
+    # المالك الأساسي
     if user_id == OWNER_ID:
         return 7
 
-    # المطور المساعد
-    developer_type = is_developer(user_id)
-
-    if developer_type == DEV_SECONDARY:
+    # أي Dev مساعد
+    if is_secondary_developer(user_id):
         return 6
 
-    # الرتبة العادية
     rank = get_rank(user_id)
 
-    return RANK_LEVELS.get(rank, 0)
+    return RANK_LEVELS.get(
+        rank,
+        0
+    )
 
 
 # ==================================================
@@ -175,7 +269,7 @@ def check_command_permission(user_id, command):
         0
     )
 
-    # المطور الأساسي والمساعد يتجاوزون القفل
+    # المطورون يتجاوزون القفل
     if is_developer(user_id):
         return True, None
 
@@ -189,22 +283,34 @@ def check_command_permission(user_id, command):
 # استخراج الشخص المستهدف
 # ==================================================
 
-async def get_target_user(update, context):
+async def get_target_user(
+    update,
+    context
+):
 
     if not update.message:
         return None
 
     message = update.message
 
-    # ------------------------------------------
-    # بالرد
-    # ------------------------------------------
+    # ==================================================
+    # أول أولوية: الرد على رسالة
+    # ==================================================
 
     if message.reply_to_message:
 
-        return message.reply_to_message.from_user
+        replied_user = message.reply_to_message.from_user
 
-    text = (message.text or "").strip()
+        if replied_user:
+            return replied_user
+
+    # ==================================================
+    # إذا لم يكن ردًا، نقرأ الآيدي / اليوزر
+    # ==================================================
+
+    text = (
+        message.text or ""
+    ).strip()
 
     parts = text.split()
 
@@ -213,36 +319,38 @@ async def get_target_user(update, context):
 
     target = parts[-1].strip()
 
-    # ------------------------------------------
-    # بالآيدي
-    # ------------------------------------------
+    # ==================================================
+    # آيدي
+    # ==================================================
 
     if target.isdigit():
 
         try:
 
-            return await context.bot.get_chat(
+            chat = await context.bot.get_chat(
                 int(target)
             )
 
-        except Exception:
+            return chat
 
+        except Exception:
             return None
 
-    # ------------------------------------------
-    # باليوزر
-    # ------------------------------------------
+    # ==================================================
+    # يوزر
+    # ==================================================
 
     if target.startswith("@"):
 
         try:
 
-            return await context.bot.get_chat(
+            chat = await context.bot.get_chat(
                 target
             )
 
-        except Exception:
+            return chat
 
+        except Exception:
             return None
 
     return None
@@ -254,7 +362,9 @@ async def get_target_user(update, context):
 
 def get_rank_from_command(text):
 
-    text = (text or "").strip()
+    text = (
+        text or ""
+    ).strip()
 
     commands = {
 
@@ -273,7 +383,6 @@ def get_rank_from_command(text):
         "تنزيل مميز": ("عضو", False),
     }
 
-    # الأطول أولًا
     for command in sorted(
         commands,
         key=len,
@@ -287,7 +396,11 @@ def get_rank_from_command(text):
 
             rank, promoting = commands[command]
 
-            return command, rank, promoting
+            return (
+                command,
+                rank,
+                promoting
+            )
 
     return None, None, None
 
@@ -309,38 +422,51 @@ def can_change_rank(
     actor_level = get_rank_level(actor_id)
     target_level = get_rank_level(target_id)
 
-    # ------------------------------------------
-    # حماية المطور الأساسي
-    # ------------------------------------------
+    # ==================================================
+    # حماية المالك الأساسي
+    # ==================================================
 
     if target_id == OWNER_ID:
 
-        return False, "❌ لا يمكن تعديل المطور الأساسي."
+        return (
+            False,
+            "❌ لا يمكن تعديل المطور الأساسي."
+        )
 
-    # ------------------------------------------
+    # ==================================================
     # المطور الأساسي
-    # ------------------------------------------
+    # ==================================================
 
     if actor_dev == DEV_PRIMARY:
-
         return True, None
 
-    # ------------------------------------------
+    # ==================================================
     # المطور المساعد
-    # ------------------------------------------
+    # ==================================================
 
     if actor_dev == DEV_SECONDARY:
 
         if target_dev == DEV_PRIMARY:
-            return False, "❌ لا يمكنك تعديل المطور الأساسي."
+
+            return (
+                False,
+                "❌ لا يمكنك تعديل المطور الأساسي."
+            )
 
         if target_dev == DEV_SECONDARY:
-            return False, "❌ لا يمكنك تعديل مطور من نفس رتبتك."
+
+            return (
+                False,
+                "❌ لا يمكنك تعديل مطور من نفس رتبتك."
+            )
 
         if target_level >= actor_level:
-            return False, "❌ لا يمكنك تعديل رتبة مساوية أو أعلى منك."
 
-        # المساعد يستطيع إدارة الرتب الأقل
+            return (
+                False,
+                "❌ لا يمكنك تعديل رتبة مساوية أو أعلى منك."
+            )
+
         if promoting:
 
             new_level = RANK_LEVELS.get(
@@ -349,19 +475,22 @@ def can_change_rank(
             )
 
             if new_level >= actor_level:
-                return False, (
+
+                return (
+                    False,
                     "❌ لا يمكنك رفع شخص إلى رتبة مساوية أو أعلى منك."
                 )
 
         return True, None
 
-    # ------------------------------------------
+    # ==================================================
     # الرتب العادية
-    # ------------------------------------------
+    # ==================================================
 
     if target_level >= actor_level:
 
-        return False, (
+        return (
+            False,
             "❌ لا يمكنك تعديل رتبة مساوية أو أعلى منك."
         )
 
@@ -374,7 +503,8 @@ def can_change_rank(
 
         if new_level >= actor_level:
 
-            return False, (
+            return (
+                False,
                 "❌ لا يمكنك رفع شخص إلى رتبة مساوية أو أعلى منك."
             )
 
@@ -385,7 +515,10 @@ def can_change_rank(
 # حفظ الرتبة
 # ==================================================
 
-def update_user_rank(user_id, rank):
+def update_user_rank(
+    user_id,
+    rank
+):
 
     rank = normalize_rank(rank)
 
@@ -432,7 +565,7 @@ def update_user_rank(user_id, rank):
         )
 
     # ==================================================
-    # حفظ الرتبة في users
+    # users
     # ==================================================
 
     cur.execute(
@@ -458,7 +591,7 @@ def update_user_rank(user_id, rank):
     )
 
     # ==================================================
-    # حفظ نسخة دائمة للرتبة في ranks
+    # ranks
     # ==================================================
 
     cur.execute(
@@ -500,15 +633,17 @@ async def roles_command(
         update.message.text or ""
     ).strip()
 
-    # ------------------------------------------
+    # ==================================================
     # رتبتي
-    # ------------------------------------------
+    # ==================================================
 
     if text == "رتبتي":
 
         user = update.effective_user
 
-        rank = get_rank(user.id)
+        rank = get_rank(
+            user.id
+        )
 
         await update.message.reply_text(
             f"• رتبتك هي ↤︎ {rank}"
@@ -516,11 +651,14 @@ async def roles_command(
 
         return
 
-    # ------------------------------------------
+    # ==================================================
     # رتبته
-    # ------------------------------------------
+    # ==================================================
 
-    if text == "رتبته" or text.startswith("رتبته "):
+    if (
+        text == "رتبته"
+        or text.startswith("رتبته ")
+    ):
 
         target = await get_target_user(
             update,
@@ -535,7 +673,9 @@ async def roles_command(
 
             return
 
-        rank = get_rank(target.id)
+        rank = get_rank(
+            target.id
+        )
 
         await update.message.reply_text(
             f"• رتبته هي ↤︎ {rank}"
@@ -543,9 +683,9 @@ async def roles_command(
 
         return
 
-    # ------------------------------------------
+    # ==================================================
     # كشف المجموعة
-    # ------------------------------------------
+    # ==================================================
 
     if text == "كشف المجموعة":
 
@@ -567,12 +707,12 @@ async def roles_command(
 
         cur.execute(
             """
-            SELECT user_id, rank
+            SELECT user_id
             FROM users
             """
         )
 
-        users = cur.fetchall()
+        user_rows = cur.fetchall()
 
         conn.close()
 
@@ -591,7 +731,6 @@ async def roles_command(
                 )
 
                 if info.username:
-
                     return f"@{info.username}"
 
                 return (
@@ -603,11 +742,17 @@ async def roles_command(
 
                 return str(user_id)
 
-        for user_id, rank in users:
+        for row in user_rows:
 
-            rank = normalize_rank(rank)
+            user_id = row[0]
 
-            name = await get_name(user_id)
+            rank = get_rank(
+                user_id
+            )
+
+            name = await get_name(
+                user_id
+            )
 
             if rank == "المالك":
 
@@ -642,8 +787,10 @@ async def roles_command(
 
         if owner:
 
-            for i, name in enumerate(owner, 1):
-
+            for i, name in enumerate(
+                owner,
+                1
+            ):
                 msg += f"{i} - {name}\n"
 
         else:
@@ -657,8 +804,10 @@ async def roles_command(
 
         if deputy:
 
-            for i, name in enumerate(deputy, 1):
-
+            for i, name in enumerate(
+                deputy,
+                1
+            ):
                 msg += f"{i} - {name}\n"
 
         else:
@@ -672,8 +821,10 @@ async def roles_command(
 
         if basic:
 
-            for i, name in enumerate(basic, 1):
-
+            for i, name in enumerate(
+                basic,
+                1
+            ):
                 msg += f"{i} - {name}\n"
 
         else:
@@ -687,8 +838,10 @@ async def roles_command(
 
         if admins:
 
-            for i, name in enumerate(admins, 1):
-
+            for i, name in enumerate(
+                admins,
+                1
+            ):
                 msg += f"{i} - {name}\n"
 
         else:
@@ -702,15 +855,19 @@ async def roles_command(
 
         if vip:
 
-            for i, name in enumerate(vip, 1):
-
+            for i, name in enumerate(
+                vip,
+                1
+            ):
                 msg += f"{i} - {name}\n"
 
         else:
 
             msg += "لا يوجد\n"
 
-        await update.message.reply_text(msg)
+        await update.message.reply_text(
+            msg
+        )
 
         return
 
@@ -740,9 +897,9 @@ async def change_rank(
     if not command:
         return
 
-    # ------------------------------------------
+    # ==================================================
     # الهدف
-    # ------------------------------------------
+    # ==================================================
 
     target = await get_target_user(
         update,
@@ -761,9 +918,9 @@ async def change_rank(
 
         return
 
-    # ------------------------------------------
+    # ==================================================
     # منع تعديل النفس
-    # ------------------------------------------
+    # ==================================================
 
     if target.id == actor.id:
 
@@ -773,9 +930,9 @@ async def change_rank(
 
         return
 
-    # ------------------------------------------
+    # ==================================================
     # حماية Dev الأساسي
-    # ------------------------------------------
+    # ==================================================
 
     if target.id == OWNER_ID:
 
@@ -785,9 +942,9 @@ async def change_rank(
 
         return
 
-    # ------------------------------------------
+    # ==================================================
     # فحص الصلاحية
-    # ------------------------------------------
+    # ==================================================
 
     allowed, reason = can_change_rank(
         actor.id,
@@ -804,13 +961,15 @@ async def change_rank(
 
         return
 
-    # ------------------------------------------
+    # ==================================================
     # تنزيل Dev
-    # ------------------------------------------
+    # ==================================================
 
     if command == "تنزيل Dev":
 
-        if not is_secondary_developer(target.id):
+        if not is_secondary_developer(
+            target.id
+        ):
 
             await update.message.reply_text(
                 "❌ هذا الشخص ليس Dev."
@@ -818,7 +977,9 @@ async def change_rank(
 
             return
 
-        old_rank = get_rank(target.id)
+        old_rank = get_rank(
+            target.id
+        )
 
         update_user_rank(
             target.id,
@@ -832,13 +993,15 @@ async def change_rank(
 
         return
 
-    # ------------------------------------------
+    # ==================================================
     # رفع Dev
-    # ------------------------------------------
+    # ==================================================
 
     if command == "رفع Dev":
 
-        if is_developer(target.id):
+        if is_developer(
+            target.id
+        ):
 
             await update.message.reply_text(
                 "❌ هذا الشخص Dev بالفعل."
@@ -857,11 +1020,13 @@ async def change_rank(
 
         return
 
-    # ------------------------------------------
+    # ==================================================
     # الرتبة العادية
-    # ------------------------------------------
+    # ==================================================
 
-    old_rank = get_rank(target.id)
+    old_rank = get_rank(
+        target.id
+    )
 
     update_user_rank(
         target.id,
