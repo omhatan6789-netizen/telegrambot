@@ -623,7 +623,7 @@ async def replies_list(
     context: ContextTypes.DEFAULT_TYPE
 ):
 
-    if not await is_admin(update.effective_user.id):
+    if not is_admin(update.effective_user.id):
         await update.message.reply_text(
             "❌ هذا الأمر للإدارة فقط"
         )
@@ -679,7 +679,7 @@ async def add_special_reply_start(
         return
 
 
-    if not await is_admin(update.effective_user.id):
+    if not is_admin(update.effective_user.id):
 
         await update.message.reply_text(
             "❌ هذا الأمر للإدارة فقط"
@@ -932,7 +932,7 @@ async def special_replies_list(
     context: ContextTypes.DEFAULT_TYPE
 ):
 
-    if not await is_admin(update.effective_user.id):
+    if not is_admin(update.effective_user.id):
         await update.message.reply_text(
             "❌ هذا الأمر للإدارة فقط"
         )
@@ -978,7 +978,7 @@ async def delete_special_reply_start(
     context: ContextTypes.DEFAULT_TYPE
 ):
 
-    if not await is_admin(update.effective_user.id):
+    if not is_admin(update.effective_user.id):
         await update.message.reply_text(
             "❌ هذا الأمر للإدارة فقط"
         )
@@ -1066,7 +1066,7 @@ async def edit_special_reply_start(
     context: ContextTypes.DEFAULT_TYPE
 ):
 
-    if not await is_admin(update.effective_user.id):
+    if not is_admin(update.effective_user.id):
         await update.message.reply_text(
             "❌ هذا الأمر للإدارة فقط"
         )
@@ -1295,7 +1295,7 @@ async def edit_reply_start(
     context: ContextTypes.DEFAULT_TYPE
 ):
 
-    if not await is_admin(update.effective_user.id):
+    if not is_admin(update.effective_user.id):
         await update.message.reply_text(
             "❌ هذا الأمر للإدارة فقط"
         )
@@ -1526,7 +1526,7 @@ async def delete_reply_start(
     context: ContextTypes.DEFAULT_TYPE
 ):
 
-    if not await is_admin(update.effective_user.id):
+    if not is_admin(update.effective_user.id):
         await update.message.reply_text(
             "❌ هذا الأمر للإدارة فقط"
         )
@@ -1630,7 +1630,7 @@ async def delete_all_replies(
     context: ContextTypes.DEFAULT_TYPE
 ):
 
-    if not await is_admin(update.effective_user.id):
+    if not is_admin(update.effective_user.id):
         await update.message.reply_text(
             "❌ هذا الأمر للإدارة فقط"
         )
@@ -1660,7 +1660,7 @@ async def delete_all_special_replies(
     context: ContextTypes.DEFAULT_TYPE
 ):
 
-    if not await is_admin(update.effective_user.id):
+    if not is_admin(update.effective_user.id):
         await update.message.reply_text(
             "❌ هذا الأمر للإدارة فقط"
         )
