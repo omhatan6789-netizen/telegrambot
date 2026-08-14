@@ -228,7 +228,7 @@ def main():
             filters.TEXT & ~filters.COMMAND,
             command_guard
         ),
-        group=-1
+        group=0
     )
     # =====================
     # قفل وفتح الأوامر
