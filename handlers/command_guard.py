@@ -4,40 +4,12 @@ from telegram.ext import ContextTypes, ApplicationHandlerStop
 from handlers.roles import check_command_permission
 from permissions import check_user_permission
 
-# ==================================================
-# جلسات الردود
-# ==================================================
-
-from handlers.replies import (
-    add_reply_sessions,
-    add_special_reply_sessions,
-    delete_special_reply_sessions,
-    edit_special_reply_sessions,
-    edit_reply_sessions,
-    delete_reply_sessions,
-)
-
-
-# ==================================================
-# جلسات الألعاب
-# ==================================================
-
-try:
-    from games.games_manager import (
-        add_game_sessions,
-        add_question_sessions,
-    )
-except Exception:
-    add_game_sessions = {}
-    add_question_sessions = {}
-
 
 # ==================================================
 # الأوامر متعددة الكلمات
 # ==================================================
 
 MULTI_WORD_COMMANDS = [
-
     "كشف المجموعة",
 
     "رفع الحظر",
@@ -78,91 +50,114 @@ MULTI_WORD_COMMANDS = [
 
     "رفع Dev",
     "تنزيل Dev",
-
     "رفع المالك",
     "تنزيل المالك",
-
     "رفع نائب المالك",
     "تنزيل نائب المالك",
-
     "رفع ادمن اساسي",
     "تنزيل ادمن اساسي",
-
     "رفع ادمن",
     "تنزيل ادمن",
-
     "رفع مميز",
     "تنزيل مميز",
 ]
 
 
 # ==================================================
-# معرفة هل المستخدم داخل جلسة
+# العمليات التي تنتظر رسائل من المستخدم
 # ==================================================
 
-def user_has_active_session(user_id, context):
+WAITING_KEYS = (
+    "add_reply",
+    "edit_reply",
+    "delete_reply",
 
-    # --------------------------------------------------
-    # جلسات context.user_data
-    # --------------------------------------------------
+    "add_special_reply",
+    "edit_special_reply",
+    "delete_special_reply",
 
-    waiting_keys = (
-        "add_reply",
-        "edit_reply",
-        "delete_reply",
+    "add_game",
+    "add_question",
 
-        "add_special_reply",
-        "edit_special_reply",
-        "delete_special_reply",
+    "lock_command",
 
-        "add_game",
-        "add_question",
+    "custom_command",
+    "delete_command",
+)
 
-        "lock_command",
 
-        "custom_command",
-        "delete_command",
-    )
+# ==================================================
+# التحقق من وجود عملية متعددة الخطوات
+# ==================================================
 
-    for key in waiting_keys:
+def is_waiting_for_input(context, user_id):
+    """
+    إذا كان المستخدم داخل عملية متعددة الخطوات
+    لا نفحص رسائله كأوامر جديدة.
+    """
+
+    # ==================================================
+    # أولاً: العمليات الموجودة في context.user_data
+    # ==================================================
+
+    for key in WAITING_KEYS:
 
         if key in context.user_data:
             return True
 
+    # ==================================================
+    # ثانياً: جلسات الردود
+    # ==================================================
 
-    # --------------------------------------------------
-    # جلسات الردود
-    # --------------------------------------------------
+    try:
 
-    if user_id in add_reply_sessions:
-        return True
+        from handlers.replies import (
+            add_reply_sessions,
+            edit_reply_sessions,
+            delete_reply_sessions,
 
-    if user_id in add_special_reply_sessions:
-        return True
+            add_special_reply_sessions,
+            edit_special_reply_sessions,
+            delete_special_reply_sessions
+        )
 
-    if user_id in delete_special_reply_sessions:
-        return True
+        reply_sessions = (
+            add_reply_sessions,
+            edit_reply_sessions,
+            delete_reply_sessions,
 
-    if user_id in edit_special_reply_sessions:
-        return True
+            add_special_reply_sessions,
+            edit_special_reply_sessions,
+            delete_special_reply_sessions
+        )
 
-    if user_id in edit_reply_sessions:
-        return True
+        for sessions in reply_sessions:
 
-    if user_id in delete_reply_sessions:
-        return True
+            if user_id in sessions:
+                return True
 
+    except Exception:
+        pass
 
-    # --------------------------------------------------
-    # جلسات الألعاب
-    # --------------------------------------------------
+    # ==================================================
+    # ثالثاً: جلسات الألعاب والأسئلة
+    # ==================================================
 
-    if user_id in add_game_sessions:
-        return True
+    try:
 
-    if user_id in add_question_sessions:
-        return True
+        from games.games_manager import (
+            add_game_sessions,
+            add_question_sessions
+        )
 
+        if user_id in add_game_sessions:
+            return True
+
+        if user_id in add_question_sessions:
+            return True
+
+    except Exception:
+        pass
 
     return False
 
@@ -177,6 +172,10 @@ def get_command_name(text):
 
     if not text:
         return ""
+
+    # ==================================================
+    # الأطول أولاً
+    # ==================================================
 
     matches = []
 
@@ -195,68 +194,11 @@ def get_command_name(text):
             key=len
         )
 
+    # ==================================================
+    # أمر كلمة واحدة
+    # ==================================================
+
     return text.split()[0]
-
-
-# ==================================================
-# معرفة هل الرسالة أمر
-# ==================================================
-
-def is_bot_command(text):
-
-    text = (text or "").strip()
-
-    if not text:
-        return False
-
-
-    # --------------------------------------------------
-    # الأوامر متعددة الكلمات
-    # --------------------------------------------------
-
-    for command in MULTI_WORD_COMMANDS:
-
-        if (
-            text == command
-            or text.startswith(command + " ")
-        ):
-            return True
-
-
-    # --------------------------------------------------
-    # الأوامر المفردة
-    # --------------------------------------------------
-
-    first_word = text.split()[0]
-
-
-    single_commands = {
-
-        "ايدي",
-
-        "رتبتي",
-        "رتبته",
-
-        "كشف",
-
-        "حظر",
-        "كتم",
-
-        "توب",
-
-        "كلمات",
-
-        "انمي",
-
-        "اسئلة",
-    }
-
-
-    if first_word in single_commands:
-        return True
-
-
-    return False
 
 
 # ==================================================
@@ -271,96 +213,59 @@ async def command_guard(
     if not update.message:
         return
 
-
-    text = (
-        update.message.text or ""
-    ).strip()
-
+    text = (update.message.text or "").strip()
 
     if not text:
         return
 
-
     # ==================================================
-    # منع / سماح
+    # منع / سماح نفسها لا تدخل للحارس
     # ==================================================
 
-    if (
-        text == "منع"
-        or text.startswith("منع ")
-
-        or text == "سماح"
-        or text.startswith("سماح ")
-    ):
+    if text == "منع" or text.startswith("منع "):
         return
 
+    if text == "سماح" or text.startswith("سماح "):
+        return
 
     # ==================================================
-    # التأكد من المستخدم والقروب
+    # التأكد من وجود المستخدم والقروب
     # ==================================================
 
     if not update.effective_user:
         return
 
-
     if not update.effective_chat:
         return
-
 
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
 
-
     # ==================================================
-    # إذا المستخدم داخل جلسة
+    # إذا المستخدم داخل عملية متعددة الخطوات
     #
-    # لا نفحص رسالته كأمر جديد
-    #
-    # مهم جدًا للآتي:
-    #
-    # اضف رد
-    # اضف رد مميز
-    # تعديل رد
-    # تعديل رد مميز
-    # مسح رد
-    # مسح رد مميز
-    # اضف لعبة
-    # اضف سؤال
-    #
-    # وغيرها
+    # مهم:
+    # نتحقق هنا بعد الحصول على user_id
+    # لأن جلسات الردود محفوظة خارج context.user_data
     # ==================================================
 
-    if user_has_active_session(
-        user_id,
-        context
+    if is_waiting_for_input(
+        context,
+        user_id
     ):
         return
 
-
     # ==================================================
-    # إذا الرسالة ليست أمرًا
-    # لا نتدخل
-    #
-    # هذا مهم للألعاب والردود العادية
-    # ==================================================
-
-    if not is_bot_command(text):
-        return
-
-
-    # ==================================================
-    # استخراج اسم الأمر
+    # استخراج الأمر
     # ==================================================
 
     command = get_command_name(text)
 
-
     if not command:
         return
 
-
     # ==================================================
-    # منع / سماح الخاص
+    # منع / سماح خاص
     # ==================================================
 
     special_permission = check_user_permission(
@@ -368,7 +273,6 @@ async def command_guard(
         user_id,
         command
     )
-
 
     # ==================================================
     # ممنوع
@@ -382,14 +286,12 @@ async def command_guard(
 
         raise ApplicationHandlerStop()
 
-
     # ==================================================
     # سماح خاص
     # ==================================================
 
     if special_permission is True:
         return
-
 
     # ==================================================
     # قفل الأمر حسب الرتبة
@@ -400,7 +302,6 @@ async def command_guard(
         command
     )
 
-
     if not allowed:
 
         await update.message.reply_text(
@@ -408,10 +309,3 @@ async def command_guard(
         )
 
         raise ApplicationHandlerStop()
-
-
-    # ==================================================
-    # مسموح
-    # ==================================================
-
-    return
