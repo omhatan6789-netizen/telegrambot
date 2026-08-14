@@ -96,13 +96,31 @@ def is_secondary_developer(user_id):
 
 def get_rank(user_id):
 
-    # المالك الأساسي = Dev
+    # المطور الأساسي ثابت
     if user_id == OWNER_ID:
         return "Dev"
 
     conn = connect()
     cur = conn.cursor()
 
+    # أولًا نقرأ الرتبة المحفوظة في جدول ranks
+    cur.execute(
+        """
+        SELECT rank
+        FROM ranks
+        WHERE user_id=?
+        """,
+        (user_id,)
+    )
+
+    data = cur.fetchone()
+
+    if data and data[0]:
+        rank = normalize_rank(data[0])
+        conn.close()
+        return rank
+
+    # إذا ما وجدناها في ranks نقرأ users
     cur.execute(
         """
         SELECT rank
@@ -114,31 +132,37 @@ def get_rank(user_id):
 
     data = cur.fetchone()
 
+    if data and data[0]:
+        rank = normalize_rank(data[0])
+
+        # نحفظها أيضًا في ranks
+        cur.execute(
+            """
+            INSERT INTO ranks
+            (
+                user_id,
+                rank
+            )
+            VALUES (?, ?)
+
+            ON CONFLICT(user_id)
+            DO UPDATE SET
+                rank=excluded.rank
+            """,
+            (
+                user_id,
+                rank
+            )
+        )
+
+        conn.commit()
+        conn.close()
+
+        return rank
+
     conn.close()
 
-    if not data:
-        return "عضو"
-
-    return normalize_rank(data[0])
-
-
-# ==================================================
-# مستوى الشخص
-# ==================================================
-
-def get_rank_level(user_id):
-
-    developer_type = is_developer(user_id)
-
-    if developer_type == DEV_PRIMARY:
-        return 7
-
-    if developer_type == DEV_SECONDARY:
-        return 6
-
-    rank = get_rank(user_id)
-
-    return RANK_LEVELS.get(rank, 0)
+    return "عضو"
 
 
 # ==================================================
@@ -393,13 +417,12 @@ def update_user_rank(user_id, rank):
     conn = connect()
     cur = conn.cursor()
 
-    # ------------------------------------------
+    # ==================================================
     # Dev مساعد
-    # ------------------------------------------
+    # ==================================================
 
     if rank == "Dev":
 
-        # نحفظه في developers
         cur.execute(
             """
             INSERT INTO developers
@@ -424,8 +447,6 @@ def update_user_rank(user_id, rank):
 
     else:
 
-        # إذا كان Dev مساعدًا سابقًا،
-        # ننزله من developers
         cur.execute(
             """
             DELETE FROM developers
@@ -435,12 +456,9 @@ def update_user_rank(user_id, rank):
             (user_id,)
         )
 
-    # ------------------------------------------
+    # ==================================================
     # حفظ الرتبة في users
-    #
-    # لا نستخدم INSERT OR REPLACE
-    # حتى لا نحذف بيانات المستخدم الأخرى.
-    # ------------------------------------------
+    # ==================================================
 
     cur.execute(
         """
@@ -453,6 +471,29 @@ def update_user_rank(user_id, rank):
             rank
         )
         VALUES (?, '', '', 0, ?)
+
+        ON CONFLICT(user_id)
+        DO UPDATE SET
+            rank=excluded.rank
+        """,
+        (
+            user_id,
+            rank
+        )
+    )
+
+    # ==================================================
+    # حفظ نسخة دائمة للرتبة في ranks
+    # ==================================================
+
+    cur.execute(
+        """
+        INSERT INTO ranks
+        (
+            user_id,
+            rank
+        )
+        VALUES (?, ?)
 
         ON CONFLICT(user_id)
         DO UPDATE SET

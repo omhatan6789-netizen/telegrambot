@@ -30,10 +30,9 @@ def create_tables():
         joined_date TEXT
     )
     """)
-
     cur.execute(
         """
-        INSERT OR IGNORE INTO users
+        INSERT INTO users
         (
             user_id,
             rank
@@ -41,10 +40,14 @@ def create_tables():
         VALUES
         (
             8453977662,
-            'المالك'
+            'Dev'
         )
+        ON CONFLICT(user_id)
+        DO UPDATE SET rank='Dev'
         """
     )
+    
+       
 
     # =====================
     # الردود العادية
