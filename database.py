@@ -1,9 +1,16 @@
 import sqlite3
 import os
-
+import shutil
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_NAME = os.path.join(BASE_DIR, "database.db")
+
+OLD_DB = os.path.join(BASE_DIR, "database.db")
+DB_NAME = "/data/database.db"
+
+
+# نقل قاعدة البيانات القديمة إلى الـVolume مرة واحدة
+if os.path.exists(OLD_DB) and not os.path.exists(DB_NAME):
+    shutil.copy2(OLD_DB, DB_NAME)
 
  
 def connect():
