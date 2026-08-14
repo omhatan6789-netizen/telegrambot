@@ -522,7 +522,10 @@ async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📝 السبب: {reason}"
     )
 
-async def unban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def unban_user(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     if not update.message:
         return
@@ -533,11 +536,49 @@ async def unban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     target = await get_target(update)
 
+    # ==========================================
+    # إذا لم نجده في قاعدة البيانات
+    # نحاول أخذ الآيدي مباشرة من الأمر
+    # ==========================================
+
     if not target:
-        await update.message.reply_text(
-            "❌ استخدم رفع الحظر بالرد أو اليوزر أو الآيدي."
-        )
-        return
+
+        text = (update.message.text or "").strip()
+        parts = text.split()
+
+        if len(parts) >= 2:
+
+            value = parts[1].strip()
+
+            # آيدي مباشر
+            if value.isdigit():
+
+                class User:
+                    pass
+
+                target = User()
+                target.id = int(value)
+                target.first_name = value
+
+            # يوزر
+            elif value.startswith("@"):
+
+                try:
+
+                    target = await context.bot.get_chat(
+                        value
+                    )
+
+                except Exception:
+
+                    target = None
+
+        if not target:
+
+            await update.message.reply_text(
+                "❌ استخدم رفع الحظر بالرد أو اليوزر أو الآيدي."
+            )
+            return
 
     # ==========================================
     # المطور الأساسي
@@ -602,11 +643,21 @@ async def unban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
 
     # ==========================================
-    # الرد
+    # الاسم
+    # ==========================================
+
+    name = getattr(
+        target,
+        "first_name",
+        str(target.id)
+    )
+
+    # ==========================================
+    # تم
     # ==========================================
 
     await update.message.reply_text(
-        f"✅ تم رفع الحظر عن {target.first_name}"
+        f"✅ تم رفع الحظر عن {name}"
     )
 
 async def global_ban(update, context):
@@ -795,7 +846,10 @@ async def mute_user(update, context):
 
 
 
-async def unmute_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def unmute_user(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     if not update.message:
         return
@@ -807,7 +861,6 @@ async def unmute_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target = await get_target(update)
 
     if not target:
-
         await update.message.reply_text(
             "❌ استخدم رفع الكتم بالرد أو اليوزر أو الآيدي."
         )
@@ -818,28 +871,36 @@ async def unmute_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ==========================================
 
     if target.id == OWNER_ID:
-
         await update.message.reply_text(
             "❌ لا يمكن تعديل المطور الأساسي."
         )
         return
 
     # ==========================================
-    # الصلاحية
+    # منع رفع الكتم عن نفسك
+    # ==========================================
+
+    if target.id == update.effective_user.id:
+        await update.message.reply_text(
+            "❌ لا يمكنك رفع الكتم عن نفسك."
+        )
+        return
+
+    # ==========================================
+    # فحص الصلاحية
     # ==========================================
 
     if not has_permission(
         update.effective_user.id,
         target.id
     ):
-
         await update.message.reply_text(
             "❌ لا تملك صلاحية رفع الكتم عن هذا الشخص."
         )
         return
 
     # ==========================================
-    # رفع الكتم
+    # رفع الكتم من تيليجرام
     # ==========================================
 
     from telegram import ChatPermissions
@@ -849,7 +910,6 @@ async def unmute_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.restrict_chat_member(
             chat_id=update.effective_chat.id,
             user_id=target.id,
-
             permissions=ChatPermissions(
                 can_send_messages=True,
                 can_send_audios=True,
@@ -867,7 +927,8 @@ async def unmute_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
 
         await update.message.reply_text(
-            f"❌ لم أستطع رفع الكتم.\n\n{e}"
+            f"❌ لم أستطع رفع الكتم.\n\n"
+            f"{e}"
         )
         return
 
@@ -890,7 +951,7 @@ async def unmute_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
 
     # ==========================================
-    # الرد
+    # تم
     # ==========================================
 
     await update.message.reply_text(
