@@ -122,6 +122,24 @@ def get_rank(user_id):
     return normalize_rank(data[0])
 
 
+def get_rank_level(user_id):
+
+    # المطور الأساسي
+    if user_id == OWNER_ID:
+        return 7
+
+    # المطور المساعد
+    developer_type = is_developer(user_id)
+
+    if developer_type == DEV_SECONDARY:
+        return 6
+
+    # الرتبة العادية
+    rank = get_rank(user_id)
+
+    return RANK_LEVELS.get(rank, 0)
+
+
 # ==================================================
 # فحص صلاحية الأمر المقفول
 # ==================================================

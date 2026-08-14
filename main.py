@@ -508,8 +508,7 @@ def main():
                 r"(?:\s+(@[A-Za-z0-9_]+|\d+))?$"
             ),
             change_rank
-        ),
-        group=-4
+        )
     )
 
 
