@@ -607,7 +607,7 @@ def main():
             filters.Regex(r"^اضف رد$"),
             add_reply_start
         ),
-        group=0
+        group=-6
     )
 
 
