@@ -2,7 +2,12 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from database import connect
-from handlers.roles import get_rank
+
+from handlers.roles import (
+    get_rank,
+    is_primary_developer,
+    is_secondary_developer
+)
 
 
 OWNER_ID = 8453977662
