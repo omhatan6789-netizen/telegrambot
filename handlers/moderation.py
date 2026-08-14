@@ -22,23 +22,34 @@ RANKS = {
 
 def has_permission(actor_id, target_id):
 
-    # لا أحد يقدر على المطور
-    if target_id == OWNER_ID:
-        return False
-
-    # لا أحد يكتم أو يحظر نفسه
+    # الشخص ما يقدر يعدل نفسه
     if actor_id == target_id:
         return False
 
+    # Dev الأساسي يقدر على الجميع
+    if is_primary_developer(actor_id):
+        return True
 
+    # ممنوع أي شخص يعدل Dev الأساسي
+    if target_id == OWNER_ID:
+        return False
+
+    # Dev المساعد
+    if is_secondary_developer(actor_id):
+
+        # المساعد ما يقدر على مساعد آخر
+        if is_secondary_developer(target_id):
+            return False
+
+        return True
+
+    # باقي الرتب
     actor_rank = get_rank(actor_id)
     target_rank = get_rank(target_id)
-
 
     actor_level = RANKS.get(actor_rank, 0)
     target_level = RANKS.get(target_rank, 0)
 
-        
     return actor_level > target_level
     
 
@@ -88,34 +99,75 @@ async def get_target(update: Update):
     if not update.message:
         return None
 
+    message = update.message
 
-    # الرد على رسالة
-    if update.message.reply_to_message:
-        return update.message.reply_to_message.from_user
+    # ==========================================
+    # بالرد على رسالة
+    # ==========================================
 
+    if message.reply_to_message:
+        return message.reply_to_message.from_user
 
-    text = update.message.text.split(maxsplit=1)
+    # ==========================================
+    # النص
+    # ==========================================
 
-    if len(text) < 2:
+    text = (message.text or "").strip()
+
+    if not text:
         return None
 
+    parts = text.split()
 
-    value = text[1].strip()
+    if len(parts) < 2:
+        return None
 
-    conn = connect()
-    cur = conn.cursor()
+    # ==========================================
+    # تحديد مكان الهدف
+    # ==========================================
 
+    # الأوامر ذات الكلمتين
+    two_word_commands = {
+        "رفع الحظر",
+        "رفع الكتم",
+        "حظر عام",
+        "كتم عام"
+    }
 
-    # آيدي
-    if value.isdigit():
+    command_length = 1
+
+    if len(parts) >= 2:
+
+        first_two = " ".join(parts[:2])
+
+        if first_two in two_word_commands:
+            command_length = 2
+
+    # ==========================================
+    # الهدف
+    # ==========================================
+
+    if len(parts) <= command_length:
+        return None
+
+    target_text = parts[command_length].strip()
+
+    # ==========================================
+    # بالآيدي
+    # ==========================================
+
+    if target_text.isdigit():
+
+        conn = connect()
+        cur = conn.cursor()
 
         cur.execute(
             """
-            SELECT user_id, first_name
+            SELECT user_id, username, first_name
             FROM users
             WHERE user_id=?
             """,
-            (int(value),)
+            (int(target_text),)
         )
 
         data = cur.fetchone()
@@ -125,25 +177,32 @@ async def get_target(update: Update):
         if not data:
             return None
 
-
         class User:
             pass
 
         user = User()
         user.id = data[0]
-        user.first_name = data[1]
+        user.username = data[1]
+        user.first_name = data[2]
 
         return user
 
+    # ==========================================
+    # باليوزر
+    # ==========================================
 
-    # يوزر
+    username = target_text.lstrip("@")
+
+    conn = connect()
+    cur = conn.cursor()
+
     cur.execute(
         """
-        SELECT user_id, first_name
+        SELECT user_id, username, first_name
         FROM users
-        WHERE username=?
+        WHERE LOWER(username)=LOWER(?)
         """,
-        (value.replace("@", ""),)
+        (username,)
     )
 
     data = cur.fetchone()
@@ -153,13 +212,13 @@ async def get_target(update: Update):
     if not data:
         return None
 
-
     class User:
         pass
 
     user = User()
     user.id = data[0]
-    user.first_name = data[1]
+    user.username = data[1]
+    user.first_name = data[2]
 
     return user
 
