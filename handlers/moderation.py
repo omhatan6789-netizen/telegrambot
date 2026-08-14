@@ -94,7 +94,7 @@ def get_duration(text):
 
     return None
 
-async def get_target(update: Update):
+async def get_target(update: Update, context=None):
 
     if not update.message:
         return None
@@ -102,62 +102,51 @@ async def get_target(update: Update):
     message = update.message
 
     # ==========================================
-    # بالرد على رسالة
+    # بالرد
     # ==========================================
 
     if message.reply_to_message:
-        return message.reply_to_message.from_user
+
+        user = message.reply_to_message.from_user
+
+        if user:
+            return user
 
     # ==========================================
-    # النص
+    # استخراج الآيدي أو اليوزر
     # ==========================================
 
     text = (message.text or "").strip()
-
-    if not text:
-        return None
-
     parts = text.split()
 
     if len(parts) < 2:
         return None
 
-    # ==========================================
-    # تحديد مكان الهدف
-    # ==========================================
-
-    # الأوامر ذات الكلمتين
-    two_word_commands = {
-        "رفع الحظر",
-        "رفع الكتم",
-        "حظر عام",
-        "كتم عام"
-    }
-
-    command_length = 1
-
-    if len(parts) >= 2:
-
-        first_two = " ".join(parts[:2])
-
-        if first_two in two_word_commands:
-            command_length = 2
+    value = parts[1].strip()
 
     # ==========================================
-    # الهدف
+    # آيدي
     # ==========================================
 
-    if len(parts) <= command_length:
-        return None
+    if value.isdigit():
 
-    target_text = parts[command_length].strip()
+        user_id = int(value)
 
-    # ==========================================
-    # بالآيدي
-    # ==========================================
+        # نحاول جلب الشخص من تيليجرام أولًا
+        if context:
 
-    if target_text.isdigit():
+            try:
 
+                chat = await context.bot.get_chat(
+                    user_id
+                )
+
+                return chat
+
+            except Exception:
+                pass
+
+        # إذا ما قدرنا نجيبه نستخدم بيانات قاعدة البيانات
         conn = connect()
         cur = conn.cursor()
 
@@ -167,7 +156,7 @@ async def get_target(update: Update):
             FROM users
             WHERE user_id=?
             """,
-            (int(target_text),)
+            (user_id,)
         )
 
         data = cur.fetchone()
@@ -188,39 +177,58 @@ async def get_target(update: Update):
         return user
 
     # ==========================================
-    # باليوزر
+    # يوزر
     # ==========================================
 
-    username = target_text.lstrip("@")
+    if value.startswith("@"):
 
-    conn = connect()
-    cur = conn.cursor()
+        username = value[1:]
 
-    cur.execute(
-        """
-        SELECT user_id, username, first_name
-        FROM users
-        WHERE LOWER(username)=LOWER(?)
-        """,
-        (username,)
-    )
+        # نحاول جلب الشخص من تيليجرام
+        if context:
 
-    data = cur.fetchone()
+            try:
 
-    conn.close()
+                chat = await context.bot.get_chat(
+                    f"@{username}"
+                )
 
-    if not data:
-        return None
+                return chat
 
-    class User:
-        pass
+            except Exception:
+                pass
 
-    user = User()
-    user.id = data[0]
-    user.username = data[1]
-    user.first_name = data[2]
+        # البحث في قاعدة البيانات
+        conn = connect()
+        cur = conn.cursor()
 
-    return user
+        cur.execute(
+            """
+            SELECT user_id, username, first_name
+            FROM users
+            WHERE LOWER(username)=LOWER(?)
+            """,
+            (username,)
+        )
+
+        data = cur.fetchone()
+
+        conn.close()
+
+        if not data:
+            return None
+
+        class User:
+            pass
+
+        user = User()
+        user.id = data[0]
+        user.username = data[1]
+        user.first_name = data[2]
+
+        return user
+
+    return None
 
 
 # =====================
