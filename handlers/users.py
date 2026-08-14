@@ -219,27 +219,60 @@ async def save_user_message(
     ]:
         return
 
-
     user = update.effective_user
-
 
     conn = connect()
     cur = conn.cursor()
 
+    # ==========================================
+    # محاولة زيادة الرسائل للمستخدم الموجود
+    # ==========================================
 
-    # زيادة عدد الرسائل
     cur.execute(
         """
         UPDATE users
-        SET messages = messages + 1
+        SET
+            messages = messages + 1,
+            username = ?,
+            first_name = ?
         WHERE user_id=?
         """,
-        (user.id,)
+        (
+            user.username,
+            user.first_name,
+            user.id
+        )
     )
 
+    # ==========================================
+    # إذا المستخدم غير موجود
+    # ==========================================
 
-    # إذا المستخدم غير موجود نضيفه
     if cur.rowcount == 0:
+
+        # --------------------------------------
+        # البحث عن الرتبة المحفوظة
+        # --------------------------------------
+
+        cur.execute(
+            """
+            SELECT rank
+            FROM ranks
+            WHERE user_id=?
+            """,
+            (user.id,)
+        )
+
+        rank_data = cur.fetchone()
+
+        if rank_data and rank_data[0]:
+            rank = rank_data[0]
+        else:
+            rank = "عضو"
+
+        # --------------------------------------
+        # إعادة إنشاء المستخدم
+        # --------------------------------------
 
         cur.execute(
             """
@@ -259,11 +292,10 @@ async def save_user_message(
                 user.username,
                 user.first_name,
                 1,
-                "عضو",
+                rank,
                 datetime.now().strftime("%Y/%m/%d")
             )
         )
 
-
     conn.commit()
-    conn.close()    
+    conn.close()
