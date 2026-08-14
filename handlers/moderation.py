@@ -99,134 +99,92 @@ async def get_target(update: Update, context=None):
     if not update.message:
         return None
 
+
     message = update.message
 
-    # ==========================================
-    # بالرد
-    # ==========================================
 
+    # بالرد
     if message.reply_to_message:
 
-        user = message.reply_to_message.from_user
+        return message.reply_to_message.from_user
 
-        if user:
-            return user
 
-    # ==========================================
-    # استخراج الآيدي أو اليوزر
-    # ==========================================
 
-    text = (message.text or "").strip()
+    text = message.text or ""
+
     parts = text.split()
+
 
     if len(parts) < 2:
         return None
 
-    value = parts[1].strip()
 
-    # ==========================================
-    # آيدي
-    # ==========================================
+    value = parts[-1]
+
+
+    # ID
 
     if value.isdigit():
 
         user_id = int(value)
 
-        # نحاول جلب الشخص من تيليجرام أولًا
+
+        class User:
+            pass
+
+
+        user = User()
+        user.id = user_id
+        user.first_name = str(user_id)
+
+
         if context:
 
             try:
 
-                chat = await context.bot.get_chat(
+                info = await context.bot.get_chat(
                     user_id
                 )
 
-                return chat
+                user.first_name = (
+                    info.first_name
+                    or str(user_id)
+                )
 
-            except Exception:
+                user.username = getattr(
+                    info,
+                    "username",
+                    None
+                )
+
+
+            except:
                 pass
 
-        # إذا ما قدرنا نجيبه نستخدم بيانات قاعدة البيانات
-        conn = connect()
-        cur = conn.cursor()
-
-        cur.execute(
-            """
-            SELECT user_id, username, first_name
-            FROM users
-            WHERE user_id=?
-            """,
-            (user_id,)
-        )
-
-        data = cur.fetchone()
-
-        conn.close()
-
-        if not data:
-            return None
-
-        class User:
-            pass
-
-        user = User()
-        user.id = data[0]
-        user.username = data[1]
-        user.first_name = data[2]
 
         return user
 
-    # ==========================================
-    # يوزر
-    # ==========================================
+
+
+    # USERNAME
 
     if value.startswith("@"):
 
-        username = value[1:]
-
-        # نحاول جلب الشخص من تيليجرام
         if context:
 
             try:
 
-                chat = await context.bot.get_chat(
-                    f"@{username}"
+                info = await context.bot.get_chat(
+                    value
                 )
 
-                return chat
+                return info
 
-            except Exception:
+
+            except:
                 pass
 
-        # البحث في قاعدة البيانات
-        conn = connect()
-        cur = conn.cursor()
 
-        cur.execute(
-            """
-            SELECT user_id, username, first_name
-            FROM users
-            WHERE LOWER(username)=LOWER(?)
-            """,
-            (username,)
-        )
-
-        data = cur.fetchone()
-
-        conn.close()
-
-        if not data:
-            return None
-
-        class User:
-            pass
-
-        user = User()
-        user.id = data[0]
-        user.username = data[1]
-        user.first_name = data[2]
-
-        return user
 
     return None
 
@@ -621,8 +579,7 @@ async def unban_user(
 
         await context.bot.unban_chat_member(
             chat_id=update.effective_chat.id,
-            user_id=target.id,
-            only_if_banned=True
+            user_id=target.id
         )
 
     except Exception as e:
@@ -862,50 +819,71 @@ async def unmute_user(
     if not update.message:
         return
 
+
     # ==========================================
     # تحديد الشخص
     # ==========================================
 
-    target = await get_target(update)
+    target = await get_target(
+        update,
+        context
+    )
+
 
     if not target:
+
         await update.message.reply_text(
             "❌ استخدم رفع الكتم بالرد أو اليوزر أو الآيدي."
         )
+
         return
 
+
+
     # ==========================================
-    # المطور الأساسي
+    # حماية المطور الأساسي
     # ==========================================
 
     if target.id == OWNER_ID:
+
         await update.message.reply_text(
             "❌ لا يمكن تعديل المطور الأساسي."
         )
+
         return
 
+
+
     # ==========================================
-    # منع رفع الكتم عن نفسك
+    # منع الشخص من رفع كتم نفسه
     # ==========================================
 
     if target.id == update.effective_user.id:
+
         await update.message.reply_text(
             "❌ لا يمكنك رفع الكتم عن نفسك."
         )
+
         return
 
+
+
     # ==========================================
-    # فحص الصلاحية
+    # الصلاحية
     # ==========================================
 
     if not has_permission(
         update.effective_user.id,
         target.id
     ):
+
         await update.message.reply_text(
             "❌ لا تملك صلاحية رفع الكتم عن هذا الشخص."
         )
+
         return
+
+
 
     # ==========================================
     # رفع الكتم من تيليجرام
@@ -913,32 +891,26 @@ async def unmute_user(
 
     from telegram import ChatPermissions
 
+
     try:
 
         await context.bot.restrict_chat_member(
             chat_id=update.effective_chat.id,
             user_id=target.id,
-            permissions=ChatPermissions(
-                can_send_messages=True,
-                can_send_audios=True,
-                can_send_documents=True,
-                can_send_photos=True,
-                can_send_videos=True,
-                can_send_video_notes=True,
-                can_send_voice_notes=True,
-                can_send_polls=True,
-                can_send_other_messages=True,
-                can_add_web_page_previews=True
-            )
+
+            permissions=ChatPermissions.all_permissions()
         )
+
 
     except Exception as e:
 
         await update.message.reply_text(
-            f"❌ لم أستطع رفع الكتم.\n\n"
-            f"{e}"
+            f"❌ لم أستطع رفع الكتم.\n\n{e}"
         )
+
         return
+
+
 
     # ==========================================
     # حذف سجل الكتم
@@ -946,6 +918,7 @@ async def unmute_user(
 
     conn = connect()
     cur = conn.cursor()
+
 
     cur.execute(
         """
@@ -955,15 +928,25 @@ async def unmute_user(
         (target.id,)
     )
 
+
     conn.commit()
     conn.close()
 
+
+
     # ==========================================
-    # تم
+    # الرد
     # ==========================================
 
+    name = getattr(
+        target,
+        "first_name",
+        str(target.id)
+    )
+
+
     await update.message.reply_text(
-        f"🔊 تم رفع الكتم عن {target.first_name}"
+        f"🔊 تم رفع الكتم عن {name}"
     )
 
 
