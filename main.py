@@ -16,7 +16,14 @@ from config import BOT_TOKEN
 from permissions import permission_command
 from database import create_tables
 
-
+from games.hide_and_seek import (
+    start_hide_game,
+    join_hide_game,
+    begin_hide_game,
+    end_hide_game,
+    hide_number_callback,
+    search_number_callback
+)
 # ==================================================
 # الأنمي
 # ==================================================
@@ -977,7 +984,55 @@ def main():
         group=50
     )
 
+    # ==================================================
+    # لعبة الغميضة
+    # ==================================================
 
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^غميضة$"),
+            start_hide_game
+        ),
+        group=0
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^دخول$"),
+            join_hide_game
+        ),
+        group=0
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^ابدا$"),
+            begin_hide_game
+        ),
+        group=0
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^انهاء غميضة$"),
+            end_hide_game
+        ),
+        group=0
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            hide_number_callback,
+            pattern=r"^hide:"
+        )
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            search_number_callback,
+            pattern=r"^search:"
+        )
+    )
     # ==================================================
     # لوحة الإدارة
     # ==================================================
