@@ -10,7 +10,7 @@ from handlers.roles import (
 )
 
 
-OWNER_ID = 8453977662
+OWNER_ID = 8331154497
 
 
 RANKS = {

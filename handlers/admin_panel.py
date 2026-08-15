@@ -4,7 +4,7 @@ from telegram.ext import ContextTypes
 from handlers.roles import get_rank
 
 
-OWNER_ID = 8453977662
+OWNER_ID = 8331154497
 
 
 RANKS = {
@@ -323,7 +323,7 @@ async def developer_panel(
     user_id = update.effective_user.id
 
 
-    OWNER_ID = 8453977662
+    OWNER_ID = 8331154497
 
 
     if user_id != OWNER_ID:
