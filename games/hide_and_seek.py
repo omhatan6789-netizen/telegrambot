@@ -10,7 +10,7 @@ from telegram import (
 from telegram.ext import ContextTypes
 
 from handlers.roles import get_rank_level
-from games.points import add_points
+
 
 
 # ==================================================
