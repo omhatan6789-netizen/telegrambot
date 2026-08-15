@@ -456,11 +456,9 @@ def main():
     )
 
 
-    app.add_handler(
+    application.add_handler(
         MessageHandler(
-            filters.Regex(
-                r"^رفع الحظر(?:\s|$)"
-            ),
+            filters.Regex(r"^رفع الحظر(?:\s|$)"),
             unban_user
         )
     )
@@ -476,11 +474,9 @@ def main():
     )
 
 
-    app.add_handler(
+    application.add_handler(
         MessageHandler(
-            filters.Regex(
-                r"^حظر(?:\s|$)"
-            ),
+            filters.Regex(r"^حظر(?:\s|$)"),
             ban_user
         )
     )
