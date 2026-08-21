@@ -1,471 +1,1710 @@
-import logging
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 import random
 import asyncio
-from datetime import datetime
-from collections import defaultdict
+from collections import Counter
 
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup
 )
-logger = logging.getLogger(__name__)
+from telegram.ext import ContextTypes
 
-games_data = defaultdict(lambda: {
-    'state': 'waiting',
-    'players': [],
-    'hidden_positions': {},
-    'board_size': 0,
-    'boxes': [],
-    'rewards': {},
-    'elimination_order': [],
-    'points': defaultdict(int),
-    'search_order': [],
-    'current_searcher_index': 0,
-    'player_names': {},
-    'admin_id': None,
-    'bomb_victims': defaultdict(int),
-    'discoveries': defaultdict(int),
-})
+from handlers.roles import get_rank_level
+from handlers.points import add_points
 
-HIDE_DURATION = 60  # ثانية
-SEARCH_DURATION = 30  # ثانية
 
-def calculate_board_size(num_players):
-    """حساب حجم اللوحة بناءً على عدد اللاعبين"""
-    if num_players <= 2:
+# ==================================================
+# إعدادات اللعبة
+# ==================================================
+
+HIDE_TIME = 60
+SEARCH_TIME = 30
+MIN_PLAYERS = 2
+
+
+# ==================================================
+# الألعاب النشطة
+# ==================================================
+
+active_hide_games = {}
+
+
+# ==================================================
+# صلاحية إدارة اللعبة
+# ==================================================
+
+def can_manage_hide_game(user_id):
+    return get_rank_level(user_id) > 0
+
+
+# ==================================================
+# اسم اللاعب
+# ==================================================
+
+def get_player_name(user):
+
+    if not user:
+        return "مستخدم"
+
+    if user.username:
+        return f"@{user.username}"
+
+    return user.first_name or "مستخدم"
+
+
+# ==================================================
+# حجم اللوحة
+# ==================================================
+
+def get_board_size(player_count):
+
+    if player_count <= 2:
         return 16
-    elif num_players <= 5:
+
+    if player_count <= 5:
         return 20
+
+    return 24
+
+
+# ==================================================
+# محتويات المربعات
+# ==================================================
+
+def create_contents(board_size):
+
+    if board_size <= 16:
+
+        items = [
+            "bomb",
+            "bomb",
+            "bomb",
+
+            "extra",
+            "extra",
+
+            "plus5",
+            "plus5",
+
+            "plus10",
+
+            "minus3",
+            "minus3",
+
+            "minus5",
+            "minus5",
+        ]
+
+    elif board_size <= 20:
+
+        items = [
+            "bomb",
+            "bomb",
+            "bomb",
+            "bomb",
+
+            "extra",
+            "extra",
+            "extra",
+
+            "plus5",
+            "plus5",
+            "plus5",
+
+            "plus10",
+            "plus10",
+
+            "minus3",
+            "minus3",
+            "minus3",
+
+            "minus5",
+            "minus5",
+            "minus5",
+        ]
+
     else:
-        return 24
 
-def distribute_rewards(num_boxes):
-    """توزيع الهدايا العشوائية على المربعات"""
-    rewards = {}
-    
-    num_bombs = max(1, num_boxes // 4)
-    num_extra = max(1, num_boxes // 7)
-    num_plus5 = max(1, num_boxes // 7)
-    num_plus10 = max(1, num_boxes // 10)
-    num_minus3 = max(1, num_boxes // 7)
-    num_minus5 = max(1, num_boxes // 7)
-    
-    reward_list = (
-        ['bomb'] * num_bombs +
-        ['extra_chance'] * num_extra +
-        ['plus5'] * num_plus5 +
-        ['plus10'] * num_plus10 +
-        ['minus3'] * num_minus3 +
-        ['minus5'] * num_minus5 +
-        ['empty'] * (num_boxes - sum([num_bombs, num_extra, num_plus5, num_plus10, num_minus3, num_minus5]))
-    )
-    
-    random.shuffle(reward_list)
-    
-    for box_num in range(1, num_boxes + 1):
-        rewards[box_num] = reward_list[box_num - 1]
-    
-    return rewards
+        items = [
+            "bomb",
+            "bomb",
+            "bomb",
+            "bomb",
+            "bomb",
 
-async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """بدء لعبة جديدة - اكتب: غميضة"""
-    text = update.message.text.strip()
-    
-    if text.lower() != "غميضة":
-        return
-    
-    chat_id = update.effective_chat.id
-    user_id = update.effective_user.id
-    username = update.effective_user.first_name or "لاعب"
-    
-    if chat_id in games_data and games_data[chat_id]['state'] != 'finished':
-        await update.message.reply_text("❌ هناك لعبة قيد التشغيل بالفعل!")
-        return
-    
-    games_data[chat_id] = {
-        'state': 'waiting',
-        'players': [user_id],
-        'hidden_positions': {},
-        'board_size': 0,
-        'boxes': [],
-        'rewards': {},
-        'elimination_order': [],
-        'points': defaultdict(int),
-        'search_order': [user_id],
-        'current_searcher_index': 0,
-        'player_names': {user_id: username},
-        'admin_id': user_id,
-        'bomb_victims': defaultdict(int),
-        'discoveries': defaultdict(int),
+            "extra",
+            "extra",
+            "extra",
+
+            "plus5",
+            "plus5",
+            "plus5",
+
+            "plus10",
+            "plus10",
+
+            "minus3",
+            "minus3",
+            "minus3",
+
+            "minus5",
+            "minus5",
+            "minus5",
+        ]
+
+    while len(items) < board_size:
+        items.append("empty")
+
+    random.shuffle(items)
+
+    return {
+        number: items[number - 1]
+        for number in range(1, board_size + 1)
     }
-    
-    keyboard = [
-        [InlineKeyboardButton("دخول 🎮", callback_data="join_game")],
-        [InlineKeyboardButton("ابدأ ▶️", callback_data="start_playing")],
-        [InlineKeyboardButton("إنهاء ❌", callback_data="end_game")]
-    ]
-    
-    await update.message.reply_text(
-        f"""🚪 تم فتح التسجيل في لعبة الغميضة!
 
-• نوع اللوحة المختار: الأرقام 🔢
-• اكتب دخول للانضمام إلى اللعبة.
-• عندما يكتمل اللاعبون، يكتب الأدمن ابدا لبدء اللعبة.
-• الحد الأدنى لبدء اللعبة: 2 لاعبين.
 
-👥 اللاعبون المسجلون: 1""",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+# ==================================================
+# إنشاء لوحة الأرقام
+# ==================================================
 
-async def join_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """الانضمام للعبة"""
-    query = update.callback_query
-    chat_id = query.message.chat_id
-    user_id = query.from_user.id
-    username = query.from_user.first_name or "لاعب"
-    
-    await query.answer()
-    
-    if chat_id not in games_data:
-        await query.answer("❌ لا توجد لعبة نشطة!", show_alert=True)
-        return
-    
-    game = games_data[chat_id]
-    
-    if game['state'] != 'waiting':
-        await query.answer("❌ اللعبة بدأت بالفعل!", show_alert=True)
-        return
-    
-    if user_id in game['players']:
-        await query.answer("⚠️ أنت مسجل بالفعل!", show_alert=True)
-        return
-    
-    game['players'].append(user_id)
-    game['player_names'][user_id] = username
-    game['search_order'].append(user_id)
-    
-    players_list = "\n".join([f"• {game['player_names'][pid]}" for pid in game['players']])
-    
-    keyboard = [
-        [InlineKeyboardButton("دخول 🎮", callback_data="join_game")],
-        [InlineKeyboardButton("ابدأ ▶️", callback_data="start_playing")],
-        [InlineKeyboardButton("إنهاء ❌", callback_data="end_game")]
-    ]
-    
-    await query.edit_message_text(
-        text=f"""🚪 تم فتح التسجيل في لعبة الغميضة!
+def build_board(numbers, callback_prefix):
 
-• نوع اللوحة المختار: الأرقام 🔢
-• اكتب دخول للانضمام إلى اللعبة.
-• عندما يكتمل اللاعبون، يكتب الأدمن ابدا لبدء اللعبة.
-• الحد الأدنى لبدء اللعبة: 2 لاعبين.
+    buttons = []
+    row = []
 
-👥 اللاعبون المسجلون ({len(game['players'])}):
-{players_list}""",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-    
-    await query.answer(f"✅ {username} انضم للعبة!")
+    for number in numbers:
 
-async def start_playing(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """بدء مرحلة الاختباء"""
-    query = update.callback_query
-    chat_id = query.message.chat_id
-    user_id = query.from_user.id
-    
-    await query.answer()
-    
-    if chat_id not in games_data:
-        await query.answer("❌ لا توجد لعبة!", show_alert=True)
-        return
-    
-    game = games_data[chat_id]
-    
-    if game['admin_id'] != user_id:
-        await query.answer("❌ فقط الأدمن يستطيع بدء اللعبة!", show_alert=True)
-        return
-    
-    if len(game['players']) < 2:
-        await query.answer("❌ يجب 2 لاعبين على الأقل!", show_alert=True)
-        return
-    
-    game['state'] = 'hiding'
-    game['board_size'] = calculate_board_size(len(game['players']))
-    game['boxes'] = list(range(1, game['board_size'] + 1))
-    game['rewards'] = distribute_rewards(game['board_size'])
-    
-    await query.delete_message()
-    
-    await context.bot.send_message(
-        chat_id=chat_id,
-        text=f"""🎮 بدأت لعبة الغميضة!
-
-📊 معلومات اللعبة:
-• عدد اللاعبين: {len(game['players'])}
-• عدد المربعات: {game['board_size']}
-• مدة الاختباء: {HIDE_DURATION} ثانية
-
-جاري إرسال الرسائل الخاصة..."""
-    )
-    
-    for player_id in game['players']:
-        keyboard = []
-        for i in range(1, game['board_size'] + 1, 4):
-            row = []
-            for j in range(4):
-                box_num = i + j
-                if box_num <= game['board_size']:
-                    row.append(InlineKeyboardButton(
-                        str(box_num),
-                        callback_data=f"hide:{chat_id}:{box_num}"
-                    ))
-            keyboard.append(row)
-        
-        try:
-            await context.bot.send_message(
-                chat_id=player_id,
-                text=f"""🫣 اختر الرقم الذي تريد الاختباء فيه
-
-⏱️ المتبقي: {HIDE_DURATION} ثانية""",
-                reply_markup=InlineKeyboardMarkup(keyboard)
+        row.append(
+            InlineKeyboardButton(
+                str(number),
+                callback_data=f"{callback_prefix}:{number}"
             )
-        except Exception as e:
-            logger.error(f"خطأ في إرسال رسالة خاصة: {e}")
-    
-    context.application.create_task(hide_timer(context, chat_id))
+        )
 
-async def hide_timer(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
-    """مؤقت الاختباء"""
-    game = games_data[chat_id]
-    await asyncio.sleep(HIDE_DURATION)
-    
-    for player_id in game['players']:
-        if player_id not in game['hidden_positions']:
-            game['hidden_positions'][player_id] = random.choice(game['boxes'])
-    
-    game['state'] = 'searching'
-    
-    await context.bot.send_message(
-        chat_id=chat_id,
-        text="""😶‍🌫️ لقد اختبأ جميع اللاعبين بنجاح.
+        if len(row) == 4:
+            buttons.append(row)
+            row = []
 
-تبدأ الآن أدوار البحث! في كل دور، يختار اللاعب أحد المربعات المتاحة للبحث فيه.
-💥 إذا تم العثور على لاعبين في المربع المختار، يتم استبعادهم فورًا!
+    if row:
+        buttons.append(row)
 
-🎁 تم توزيع الهدايا العشوائية في المربعات!
-الهدايا المتوفرة خلف المربعات:
-• 🔄 فرصة اختيار أخرى
-• 💣 قنبلة (تكشف تلميحاً عن رقمك السري)
-• 🎁 +5 نقاط، +10 نقاط
-• 💥 -3 نقاط، -5 نقاط
+    return InlineKeyboardMarkup(buttons)
 
-🏆 تستمر الأدوار حتى يتبقى فائز واحد!"""
+
+# ==================================================
+# بدء التسجيل
+# ==================================================
+
+async def start_hide_game(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not update.message:
+        return
+
+    chat = update.effective_chat
+    user = update.effective_user
+
+    if chat.type == "private":
+
+        await update.message.reply_text(
+            "❌ لعبة الغميضة تبدأ من القروب."
+        )
+
+        return
+
+    if not can_manage_hide_game(user.id):
+
+        await update.message.reply_text(
+            "❌ هذا الأمر للرتب فقط."
+        )
+
+        return
+
+    if chat.id in active_hide_games:
+
+        await update.message.reply_text(
+            "❌ توجد لعبة غميضة شغالة بالفعل."
+        )
+
+        return
+
+    active_hide_games[chat.id] = {
+
+        "players": {},
+        "order": [],
+
+        "board_size": 16,
+
+        "available": [],
+        "contents": {},
+
+        "phase": "registration",
+
+        "current_index": 0,
+
+        # رسالة البحث الحالية
+        "search_message_id": None,
+
+        # اللاعب صاحب الدور الحالي
+        "search_player": None,
+
+        # مؤقت البحث
+        "search_task": None,
+
+        # رسائل الاختباء الخاصة
+        "hide_messages": {},
+
+        "hide_tasks": {},
+
+        "discoveries": Counter(),
+        "bomb_hits": Counter(),
+
+        "scores": {},
+
+        "hidden": {},
+
+        "searching": False,
+
+        # يمنع معالجة ضغطتين بنفس اللحظة
+        "resolving": False,
+    }
+
+    await update.message.reply_text(
+        "🚪 تم فتح التسجيل في لعبة الغميضة!\n\n"
+        "• نوع اللوحة المختار: الأرقام 🔢\n"
+        "• اكتب دخول للانضمام إلى اللعبة.\n"
+        "• عندما يكتمل اللاعبون، يكتب الأدمن ابدا لبدء اللعبة.\n"
+        "• الحد الأدنى لبدء اللعبة: 2 لاعبين."
     )
-    
-    await asyncio.sleep(2)
-    await start_search_turn(context, chat_id)
 
-async def start_search_turn(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
-    """بدء دور بحث جديد"""
-    game = games_data[chat_id]
-    
-    active_players = [p for p in game['search_order'] if p not in game['elimination_order']]
-    
-    if len(active_players) <= 1:
-        await end_game_session(context, chat_id)
+
+# ==================================================
+# دخول لاعب
+# ==================================================
+
+async def join_hide_game(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not update.message:
         return
-    
-    current_idx = game['current_searcher_index'] % len(active_players)
-    searcher_id = active_players[current_idx]
-    searcher_name = game['player_names'].get(searcher_id, "لاعب")
-    
-    keyboard = []
-    for i in range(0, len(game['boxes']), 4):
-        row = []
-        for j in range(4):
-            if i + j < len(game['boxes']):
-                box_num = game['boxes'][i + j]
-                row.append(InlineKeyboardButton(
-                    str(box_num),
-                    callback_data=f"search:{chat_id}:{box_num}"
-                ))
-        keyboard.append(row)
-    
-    await context.bot.send_message(
-        chat_id=chat_id,
-        text=f"""🫣 تفضل يا {searcher_name} اختر مربع لكشف ما بداخله 🫣
 
-⏱️ المتبقي: {SEARCH_DURATION} ثانية""",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+    chat = update.effective_chat
+
+    if chat.id not in active_hide_games:
+        return
+
+    game = active_hide_games[chat.id]
+
+    if game["phase"] != "registration":
+        return
+
+    user = update.effective_user
+
+    if user.id in game["players"]:
+
+        await update.message.reply_text(
+            f"❌ أنت داخل اللعبة بالفعل يا "
+            f"{get_player_name(user)}."
+        )
+
+        return
+
+    game["players"][user.id] = user
+    game["order"].append(user.id)
+    game["scores"][user.id] = 0
+
+    game["board_size"] = get_board_size(
+        len(game["players"])
     )
-    
-    game['last_searcher_id'] = searcher_id
-    context.application.create_task(search_timer(context, chat_id, searcher_id))
 
-async def search_timer(context: ContextTypes.DEFAULT_TYPE, chat_id: int, searcher_id: int):
-    """مؤقت البحث"""
-    game = games_data[chat_id]
-    await asyncio.sleep(SEARCH_DURATION)
-    
-    if game.get('last_searcher_id') == searcher_id and game['state'] == 'searching':
-        if game['boxes']:
-            random_box = random.choice(game['boxes'])
-            await process_search(context, chat_id, random_box, searcher_id)
+    names = []
 
-async def process_search(context: ContextTypes.DEFAULT_TYPE, chat_id: int, box_num: int, searcher_id: int):
-    """معالجة البحث وإظهار النتيجة"""
-    game = games_data[chat_id]
-    
-    if game['state'] != 'searching':
+    for player_id in game["order"]:
+
+        player = game["players"][player_id]
+
+        names.append(
+            f"{len(names) + 1}. "
+            f"{get_player_name(player)}"
+        )
+
+    await update.message.reply_text(
+        f"✅ تم تسجيل {get_player_name(user)} "
+        f"في لعبة الغميضة!\n\n"
+        f"👥 عدد اللاعبين: {len(game['players'])}\n"
+        f"🔢 عدد المربعات: {game['board_size']}\n\n"
+        + "\n".join(names)
+    )
+
+
+# ==================================================
+# بدء اللعبة
+# ==================================================
+
+async def begin_hide_game(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not update.message:
         return
-    
-    searcher_name = game['player_names'].get(searcher_id, "لاعب")
-    
-    found_players = [p for p, pos in game['hidden_positions'].items() 
-                     if pos == box_num and p not in game['elimination_order']]
-    reward = game['rewards'].get(box_num, 'empty')
-    
-    result_text = f"""🎯 قام اللاعب {searcher_name} بالبحث في المربع {box_num}:\n"""
-    
-    if found_players:
-        found_names = ", ".join([game['player_names'].get(p, "لاعب") for p in found_players])
-        result_text += f"""
-💥 تم كشف المخبأ!
-تم العثور على اللاعبين: {found_names} ❌ (تم استبعادهم من اللعبة)."""
-        
-        game['elimination_order'].extend(found_players)
-        game['discoveries'][searcher_id] += len(found_players)
-    else:
-        result_text += "\n💨 كان المربع فارغاً! لم يتم العثور على أحد."
-        
-        if reward == 'bomb':
-            hidden_box = game['hidden_positions'].get(searcher_id, 1)
-            is_even = hidden_box % 2 == 0
-            result_text += f"\n💣 انفجرت قنبلة!\nتم كشف تلميح للمجموعة عن موقع اللاعب {searcher_name}: الرقم السري الذي يختبئ فيه هو رقم {'زوجي' if is_even else 'فردي'}!"
-            game['bomb_victims'][searcher_id] += 1
-            game['points'][searcher_id] -= 5
-        
-        elif reward == 'extra_chance':
-            result_text += f"\n🔄 حصل اللاعب {searcher_name} على هدية فرصة إضافية!\nيمكنه الاختيار واللعب مرة أخرى في هذا الدور."
-            game['current_searcher_index'] -= 1
-        
-        elif reward == 'plus5':
-            result_text += f"\n🎁 حصل اللاعب {searcher_name} على +5 نقاط!"
-            game['points'][searcher_id] += 5
-        
-        elif reward == 'plus10':
-            result_text += f"\n🎁 حصل اللاعب {searcher_name} على +10 نقاط!"
-            game['points'][searcher_id] += 10
-        
-        elif reward == 'minus3':
-            result_text += f"\n💥 خصم 3 نقاط من اللاعب {searcher_name}."
-            game['points'][searcher_id] -= 3
-        
-        elif reward == 'minus5':
-            result_text += f"\n💥 خصم 5 نقاط من اللاعب {searcher_name}."
-            game['points'][searcher_id] -= 5
-    
-    await context.bot.send_message(chat_id=chat_id, text=result_text)
-    
-    if box_num in game['boxes']:
-        game['boxes'].remove(box_num)
-    
-    game['current_searcher_index'] += 1
-    
-    active_players = [p for p in game['search_order'] if p not in game['elimination_order']]
-    
-    if len(active_players) <= 1:
-        await end_game_session(context, chat_id)
-    else:
-        await asyncio.sleep(2)
-        await start_search_turn(context, chat_id)
 
-async def end_game_session(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
-    """إنهاء اللعبة وإظهار النتائج"""
-    game = games_data[chat_id]
-    game['state'] = 'finished'
-    
-    active_players = [p for p in game['search_order'] if p not in game['elimination_order']]
-    winner_id = active_players[0] if active_players else None
-    winner_name = game['player_names'].get(winner_id, "لا أحد") if winner_id else "لا أحد"
-    
-    stats_text = f"""🏆 انتهت لعبة الغميضة!
+    chat = update.effective_chat
+    user = update.effective_user
 
-🥇 {winner_name} — الفائز"""
-    
-    if game['discoveries']:
-        top_discoverer = max(game['discoveries'].items(), key=lambda x: x[1])
-        stats_text += f"\n\n🔎 أكثر لاعب اكتشف مخابئ: {game['player_names'].get(top_discoverer[0], 'لاعب')} ({top_discoverer[1]} اكتشافات)\n(+5 نقاط إضافية)"
-        game['points'][top_discoverer[0]] += 5
-    
-    if game['bomb_victims']:
-        top_bomb = max(game['bomb_victims'].items(), key=lambda x: x[1])
-        stats_text += f"\n💣 أكثر لاعب أصابته القنابل: {game['player_names'].get(top_bomb[0], 'لاعب')} ({top_bomb[1]} قنابل)\n(-5 نقاط إضافية)"
-        game['points'][top_bomb[0]] -= 5
-    
-    stats_text += f"\n\n📊 النقاط النهائية:\n"
-    sorted_points = sorted(game['points'].items(), key=lambda x: x[1], reverse=True)
-    for idx, (pid, points) in enumerate(sorted_points, 1):
-        stats_text += f"{idx}. {game['player_names'].get(pid, 'لاعب')}: {points} نقاط\n"
-    
-    await context.bot.send_message(chat_id=chat_id, text=stats_text)
+    if chat.id not in active_hide_games:
+        return
 
-async def end_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """إنهاء اللعبة"""
+    game = active_hide_games[chat.id]
+
+    if not can_manage_hide_game(user.id):
+        return
+
+    if game["phase"] != "registration":
+
+        await update.message.reply_text(
+            "❌ اللعبة بدأت بالفعل."
+        )
+
+        return
+
+    player_count = len(game["players"])
+
+    if player_count < MIN_PLAYERS:
+
+        await update.message.reply_text(
+            "❌ لا يمكن بدء اللعبة.\n"
+            f"الحد الأدنى: {MIN_PLAYERS} لاعبين."
+        )
+
+        return
+
+    game["board_size"] = get_board_size(
+        player_count
+    )
+
+    game["available"] = list(
+        range(
+            1,
+            game["board_size"] + 1
+        )
+    )
+
+    game["contents"] = create_contents(
+        game["board_size"]
+    )
+
+    game["phase"] = "hiding"
+
+    await update.message.reply_text(
+        "😶‍🌫️ بدأت لعبة الغميضة!\n\n"
+        "📩 أرسلت لكل لاعب رسالة خاصة لاختيار مكان اختبائه.\n"
+        "⏱ أمام كل لاعب 60 ثانية.\n\n"
+        "إذا لم يختر اللاعب خلال الوقت، سأختار له رقمًا عشوائيًا."
+    )
+
+    for player_id in game["order"]:
+
+        await send_hide_choice(
+            context,
+            chat.id,
+            player_id
+        )
+
+    asyncio.create_task(
+        hide_phase_timeout(
+            context,
+            chat.id
+        )
+    )
+
+
+# ==================================================
+# إرسال رسالة الاختباء الخاصة
+# ==================================================
+
+async def send_hide_choice(
+    context,
+    chat_id,
+    player_id
+):
+
+    game = active_hide_games.get(chat_id)
+
+    if not game:
+        return
+
+    player = game["players"].get(player_id)
+
+    if not player:
+        return
+
+    numbers = list(
+        range(
+            1,
+            game["board_size"] + 1
+        )
+    )
+
+    keyboard = build_board(
+        numbers,
+        f"hide:{chat_id}:{player_id}"
+    )
+
+    try:
+
+        message = await context.bot.send_message(
+            chat_id=player_id,
+            text=(
+                "😶‍🌫️ اختر الرقم الذي تريد الاختباء فيه.\n\n"
+                "⏱ لديك 60 ثانية.\n"
+                "يمكن لأكثر من لاعب الاختباء في نفس الرقم."
+            ),
+            reply_markup=keyboard
+        )
+
+        # نخزن ID الرسالة حتى نعدل نفس الرسالة
+        game["hide_messages"][player_id] = message.message_id
+
+    except Exception:
+
+        try:
+
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=(
+                    f"⚠️ لم أستطع إرسال رسالة خاصة إلى "
+                    f"{get_player_name(player)}.\n"
+                    "يجب عليه فتح محادثة البوت والضغط على Start."
+                )
+            )
+
+        except Exception:
+            pass
+
+
+# ==================================================
+# اختيار مكان الاختباء
+# ==================================================
+
+async def hide_number_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
     query = update.callback_query
-    chat_id = query.message.chat_id
-    user_id = query.from_user.id
-    
-    await query.answer()
-    
-    if chat_id not in games_data:
-        await query.edit_message_text("❌ لا توجد لعبة نشطة!")
-        return
-    
-    game = games_data[chat_id]
-    
-    if game['admin_id'] != user_id:
-        await query.answer("❌ فقط الأدمن يستطيع إنهاء اللعبة!", show_alert=True)
-        return
-    
-    game['state'] = 'finished'
-    await query.edit_message_text("❌ تم إنهاء اللعبة من قبل الأدمن!")
 
-async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """معالج عام للأزرار"""
-    query = update.callback_query
     data = query.data
-    
-    await query.answer()
-    
-    if data == "join_game":
-        await join_game(update, context)
-    elif data == "start_playing":
-        await start_playing(update, context)
-    elif data == "end_game":
-        await end_game(update, context)
-    elif data.startswith("hide:"):
-        parts = data.split(":")
-        chat_id = int(parts[1])
-        box_num = int(parts[2])
-        user_id = query.from_user.id
-        game = games_data[chat_id]
-        game['hidden_positions'][user_id] = box_num
-        await query.edit_message_text(f"✅ تم اختيارك للمربع {box_num}")
-    elif data.startswith("search:"):
-        parts = data.split(":")
-        chat_id = int(parts[1])
-        box_num = int(parts[2])
-        searcher_id = query.from_user.id
-        game = games_data[chat_id]
-        game['last_searcher_id'] = None
-        await process_search(context, chat_id, box_num, searcher_id)
 
-def setup_game_handlers(app: Application):
-    """تسجيل معالجات اللعبة في التطبيق"""
-    from telegram.ext import MessageHandler, filters
-    
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, start_command))
-    app.add_handler(CallbackQueryHandler(handle_callback))
+    parts = data.split(":")
+
+    if len(parts) != 4:
+
+        # للتوافق مع أي callback قديم
+        await query.answer()
+        return
+
+    try:
+
+        chat_id = int(parts[1])
+        player_id = int(parts[2])
+        number = int(parts[3])
+
+    except Exception:
+
+        await query.answer()
+        return
+
+    game = active_hide_games.get(chat_id)
+
+    if not game:
+
+        await query.answer(
+            "❌ انتهت اللعبة.",
+            show_alert=True
+        )
+
+        return
+
+    if game["phase"] != "hiding":
+
+        await query.answer(
+            "❌ انتهى وقت الاختباء.",
+            show_alert=True
+        )
+
+        return
+
+    if query.from_user.id != player_id:
+
+        await query.answer(
+            "❌ هذه اللوحة ليست لك.",
+            show_alert=True
+        )
+
+        return
+
+    if player_id in game["hidden"]:
+
+        await query.answer(
+            "❌ لقد اخترت رقمًا بالفعل.",
+            show_alert=True
+        )
+
+        return
+
+    if number < 1 or number > game["board_size"]:
+
+        await query.answer(
+            "❌ رقم غير صحيح.",
+            show_alert=True
+        )
+
+        return
+
+    # تسجيل الاختيار
+    game["hidden"][player_id] = number
+
+    await query.answer(
+        "✅ تم اختيار الرقم."
+    )
+
+    # تعديل نفس رسالة الخاص
+    try:
+
+        await query.edit_message_text(
+            text=(
+                "😶‍🌫️ تم اختيار مكان اختبائك!\n\n"
+                f"🔢 الرقم: {number}\n\n"
+                "✅ تم تسجيل اختيارك بنجاح."
+            )
+        )
+
+    except Exception:
+        pass
+
+    # إذا ال��ميع اختار
+    if len(game["hidden"]) == len(game["players"]):
+
+        await finish_hiding(
+            context,
+            chat_id
+        )
+
+
+# ==================================================
+# انتهاء وقت الاختباء
+# ==================================================
+
+async def hide_phase_timeout(
+    context,
+    chat_id
+):
+
+    await asyncio.sleep(HIDE_TIME)
+
+    game = active_hide_games.get(chat_id)
+
+    if not game:
+        return
+
+    if game["phase"] != "hiding":
+        return
+
+    numbers = list(
+        range(
+            1,
+            game["board_size"] + 1
+        )
+    )
+
+    for player_id in game["order"]:
+
+        if player_id in game["hidden"]:
+            continue
+
+        number = random.choice(numbers)
+
+        game["hidden"][player_id] = number
+
+        message_id = game["hide_messages"].get(
+            player_id
+        )
+
+        # تعديل رسالة اللاعب نفسها
+        if message_id:
+
+            try:
+
+                await context.bot.edit_message_text(
+                    chat_id=player_id,
+                    message_id=message_id,
+                    text=(
+                        "⏰ انتهى وقت الاختباء!\n\n"
+                        f"🎲 تم اختيار المربع ({number}) "
+                        "لك عشوائيًا.\n\n"
+                        "✅ تم تسجيل اختيارك."
+                    )
+                )
+
+            except Exception:
+                pass
+
+    await finish_hiding(
+        context,
+        chat_id
+    )
+
+
+# ==================================================
+# إنهاء الاختباء
+# ==================================================
+
+async def finish_hiding(
+    context,
+    chat_id
+):
+
+    game = active_hide_games.get(chat_id)
+
+    if not game:
+        return
+
+    if game["phase"] != "hiding":
+        return
+
+    game["phase"] = "searching"
+
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=(
+            "😶‍🌫️ لقد اختبأ جميع اللاعبين بنجاح.\n\n"
+            "تبدأ الآن أدوار البحث!\n\n"
+            "في كل دور يختار اللاعب مربعًا واحدًا "
+            "للبحث فيه.\n\n"
+            "💥 إذا وجد لاعبًا مختبئًا يتم استبعاده.\n"
+            "🎁 بعض المربعات تحتوي على هدايا."
+        )
+    )
+
+    await start_next_search_turn(
+        context,
+        chat_id
+    )
+
+
+# ==================================================
+# اللاعبين داخل مربع
+# ==================================================
+
+def players_in_box(game, number):
+
+    found = []
+
+    for player_id, hidden_number in game["hidden"].items():
+
+        if hidden_number != number:
+            continue
+
+        if player_id not in game["players"]:
+            continue
+
+        found.append(player_id)
+
+    return found
+
+
+# ==================================================
+# اللاعبين الأحياء
+# ==================================================
+
+def alive_players(game):
+
+    return [
+        player_id
+        for player_id in game["order"]
+        if player_id in game["players"]
+    ]
+
+
+# ==================================================
+# فحص نهاية اللعبة
+# ==================================================
+
+def check_game_finished(game):
+
+    alive = alive_players(game)
+
+    if len(alive) <= 1:
+        return True
+
+    hidden_numbers = {
+        game["hidden"].get(player_id)
+        for player_id in alive
+    }
+
+    if len(hidden_numbers) == 1:
+        return True
+
+    return False
+
+
+# ==================================================
+# بدء دور البحث التالي
+# ==================================================
+
+async def start_next_search_turn(
+    context,
+    chat_id
+):
+
+    game = active_hide_games.get(chat_id)
+
+    if not game:
+        return
+
+    if game["phase"] != "searching":
+        return
+
+    if game["resolving"]:
+        return
+
+    if check_game_finished(game):
+
+        await finish_hide_game(
+            context,
+            chat_id
+        )
+
+        return
+
+    order = game["order"]
+
+    if not order:
+        await finish_hide_game(
+            context,
+            chat_id
+        )
+        return
+
+    checked = 0
+
+    while checked < len(order):
+
+        index = game["current_index"] % len(order)
+
+        player_id = order[index]
+
+        game["current_index"] += 1
+
+        checked += 1
+
+        if player_id not in game["players"]:
+            continue
+
+        player = game["players"][player_id]
+
+        available = [
+            number
+            for number in game["available"]
+            if number != game["hidden"].get(player_id)
+        ]
+
+        if not available:
+
+            await finish_hide_game(
+                context,
+                chat_id
+            )
+
+            return
+
+        game["searching"] = True
+        game["search_player"] = player_id
+        game["resolving"] = False
+
+        keyboard = build_board(
+            available,
+            f"search:{chat_id}:{player_id}"
+        )
+
+        # رسالة جديدة لهذا اللاعب
+        message = await context.bot.send_message(
+            chat_id=chat_id,
+            text=(
+                f"🫣 تفضل يا {get_player_name(player)} "
+                "اختر مربع لكشف ما بداخله.\n\n"
+                f"⏱ أمامك {SEARCH_TIME} ثانية."
+            ),
+            reply_markup=keyboard
+        )
+
+        game["search_message_id"] = message.message_id
+
+        # مؤقت الدور
+        game["search_task"] = asyncio.create_task(
+            search_timeout(
+                context,
+                chat_id,
+                player_id
+            )
+        )
+
+        return
+
+    await finish_hide_game(
+        context,
+        chat_id
+    )
+
+
+# ==================================================
+# اختيار مربع البحث
+# ==================================================
+
+async def search_number_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    query = update.callback_query
+
+    try:
+
+        parts = query.data.split(":")
+
+        if len(parts) != 4:
+            await query.answer()
+            return
+
+        _, chat_id_text, player_id_text, number_text = parts
+
+        chat_id = int(chat_id_text)
+        player_id = int(player_id_text)
+        number = int(number_text)
+
+    except Exception:
+
+        await query.answer()
+        return
+
+    game = active_hide_games.get(chat_id)
+
+    if not game:
+
+        await query.answer(
+            "❌ انتهت اللعبة.",
+            show_alert=True
+        )
+
+        return
+
+    if game["phase"] != "searching":
+
+        await query.answer(
+            "❌ انتهى الدور.",
+            show_alert=True
+        )
+
+        return
+
+    # ==============================================
+    # أهم نقطة:
+    # اللاعب الذي يضغط لازم يكون صاحب الدور
+    # ==============================================
+
+    if query.from_user.id != player_id:
+
+        await query.answer(
+            "❌ انتظر، ليس دورك!",
+            show_alert=True
+        )
+
+        return
+
+    if game.get("search_player") != player_id:
+
+        await query.answer(
+            "❌ انتظر، ليس دورك!",
+            show_alert=True
+        )
+
+        return
+
+    if game["resolving"]:
+
+        await query.answer(
+            "⏳ انتظر...",
+            show_alert=True
+        )
+
+        return
+
+    if number not in game["available"]:
+
+        await query.answer(
+            "❌ هذا الرقم تم اختياره بالفعل.",
+            show_alert=True
+        )
+
+        return
+
+    game["resolving"] = True
+
+    await query.answer(
+        f"تم اختيار {number}."
+    )
+
+    # إلغاء مؤقت الدور
+    task = game.get("search_task")
+
+    if task:
+
+        task.cancel()
+
+    game["search_task"] = None
+
+    # حل الاختيار
+    await resolve_search(
+        context,
+        chat_id,
+        player_id,
+        number,
+        query.message
+    )
+
+
+# ==================================================
+# حل البحث
+# ==================================================
+
+async def resolve_search(
+    context,
+    chat_id,
+    player_id,
+    number,
+    current_message=None
+):
+
+    game = active_hide_games.get(chat_id)
+
+    if not game:
+        return
+
+    if number not in game["available"]:
+        game["resolving"] = False
+        return
+
+    player = game["players"].get(player_id)
+
+    if not player:
+        game["resolving"] = False
+        return
+
+    # ==============================================
+    # الرقم المختار فقط هو الذي ينحذف
+    # ==============================================
+
+    game["available"].remove(number)
+
+    # ==============================================
+    # اللاعبين المختبئين
+    # ==============================================
+
+    found_players = players_in_box(
+        game,
+        number
+    )
+
+    content = game["contents"].get(
+        number,
+        "empty"
+    )
+
+    # ==============================================
+    # بناء نتيجة الدور
+    # ==============================================
+
+    text = (
+        f"🎯 قام اللاعب {get_player_name(player)} "
+        f"باختيار المربع ({number}).\n\n"
+    )
+
+    if found_players:
+
+        names = []
+
+        for found_id in found_players:
+
+            found_user = game["players"].get(found_id)
+
+            if found_user:
+
+                names.append(
+                    get_player_name(found_user)
+                )
+
+        text += (
+            "💥 تم كشف المخبأ!\n"
+            "تم العثور على اللاعبين:\n"
+            + "\n".join(
+                f"• {name} ❌"
+                for name in names
+            )
+            + "\n\n"
+            "تم استبعادهم من اللعبة."
+        )
+
+        for found_id in found_players:
+
+            game["players"].pop(
+                found_id,
+                None
+            )
+
+        game["discoveries"][player_id] += len(
+            found_players
+        )
+
+    else:
+
+        text += (
+            "💨 المربع فارغ!\n"
+            "لم يتم العثور على أحد."
+        )
+
+        # ==========================================
+        # القنبلة
+        # ==========================================
+
+        if content == "bomb":
+
+            game["bomb_hits"][player_id] += 1
+
+            alive = alive_players(game)
+
+            if alive:
+
+                target_id = random.choice(alive)
+
+                target = game["players"].get(
+                    target_id
+                )
+
+                if target:
+
+                    secret_number = game["hidden"].get(
+                        target_id
+                    )
+
+                    if secret_number is not None:
+
+                        if secret_number % 2 == 0:
+                            parity = "زوجي"
+                        else:
+                            parity = "فردي"
+
+                        text += (
+                            "\n\n💣 انفجرت قنبلة!\n"
+                            f"تم كشف تلميح عن "
+                            f"{get_player_name(target)}:\n"
+                            f"🔎 رقمه السري {parity}."
+                        )
+
+        # ==========================================
+        # فرصة إضافية
+        # ==========================================
+
+        elif content == "extra":
+
+            text += (
+                "\n\n🔄 حصل اللاعب "
+                f"{get_player_name(player)} "
+                "على فرصة إضافية!"
+            )
+
+        # ==========================================
+        # +5
+        # ==========================================
+
+        elif content == "plus5":
+
+            game["scores"][player_id] += 5
+
+            add_points(
+                player_id,
+                5
+            )
+
+            text += (
+                "\n\n🎁 حصل اللاعب "
+                f"{get_player_name(player)} "
+                "على +5 نقاط!"
+            )
+
+        # ==========================================
+        # +10
+        # ==========================================
+
+        elif content == "plus10":
+
+            game["scores"][player_id] += 10
+
+            add_points(
+                player_id,
+                10
+            )
+
+            text += (
+                "\n\n🎁 حصل اللاعب "
+                f"{get_player_name(player)} "
+                "على +10 نقاط!"
+            )
+
+        # ==========================================
+        # -3
+        # ==========================================
+
+        elif content == "minus3":
+
+            game["scores"][player_id] -= 3
+
+            add_points(
+                player_id,
+                -3
+            )
+
+            text += (
+                "\n\n💥 أوبس!\n"
+                "تم خصم 3 نقاط من اللاعب "
+                f"{get_player_name(player)}."
+            )
+
+        # ==========================================
+        # -5
+        # ==========================================
+
+        elif content == "minus5":
+
+            game["scores"][player_id] -= 5
+
+            add_points(
+                player_id,
+                -5
+            )
+
+            text += (
+                "\n\n💥 أوبس!\n"
+                "تم خصم 5 نقاط من اللاعب "
+                f"{get_player_name(player)}."
+            )
+
+    # ==============================================
+    # تعديل نفس رسالة اللاعب
+    # ==============================================
+
+    message = current_message
+
+    if message is None:
+
+        message_id = game.get(
+            "search_message_id"
+        )
+
+        if message_id:
+
+            try:
+
+                await context.bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=text
+                )
+
+            except Exception:
+                pass
+
+    else:
+
+        try:
+
+            await message.edit_text(
+                text=text
+            )
+
+        except Exception:
+            pass
+
+    # ==============================================
+    # فحص نهاية اللعبة
+    # ==============================================
+
+    if check_game_finished(game):
+
+        game["resolving"] = False
+
+        await finish_hide_game(
+            context,
+            chat_id
+        )
+
+        return
+
+    # ==============================================
+    # فرصة إضافية
+    # ==============================================
+
+    if (
+        not found_players
+        and content == "extra"
+        and player_id in game["players"]
+    ):
+
+        game["resolving"] = False
+
+        await start_specific_search_turn(
+            context,
+            chat_id,
+            player_id
+        )
+
+        return
+
+    # ==============================================
+    # الدور التالي
+    # ==============================================
+
+    game["searching"] = False
+    game["resolving"] = False
+
+    await start_next_search_turn(
+        context,
+        chat_id
+    )
+
+
+# ==================================================
+# فرصة إضافية
+# ==================================================
+
+async def start_specific_search_turn(
+    context,
+    chat_id,
+    player_id
+):
+
+    game = active_hide_games.get(chat_id)
+
+    if not game:
+        return
+
+    if game["phase"] != "searching":
+        return
+
+    if player_id not in game["players"]:
+        return
+
+    available = [
+        number
+        for number in game["available"]
+        if number != game["hidden"].get(player_id)
+    ]
+
+    if not available:
+
+        await finish_hide_game(
+            context,
+            chat_id
+        )
+
+        return
+
+    player = game["players"][player_id]
+
+    game["search_player"] = player_id
+    game["searching"] = True
+    game["resolving"] = False
+
+    keyboard = build_board(
+        available,
+        f"search:{chat_id}:{player_id}"
+    )
+
+    # فرصة إضافية = رسالة جديدة
+    message = await context.bot.send_message(
+        chat_id=chat_id,
+        text=(
+            f"🔄 فرصة إضافية!\n\n"
+            f"تفضل يا {get_player_name(player)} "
+            "اختر مربعًا آخر.\n\n"
+            f"⏱ أمامك {SEARCH_TIME} ثانية."
+        ),
+        reply_markup=keyboard
+    )
+
+    game["search_message_id"] = message.message_id
+
+    game["search_task"] = asyncio.create_task(
+        search_timeout(
+            context,
+            chat_id,
+            player_id
+        )
+    )
+
+
+# ==================================================
+# انتهاء وقت البحث
+# ==================================================
+
+async def search_timeout(
+    context,
+    chat_id,
+    player_id
+):
+
+    try:
+
+        await asyncio.sleep(
+            SEARCH_TIME
+        )
+
+    except asyncio.CancelledError:
+
+        return
+
+    game = active_hide_games.get(chat_id)
+
+    if not game:
+        return
+
+    if game["phase"] != "searching":
+        return
+
+    if game.get("search_player") != player_id:
+        return
+
+    if game.get("resolving"):
+        return
+
+    available = [
+        number
+        for number in game["available"]
+        if number != game["hidden"].get(player_id)
+    ]
+
+    if not available:
+
+        await finish_hide_game(
+            context,
+            chat_id
+        )
+
+        return
+
+    number = random.choice(
+        available
+    )
+
+    player = game["players"].get(player_id)
+
+    if not player:
+        return
+
+    game["resolving"] = True
+
+    # ==============================================
+    # تعديل رسالة اللاعب نفسها أولاً
+    # ==============================================
+
+    message_id = game.get(
+        "search_message_id"
+    )
+
+    if message_id:
+
+        try:
+
+            await context.bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text=(
+                    f"⏰ انتهى وقت "
+                    f"{get_player_name(player)}!\n\n"
+                    f"🎲 تم اختيار المربع "
+                    f"({number}) عشوائيًا."
+                )
+            )
+
+        except Exception:
+            pass
+
+    # حل الرقم بدون إرسال رسالة جديدة
+    await resolve_search(
+        context,
+        chat_id,
+        player_id,
+        number,
+        None
+    )
+
+
+# ==================================================
+# إنهاء اللعبة يدويًا
+# ==================================================
+
+async def end_hide_game(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not update.message:
+        return
+
+    chat_id = update.effective_chat.id
+    user = update.effective_user
+
+    if chat_id not in active_hide_games:
+        return
+
+    if not can_manage_hide_game(user.id):
+        return
+
+    await update.message.reply_text(
+        "🛑 تم إنهاء لعبة الغميضة."
+    )
+
+    game = active_hide_games.pop(
+        chat_id,
+        None
+    )
+
+    if not game:
+        return
+
+    task = game.get("search_task")
+
+    if task:
+        task.cancel()
+
+
+# ==================================================
+# نهاية اللعبة
+# ==================================================
+
+async def finish_hide_game(
+    context,
+    chat_id
+):
+
+    game = active_hide_games.get(chat_id)
+
+    if not game:
+        return
+
+    if game["phase"] == "finished":
+        return
+
+    game["phase"] = "finished"
+
+    task = game.get("search_task")
+
+    if task:
+        task.cancel()
+
+    game["search_task"] = None
+
+    alive = alive_players(game)
+
+    winners = []
+
+    if alive:
+        winners = alive
+
+    # ==============================================
+    # أكثر اكتشافات
+    # ==============================================
+
+    most_discoveries = None
+
+    if game["discoveries"]:
+
+        most_discoveries = max(
+            game["discoveries"],
+            key=game["discoveries"].get
+        )
+
+        discovery_count = game["discoveries"][
+            most_discoveries
+        ]
+
+        if discovery_count > 0:
+
+            add_points(
+                most_discoveries,
+                5
+            )
+
+    # ==============================================
+    # أكثر قنابل
+    # ==============================================
+
+    most_bombs = None
+
+    if game["bomb_hits"]:
+
+        most_bombs = max(
+            game["bomb_hits"],
+            key=game["bomb_hits"].get
+        )
+
+        bomb_count = game["bomb_hits"][
+            most_bombs
+        ]
+
+        if bomb_count > 0:
+
+            add_points(
+                most_bombs,
+                -5
+            )
+
+    # ==============================================
+    # الرسالة النهائية
+    # ==============================================
+
+    text = "🏆 انتهت لعبة الغميضة!\n\n"
+
+    if len(winners) == 1:
+
+        winner = game["players"].get(
+            winners[0]
+        )
+
+        if winner:
+
+            text += (
+                f"🥇 {get_player_name(winner)} — الفائز\n"
+            )
+
+    elif len(winners) > 1:
+
+        names = []
+
+        for winner_id in winners:
+
+            winner = game["players"].get(
+                winner_id
+            )
+
+            if winner:
+
+                names.append(
+                    get_player_name(winner)
+                )
+
+        text += (
+            "🥇 الفائزون:\n"
+            + "\n".join(
+                f"• {name}"
+                for name in names
+            )
+            + "\n"
+        )
+
+    # ==============================================
+    # الإحصائيات
+    # ==============================================
+
+    if most_discoveries:
+
+        user = game["players"].get(
+            most_discoveries
+        )
+
+        if user:
+
+            text += (
+                "\n🔎 أكثر لاعب اكتشف مخابئ: "
+                f"{get_player_name(user)} "
+                f"({game['discoveries'][most_discoveries]} اكتشاف)"
+                "\n🎁 حصل على +5 نقاط."
+            )
+
+    if most_bombs:
+
+        user = game["players"].get(
+            most_bombs
+        )
+
+        if user:
+
+            text += (
+                "\n\n💣 أكثر لاعب أصابته القنابل: "
+                f"{get_player_name(user)} "
+                f"({game['bomb_hits'][most_bombs]} قنابل)"
+                "\n💥 تم خصم 5 نقاط منه."
+            )
+
+    # ==============================================
+    # نقاط الجولة
+    # ==============================================
+
+    scored = [
+        (player_id, points)
+        for player_id, points in game["scores"].items()
+        if points != 0
+    ]
+
+    if scored:
+
+        text += "\n\n📊 نقاط الجولة:\n"
+
+        scored.sort(
+            key=lambda x: x[1],
+            reverse=True
+        )
+
+        for player_id, points in scored:
+
+            player = game["players"].get(
+                player_id
+            )
+
+            # اللاعب قد يكون مستبعدًا
+            # لذلك نحتاج نأخذ بياناته من order
+            if not player:
+
+                for pid in game["order"]:
+
+                    if pid == player_id:
+                        player = game["players"].get(pid)
+                        break
+
+            if not player:
+                continue
+
+            sign = "+" if points > 0 else ""
+
+            text += (
+                f"• {get_player_name(player)}: "
+                f"{sign}{points}\n"
+            )
+
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=text
+    )
+
+    # ==============================================
+    # حذف اللعبة
+    # ==============================================
+
+    active_hide_games.pop(
+        chat_id,
+        None
+    )
