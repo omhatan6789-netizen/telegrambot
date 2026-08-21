@@ -812,13 +812,8 @@ async def start_next_search_turn(
 
         player = game["players"][player_id]
 
-        # كل الأرقام المتبقية تظهر هنا
-        # والرقم المختار فقط ينحذف من available
-        available = [
-            number
-            for number in game["available"]
-            if number != game["hidden"].get(player_id)
-        ]
+        # استبدال: جميع الأرقام المتاحة
+        available = list(game["available"])
 
         if not available:
 
@@ -1270,11 +1265,8 @@ async def start_specific_search_turn(
     if player_id not in game["players"]:
         return
 
-    available = [
-        number
-        for number in game["available"]
-        if number != game["hidden"].get(player_id)
-    ]
+    # استبدال: جميع الأرقام المتاحة
+    available = list(game["available"])
 
     if not available:
 
