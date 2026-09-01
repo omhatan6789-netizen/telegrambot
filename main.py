@@ -239,6 +239,21 @@ def start_web_server():
     server.serve_forever()
 
 
+# ==================================================
+# استخراج ID الصورة
+# ==================================================
+
+async def get_photo_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    if not update.message or not update.message.photo:
+        return
+
+    photo = update.message.photo[-1]
+
+    await update.message.reply_text(
+        f"🆔 ID الصورة:\n\n`{photo.file_id}`",
+        parse_mode="Markdown"
+    )
 
 # ==================================================
 # MAIN
@@ -814,6 +829,14 @@ def main():
             change_button_color_handler
         ),
         group=-19
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.PHOTO,
+            get_photo_id
+        ),
+        group=-20
     )
 
     # --------------------------------------------------

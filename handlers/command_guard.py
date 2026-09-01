@@ -98,7 +98,10 @@ def is_waiting_for_input(context, user_id):
 
         "custom_command",
         "delete_command",
+
+        "button_color",
     )
+
 
     try:
         for key in waiting_keys:
@@ -154,6 +157,20 @@ def is_waiting_for_input(context, user_id):
 
         if user_id in add_question_sessions:
             return True
+
+    except Exception:
+        pass
+
+    # --------------------------------------------------
+    # جلسة تعديل لون الزر
+    # --------------------------------------------------
+
+    try:
+        from handlers.button_colors import color_sessions
+
+        for session in color_sessions.values():
+            if session.get("user_id") == user_id:
+                return True
 
     except Exception:
         pass
