@@ -169,6 +169,8 @@ async def change_button_color_handler(
 
         return
 
+        raise ApplicationHandlerStop
+    
     # ==================================================
     # اللون
     # ==================================================
