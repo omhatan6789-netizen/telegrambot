@@ -1,4 +1,3 @@
-```python
 import os
 import re
 import psycopg2
@@ -594,4 +593,3 @@ def create_tables():
 
     cur.close()
     conn.close()
-```
