@@ -3,8 +3,10 @@ from telegram.ext import ContextTypes, ApplicationHandlerStop
 
 from button_colors import (
     COLOR_STYLES,
+    get_button_color,
     set_button_color,
-    button_exists
+    button_exists,
+    normalize_button_name
 )
 
 from handlers.roles import (
@@ -120,7 +122,7 @@ async def change_button_color_handler(update, context):
 
     if session["step"] == "button":
 
-        button_name = text.strip()
+        button_name = normalize_button_name(text)
 
         if not button_exists(button_name):
             await update.message.reply_text(

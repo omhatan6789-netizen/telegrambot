@@ -6,76 +6,87 @@ from telegram.ext import ContextTypes
 from database import connect
 
 
-# ==========================
+# ==================================================
 # أمر ايدي
-# ==========================
+# ==================================================
 
 async def user_id_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
 
+    if not update.message or not update.effective_user:
+        return
+
     user = update.effective_user
+
+    # --------------------------------------------------
+    # جلب بيانات المستخدم
+    # --------------------------------------------------
 
     conn = connect()
     cur = conn.cursor()
 
-    cur.execute(
-        """
-        SELECT messages, rank, joined_date
-        FROM users
-        WHERE user_id=?
-        """,
-        (user.id,)
-    )
-
-    data = cur.fetchone()
-
-
-    if data:
-
-        messages = data[0] or 0
-        rank = data[1] or "عضو"
-        joined_date = data[2] or "غير معروف"
-
-
-    else:
-
-        joined_date = datetime.now().strftime(
-            "%Y/%m/%d"
-        )
+    try:
 
         cur.execute(
             """
-            INSERT INTO users
-            (
-                user_id,
-                username,
-                first_name,
-                messages,
-                rank,
-                joined_date
-            )
-            VALUES (?, ?, ?, ?, ?, ?)
+            SELECT messages, rank, joined_date
+            FROM users
+            WHERE user_id=?
             """,
-            (
-                user.id,
-                user.username,
-                user.first_name,
-                0,
-                "عضو",
-                joined_date
-            )
+            (user.id,)
         )
 
-        conn.commit()
+        data = cur.fetchone()
 
-        messages = 0
-        rank = "عضو"
+        if data:
 
+            messages = data[0] or 0
+            rank = data[1] or "عضو"
+            joined_date = data[2] or "غير معروف"
 
-    conn.close()
+        else:
 
+            joined_date = datetime.now().strftime("%Y/%m/%d")
+
+            cur.execute(
+                """
+                INSERT INTO users
+                (
+                    user_id,
+                    username,
+                    first_name,
+                    messages,
+                    rank,
+                    joined_date
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT (user_id) DO NOTHING
+                """,
+                (
+                    user.id,
+                    user.username,
+                    user.first_name,
+                    0,
+                    "عضو",
+                    joined_date
+                )
+            )
+
+            conn.commit()
+
+            messages = 0
+            rank = "عضو"
+
+    finally:
+
+        cur.close()
+        conn.close()
+
+    # --------------------------------------------------
+    # اسم المستخدم
+    # --------------------------------------------------
 
     username = (
         f"@{user.username}"
@@ -83,17 +94,25 @@ async def user_id_command(
         else "لا يوجد"
     )
 
+    # --------------------------------------------------
+    # البايو
+    # --------------------------------------------------
 
-    # جلب البايو
+    bio = "لا يوجد"
+
     try:
+
         user_info = await context.bot.get_chat(user.id)
 
-        bio = user_info.bio or "لا يوجد"
+        if user_info.bio:
+            bio = user_info.bio
 
-    except:
-        bio = "لا يوجد"
+    except Exception:
+        pass
 
-
+    # --------------------------------------------------
+    # النص
+    # --------------------------------------------------
 
     text = f"""
 🌷ᵂᴱᴸᶜᴼᴹᴱ ᵀᴼ ᴳᴿᴼᵁᴾ🌷
@@ -110,8 +129,10 @@ async def user_id_command(
 📅 Joined Group 𖦹 {joined_date}
 """
 
+    # --------------------------------------------------
+    # صورة العضو
+    # --------------------------------------------------
 
-    # جلب صورة العضو
     try:
 
         photos = await context.bot.get_user_profile_photos(
@@ -119,11 +140,9 @@ async def user_id_command(
             limit=1
         )
 
-
         if photos.total_count > 0:
 
             photo = photos.photos[0][-1].file_id
-
 
             await update.message.reply_photo(
                 photo=photo,
@@ -132,147 +151,45 @@ async def user_id_command(
 
             return
 
-
-    except:
+    except Exception:
         pass
 
+    # --------------------------------------------------
+    # بدون صورة
+    # --------------------------------------------------
 
-    # إذا ما فيه صورة
     await update.message.reply_text(text)
 
 
-
-# ==========================
+# ==================================================
 # حفظ تاريخ دخول العضو
-# ==========================
+# ==================================================
 
 async def save_join_date(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
 
-    member = update.chat_member
-
-    new_member = member.new_chat_member
-
-
-    if new_member.status not in [
-        "member",
-        "administrator"
-    ]:
+    if not update.chat_member:
         return
 
+    member = update.chat_member
+    new_member = member.new_chat_member
+
+    if new_member.status not in (
+        "member",
+        "administrator"
+    ):
+        return
 
     user = new_member.user
 
-
-    joined_date = datetime.now().strftime(
-        "%Y/%m/%d"
-    )
-
+    joined_date = datetime.now().strftime("%Y/%m/%d")
 
     conn = connect()
     cur = conn.cursor()
 
-
-    cur.execute(
-        """
-        INSERT OR IGNORE INTO users
-        (
-            user_id,
-            username,
-            first_name,
-            messages,
-            rank,
-            joined_date
-        )
-        VALUES (?, ?, ?, ?, ?, ?)
-        """,
-        (
-            user.id,
-            user.username,
-            user.first_name,
-            0,
-            "عضو",
-            joined_date
-        )
-    )
-
-
-    conn.commit()
-    conn.close()
-
-
-async def save_user_message(
-    update,
-    context
-):
-
-    # تجاهل أي شيء ليس رسالة
-    if not update.message:
-        return
-
-    # القروبات فقط
-    if update.effective_chat.type not in [
-        "group",
-        "supergroup"
-    ]:
-        return
-
-    user = update.effective_user
-
-    conn = connect()
-    cur = conn.cursor()
-
-    # ==========================================
-    # محاولة زيادة الرسائل للمستخدم الموجود
-    # ==========================================
-
-    cur.execute(
-        """
-        UPDATE users
-        SET
-            messages = messages + 1,
-            username = ?,
-            first_name = ?
-        WHERE user_id=?
-        """,
-        (
-            user.username,
-            user.first_name,
-            user.id
-        )
-    )
-
-    # ==========================================
-    # إذا المستخدم غير موجود
-    # ==========================================
-
-    if cur.rowcount == 0:
-
-        # --------------------------------------
-        # البحث عن الرتبة المحفوظة
-        # --------------------------------------
-
-        cur.execute(
-            """
-            SELECT rank
-            FROM ranks
-            WHERE user_id=?
-            """,
-            (user.id,)
-        )
-
-        rank_data = cur.fetchone()
-
-        if rank_data and rank_data[0]:
-            rank = rank_data[0]
-        else:
-            rank = "عضو"
-
-        # --------------------------------------
-        # إعادة إنشاء المستخدم
-        # --------------------------------------
+    try:
 
         cur.execute(
             """
@@ -286,16 +203,159 @@ async def save_user_message(
                 joined_date
             )
             VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT (user_id) DO NOTHING
             """,
             (
                 user.id,
                 user.username,
                 user.first_name,
-                1,
-                rank,
-                datetime.now().strftime("%Y/%m/%d")
+                0,
+                "عضو",
+                joined_date
             )
         )
 
-    conn.commit()
-    conn.close()
+        conn.commit()
+
+    finally:
+
+        cur.close()
+        conn.close()
+
+
+# ==================================================
+# حفظ رسائل المستخدم
+# ==================================================
+
+async def save_user_message(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    # --------------------------------------------------
+    # تجاهل أي شيء ليس رسالة
+    # --------------------------------------------------
+
+    if not update.message:
+        return
+
+    # --------------------------------------------------
+    # القروبات فقط
+    # --------------------------------------------------
+
+    chat = update.effective_chat
+
+    if not chat:
+        return
+
+    if chat.type not in (
+        "group",
+        "supergroup"
+    ):
+        return
+
+    user = update.effective_user
+
+    if not user:
+        return
+
+    # --------------------------------------------------
+    # اتصال قاعدة البيانات
+    # --------------------------------------------------
+
+    conn = connect()
+    cur = conn.cursor()
+
+    try:
+
+        # --------------------------------------------------
+        # تحديث المستخدم الموجود
+        # --------------------------------------------------
+
+        cur.execute(
+            """
+            UPDATE users
+            SET
+                messages = COALESCE(messages, 0) + 1,
+                username = ?,
+                first_name = ?
+            WHERE user_id=?
+            """,
+            (
+                user.username,
+                user.first_name,
+                user.id
+            )
+        )
+
+        # --------------------------------------------------
+        # المستخدم غير موجود
+        # --------------------------------------------------
+
+        if cur.rowcount == 0:
+
+            # ----------------------------------------------
+            # محاولة أخذ الرتبة المحفوظة
+            # ----------------------------------------------
+
+            cur.execute(
+                """
+                SELECT rank
+                FROM ranks
+                WHERE user_id=?
+                """,
+                (user.id,)
+            )
+
+            rank_data = cur.fetchone()
+
+            if rank_data and rank_data[0]:
+                rank = rank_data[0]
+            else:
+                rank = "عضو"
+
+            # ----------------------------------------------
+            # إنشاء المستخدم
+            # ----------------------------------------------
+
+            cur.execute(
+                """
+                INSERT INTO users
+                (
+                    user_id,
+                    username,
+                    first_name,
+                    messages,
+                    rank,
+                    joined_date
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT (user_id) DO UPDATE SET
+                    messages = users.messages + 1,
+                    username = EXCLUDED.username,
+                    first_name = EXCLUDED.first_name
+                """,
+                (
+                    user.id,
+                    user.username,
+                    user.first_name,
+                    1,
+                    rank,
+                    datetime.now().strftime("%Y/%m/%d")
+                )
+            )
+
+        # --------------------------------------------------
+        # حفظ التغيير
+        # --------------------------------------------------
+
+        conn.commit()
+
+    except Exception:
+
+        conn.rollback()
+
+    finally:
+
+        cur.close()
+        conn.close()
