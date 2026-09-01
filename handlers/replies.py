@@ -238,7 +238,7 @@ async def add_reply_handler(
 
         cur.execute(
             """
-            INSERT OR REPLACE INTO replies
+            INSERT INTO replies
             (
                 name,
                 text,
@@ -246,6 +246,11 @@ async def add_reply_handler(
                 caption
             )
             VALUES (?, ?, ?, ?)
+            ON CONFLICT (name)
+            DO UPDATE SET
+                text = EXCLUDED.text,
+                type = EXCLUDED.type,
+                caption = EXCLUDED.caption
             """,
             (
                 name,
@@ -259,7 +264,7 @@ async def add_reply_handler(
         conn.commit()
         conn.close()
 
-
+INSERT OR REPLACE INTO replies
 
         del add_reply_sessions[user_id]
 
@@ -889,7 +894,7 @@ async def add_special_reply_handler(
 
         cur.execute(
             """
-            INSERT OR REPLACE INTO special_replies
+            INSERT INTO special_replies
             (
                 name,
                 text,
@@ -897,6 +902,11 @@ async def add_special_reply_handler(
                 caption
             )
             VALUES (?, ?, ?, ?)
+            ON CONFLICT (name)
+            DO UPDATE SET
+                text = EXCLUDED.text,
+                type = EXCLUDED.type,
+                caption = EXCLUDED.caption
             """,
             (
                 name,
