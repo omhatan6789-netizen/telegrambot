@@ -91,35 +91,21 @@ async def change_button_color_start(
 # استقبال اسم الزر / اللون
 # ==================================================
 
-async def change_button_color_handler(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-
+async def change_button_color_handler(update, context):
     if not update.message:
         return
 
-    if update.effective_chat.type not in (
-        "group",
-        "supergroup"
-    ):
-        return
-
-    user = update.effective_user
-
-    if not user:
+    if update.effective_chat.type not in ("group", "supergroup"):
         return
 
     chat_id = update.effective_chat.id
-    user_id = user.id
+    user_id = update.effective_user.id
 
-    # جلب الجلسة
     session = color_sessions.get(chat_id)
 
     if not session:
         return
 
-    # الجلسة لصاحبها فقط
     if session["user_id"] != user_id:
         return
 
@@ -128,35 +114,25 @@ async def change_button_color_handler(
     if not text:
         return
 
-    text = text.strip()
-
-    # ==================================================
-    # المرحلة الأولى: اسم الزر
-    # ==================================================
+    # ==============================
+    # اختيار الزر
+    # ==============================
 
     if session["step"] == "button":
 
-        button_name = text
+        button_name = text.strip()
 
-        # التحقق من وجود الزر
         if not button_exists(button_name):
-
             await update.message.reply_text(
                 "• مضيع يالحبيب، تاكد من اسم الزر."
             )
 
-            # إلغاء عملية تعديل اللون بالكامل
-            color_sessions.pop(
-                chat_id,
-                None
-            )
+            # إلغاء العملية بالكامل
+            color_sessions.pop(chat_id, None)
 
-    raise ApplicationHandlerStop
+            raise ApplicationHandlerStop
 
-        # حفظ اسم الزر
         session["button"] = button_name
-
-        # الانتقال للون
         session["step"] = "color"
 
         await update.message.reply_text(
@@ -166,66 +142,37 @@ async def change_button_color_handler(
 
         raise ApplicationHandlerStop
 
-
-    # ==================================================
-    # المرحلة الثانية: اللون
-    # ==================================================
+    # ==============================
+    # اختيار اللون
+    # ==============================
 
     if session["step"] == "color":
 
-        color = text
+        color = text.strip()
 
-        # التحقق من اللون
         if color not in COLOR_STYLES:
-
             await update.message.reply_text(
                 "• قلت لك بس فيه احمر وازرق واخضر وشفاف!!"
             )
 
             raise ApplicationHandlerStop
 
-        button_name = session.get("button")
+        button_name = session["button"]
 
-        if not button_name:
-
-            color_sessions.pop(
-                chat_id,
-                None
-            )
-
-            await update.message.reply_text(
-                "• صار خطأ، ابدأ من جديد."
-            )
-
-            raise ApplicationHandlerStop
-
-        # حفظ اللون
-        success = set_button_color(
-            button_name,
-            color
-        )
-
-        if not success:
-
-            color_sessions.pop(
-                chat_id,
-                None
-            )
-
+        if not set_button_color(button_name, color):
             await update.message.reply_text(
                 "• مضيع يالحبيب، تاكد من اسم الزر."
             )
 
+            color_sessions.pop(chat_id, None)
+
             raise ApplicationHandlerStop
 
-        # إنهاء الجلسة
-        color_sessions.pop(
-            chat_id,
-            None
-        )
+        # انتهت العملية بنجاح
+        color_sessions.pop(chat_id, None)
 
         await update.message.reply_text(
-            "• تم عدلت لونه ياحلو يمديك تتأكد الحين!"
+            "• تم عدلت لونه ياحلو يمديك تتاكد الحين!"
         )
 
         raise ApplicationHandlerStop
