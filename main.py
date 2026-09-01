@@ -240,7 +240,7 @@ def start_web_server():
 
 
 # ==================================================
-# استخراج ID الصورة
+# استخراج ID الصورة - الخاص فقط
 # ==================================================
 
 async def get_photo_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -254,6 +254,50 @@ async def get_photo_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🆔 ID الصورة:\n\n`{photo.file_id}`",
         parse_mode="Markdown"
     )
+
+
+# ==================================================
+# عرض صورة عن طريق ID - الخاص فقط
+# ==================================================
+
+WAIT_PHOTO_ID = 999
+
+
+async def show_photo_start(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    await update.message.reply_text(
+        "• أرسل ID الصورة"
+    )
+
+    return WAIT_PHOTO_ID
+
+
+async def show_photo_by_id(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not update.message or not update.message.text:
+        return WAIT_PHOTO_ID
+
+    photo_id = update.message.text.strip()
+
+    try:
+        await update.message.reply_photo(
+            photo=photo_id
+        )
+
+        return ConversationHandler.END
+
+    except Exception:
+        await update.message.reply_text(
+            "• الـID غير صحيح أو الصورة غير متاحة."
+        )
+
+        return WAIT_PHOTO_ID
 
 # ==================================================
 # MAIN
@@ -831,9 +875,45 @@ def main():
         group=-19
     )
 
+    # ==================================================
+    # أدوات الصور - الخاص فقط
+    # ==================================================
+
+    show_photo_conv = ConversationHandler(
+
+        entry_points=[
+            MessageHandler(
+                filters.ChatType.PRIVATE
+                & filters.Regex(r"^اعرض الصورة$"),
+                show_photo_start
+            )
+        ],
+
+        states={
+            WAIT_PHOTO_ID: [
+                MessageHandler(
+                    filters.ChatType.PRIVATE
+                    & filters.TEXT
+                    & ~filters.COMMAND,
+                    show_photo_by_id
+                )
+            ]
+        },
+
+        fallbacks=[],
+        allow_reentry=True
+    )
+
+    app.add_handler(
+        show_photo_conv,
+        group=-21
+    )
+
+
     app.add_handler(
         MessageHandler(
-            filters.PHOTO,
+            filters.ChatType.PRIVATE
+            & filters.PHOTO,
             get_photo_id
         ),
         group=-20

@@ -1,7 +1,6 @@
 import os
-import re
 import psycopg2
-from psycopg2 import sql
+from psycopg2 import pool
 
 
 # ==================================================
@@ -17,23 +16,43 @@ if not DATABASE_URL:
 
 
 # ==================================================
+# Connection Pool
+# ==================================================
+
+DB_POOL = None
+
+
+def get_pool():
+    global DB_POOL
+
+    if DB_POOL is None:
+        DB_POOL = psycopg2.pool.ThreadedConnectionPool(
+            minconn=1,
+            maxconn=10,
+            dsn=DATABASE_URL,
+        )
+
+    return DB_POOL
+
+
+# ==================================================
 # Cursor يدعم ? مثل SQLite
 # ==================================================
 
 class CompatibleCursor:
+
     def __init__(self, cursor):
         self._cursor = cursor
 
     def execute(self, query, params=None):
-        """
-        تحويل ? الخاصة بـ SQLite إلى %s الخاصة بـ PostgreSQL.
-        """
+
         if isinstance(query, str):
             query = query.replace("?", "%s")
 
         return self._cursor.execute(query, params)
 
     def executemany(self, query, params_seq):
+
         if isinstance(query, str):
             query = query.replace("?", "%s")
 
@@ -43,8 +62,10 @@ class CompatibleCursor:
         return self._cursor.fetchone()
 
     def fetchmany(self, size=None):
+
         if size is None:
             return self._cursor.fetchmany()
+
         return self._cursor.fetchmany(size)
 
     def fetchall(self):
@@ -66,14 +87,22 @@ class CompatibleCursor:
 
 
 # ==================================================
-# Connection يدعم cursor() مثل SQLite
+# Connection
 # ==================================================
 
 class CompatibleConnection:
+
     def __init__(self, connection):
         self._connection = connection
+        self._closed = False
 
     def cursor(self):
+
+        if self._closed:
+            raise RuntimeError(
+                "Database connection is already closed"
+            )
+
         return CompatibleCursor(
             self._connection.cursor()
         )
@@ -85,7 +114,20 @@ class CompatibleConnection:
         return self._connection.rollback()
 
     def close(self):
-        return self._connection.close()
+
+        if self._closed:
+            return
+
+        self._closed = True
+
+        try:
+            get_pool().putconn(self._connection)
+        except Exception:
+
+            try:
+                self._connection.close()
+            except Exception:
+                pass
 
     def __getattr__(self, name):
         return getattr(self._connection, name)
@@ -96,13 +138,27 @@ class CompatibleConnection:
 # ==================================================
 
 def connect():
-    """
-    الاتصال بـ Supabase PostgreSQL.
-    """
 
-    conn = psycopg2.connect(DATABASE_URL)
+    pool_instance = get_pool()
 
-    return CompatibleConnection(conn)
+    conn = pool_instance.getconn()
+
+    try:
+        # التأكد أن الاتصال ما زال صالحًا
+        if conn.closed:
+            pool_instance.putconn(conn, close=True)
+            conn = pool_instance.getconn()
+
+        return CompatibleConnection(conn)
+
+    except Exception:
+
+        try:
+            pool_instance.putconn(conn, close=True)
+        except Exception:
+            pass
+
+        raise
 
 
 # ==================================================
@@ -114,494 +170,507 @@ def create_tables():
     conn = connect()
     cur = conn.cursor()
 
-    # =====================
-    # المستخدمين
-    # =====================
+    try:
 
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS users
-    (
-        user_id BIGINT PRIMARY KEY,
-        username TEXT,
-        first_name TEXT,
-        messages INTEGER DEFAULT 0,
-        rank TEXT DEFAULT 'عضو',
-        joined_date TEXT,
-        is_banned INTEGER DEFAULT 0,
-        ban_type TEXT DEFAULT '',
-        is_muted INTEGER DEFAULT 0,
-        mute_type TEXT DEFAULT ''
-    )
-    """)
+        # =====================
+        # المستخدمين
+        # =====================
 
-    cur.execute("""
-    INSERT INTO users
-    (
-        user_id,
-        rank
-    )
-    VALUES
-    (
-        8453977662,
-        'Dev'
-    )
-    ON CONFLICT (user_id)
-    DO UPDATE SET rank = 'Dev'
-    """)
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS users
+        (
+            user_id BIGINT PRIMARY KEY,
+            username TEXT,
+            first_name TEXT,
+            messages INTEGER DEFAULT 0,
+            rank TEXT DEFAULT 'عضو',
+            joined_date TEXT,
+            is_banned INTEGER DEFAULT 0,
+            ban_type TEXT DEFAULT '',
+            is_muted INTEGER DEFAULT 0,
+            mute_type TEXT DEFAULT ''
+        )
+        """)
 
-    # =====================
-    # الردود العادية
-    # =====================
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS replies
-    (
-        name TEXT PRIMARY KEY,
-        text TEXT,
-        type TEXT,
-        caption TEXT
-    )
-    """)
-
-    # =====================
-    # الردود المميزة
-    # =====================
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS special_replies
-    (
-        name TEXT PRIMARY KEY,
-        text TEXT,
-        type TEXT,
-        caption TEXT
-    )
-    """)
-
-    # =====================
-    # النقاط
-    # =====================
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS points
-    (
-        user_id BIGINT PRIMARY KEY,
-        points INTEGER DEFAULT 0
-    )
-    """)
-
-    # =====================
-    # الألعاب
-    # =====================
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS games
-    (
-        name TEXT PRIMARY KEY,
-        image TEXT,
-        status TEXT DEFAULT 'on'
-    )
-    """)
-
-    # =====================
-    # أسئلة الألعاب
-    # =====================
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS game_questions
-    (
-        id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-        game_name TEXT,
-        question TEXT,
-        image TEXT,
-        caption TEXT,
-        answers TEXT
-    )
-    """)
-
-    # =====================
-    # إعدادات الألعاب
-    # =====================
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS games_settings
-    (
-        id BIGINT PRIMARY KEY,
-        status TEXT DEFAULT 'on'
-    )
-    """)
-
-    cur.execute("""
-    INSERT INTO games_settings
-    (
-        id,
-        status
-    )
-    VALUES
-    (
-        1,
-        'on'
-    )
-    ON CONFLICT (id) DO NOTHING
-    """)
-
-    # =====================
-    # سجل الفائزين
-    # =====================
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS winners
-    (
-        id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-        user_id BIGINT,
-        game_name TEXT,
-        points INTEGER DEFAULT 3,
-        date TEXT
-    )
-    """)
-
-    # =====================
-    # سلسلة الانتصارات
-    # =====================
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS win_streaks
-    (
-        user_id BIGINT PRIMARY KEY,
-        streak INTEGER DEFAULT 0
-    )
-    """)
-
-    # =====================
-    # الجوائز اليومية
-    # =====================
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS daily_rewards
-    (
-        user_id BIGINT PRIMARY KEY,
-        last_reward TEXT
-    )
-    """)
-
-    # =====================
-    # الرتب
-    # =====================
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS ranks
-    (
-        user_id BIGINT PRIMARY KEY,
-        rank TEXT
-    )
-    """)
-
-    # =====================
-    # المشرفين
-    # =====================
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS admins
-    (
-        user_id BIGINT PRIMARY KEY,
-        rank TEXT
-    )
-    """)
-
-    # =====================
-    # الحظر
-    # =====================
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS bans
-    (
-        user_id BIGINT PRIMARY KEY,
-        ban_type TEXT DEFAULT 'normal',
-        until_time TEXT,
-        reason TEXT,
-        by_user BIGINT
-    )
-    """)
-
-    # =====================
-    # الكتم
-    # =====================
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS mutes
-    (
-        user_id BIGINT PRIMARY KEY,
-        mute_type TEXT DEFAULT 'normal',
-        until_time TEXT,
-        reason TEXT,
-        by_user BIGINT
-    )
-    """)
-
-    # =====================
-    # سجل الإدارة
-    # =====================
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS moderation_logs
-    (
-        id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-        action TEXT,
-        user_id BIGINT,
-        by_user BIGINT,
-        date TEXT
-    )
-    """)
-
-    # =====================
-    # السجل الإداري
-    # =====================
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS admin_logs
-    (
-        id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-        admin_id BIGINT,
-        target_id BIGINT,
-        action TEXT,
-        date TEXT
-    )
-    """)
-
-    # =====================
-    # قفل الأوامر
-    # =====================
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS command_locks
-    (
-        command TEXT PRIMARY KEY,
-        rank TEXT NOT NULL
-    )
-    """)
-
-    # =====================
-    # الأوامر المضافة
-    # =====================
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS custom_commands
-    (
-        id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-        old_command TEXT,
-        new_command TEXT UNIQUE
-    )
-    """)
-
-    # =====================
-    # المطورين
-    # =====================
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS developers
-    (
-        user_id BIGINT PRIMARY KEY,
-        developer_type TEXT NOT NULL DEFAULT 'secondary',
-        added_by BIGINT,
-        added_date TEXT
-    )
-    """)
-
-    # =====================
-    # صلاحيات المطورين
-    # =====================
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS developer_permissions
-    (
-        user_id BIGINT,
-        permission TEXT,
-        allowed INTEGER DEFAULT 1,
-
-        PRIMARY KEY
+        cur.execute("""
+        INSERT INTO users
         (
             user_id,
-            permission
+            rank
         )
-    )
-    """)
+        VALUES
+        (
+            8453977662,
+            'Dev'
+        )
+        ON CONFLICT (user_id)
+        DO UPDATE SET rank = 'Dev'
+        """)
 
-    # =====================
-    # صلاحيات المستخدمين
-    # =====================
+        # =====================
+        # الردود العادية
+        # =====================
 
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS user_permissions
-    (
-        user_id BIGINT,
-        permission TEXT,
-        allowed INTEGER DEFAULT 1,
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS replies
+        (
+            name TEXT PRIMARY KEY,
+            text TEXT,
+            type TEXT,
+            caption TEXT
+        )
+        """)
 
-        PRIMARY KEY
+        # =====================
+        # الردود المميزة
+        # =====================
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS special_replies
+        (
+            name TEXT PRIMARY KEY,
+            text TEXT,
+            type TEXT,
+            caption TEXT
+        )
+        """)
+
+        # =====================
+        # النقاط
+        # =====================
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS points
+        (
+            user_id BIGINT PRIMARY KEY,
+            points INTEGER DEFAULT 0
+        )
+        """)
+
+        # =====================
+        # الألعاب
+        # =====================
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS games
+        (
+            name TEXT PRIMARY KEY,
+            image TEXT,
+            status TEXT DEFAULT 'on'
+        )
+        """)
+
+        # =====================
+        # أسئلة الألعاب
+        # =====================
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS game_questions
+        (
+            id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+            game_name TEXT,
+            question TEXT,
+            image TEXT,
+            caption TEXT,
+            answers TEXT
+        )
+        """)
+
+        # =====================
+        # إعدادات الألعاب
+        # =====================
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS games_settings
+        (
+            id BIGINT PRIMARY KEY,
+            status TEXT DEFAULT 'on'
+        )
+        """)
+
+        cur.execute("""
+        INSERT INTO games_settings
+        (
+            id,
+            status
+        )
+        VALUES
+        (
+            1,
+            'on'
+        )
+        ON CONFLICT (id) DO NOTHING
+        """)
+
+        # =====================
+        # سجل الفائزين
+        # =====================
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS winners
+        (
+            id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+            user_id BIGINT,
+            game_name TEXT,
+            points INTEGER DEFAULT 3,
+            date TEXT
+        )
+        """)
+
+        # =====================
+        # سلسلة الانتصارات
+        # =====================
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS win_streaks
+        (
+            user_id BIGINT PRIMARY KEY,
+            streak INTEGER DEFAULT 0
+        )
+        """)
+
+        # =====================
+        # الجوائز اليومية
+        # =====================
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS daily_rewards
+        (
+            user_id BIGINT PRIMARY KEY,
+            last_reward TEXT
+        )
+        """)
+
+        # =====================
+        # الرتب
+        # =====================
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS ranks
+        (
+            user_id BIGINT PRIMARY KEY,
+            rank TEXT
+        )
+        """)
+
+        # =====================
+        # المشرفين
+        # =====================
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS admins
+        (
+            user_id BIGINT PRIMARY KEY,
+            rank TEXT
+        )
+        """)
+
+        # =====================
+        # الحظر
+        # =====================
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS bans
+        (
+            user_id BIGINT PRIMARY KEY,
+            ban_type TEXT DEFAULT 'normal',
+            until_time TEXT,
+            reason TEXT,
+            by_user BIGINT
+        )
+        """)
+
+        # =====================
+        # الكتم
+        # =====================
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS mutes
+        (
+            user_id BIGINT PRIMARY KEY,
+            mute_type TEXT DEFAULT 'normal',
+            until_time TEXT,
+            reason TEXT,
+            by_user BIGINT
+        )
+        """)
+
+        # =====================
+        # سجل الإدارة
+        # =====================
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS moderation_logs
+        (
+            id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+            action TEXT,
+            user_id BIGINT,
+            by_user BIGINT,
+            date TEXT
+        )
+        """)
+
+        # =====================
+        # السجل الإداري
+        # =====================
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS admin_logs
+        (
+            id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+            admin_id BIGINT,
+            target_id BIGINT,
+            action TEXT,
+            date TEXT
+        )
+        """)
+
+        # =====================
+        # قفل الأوامر
+        # =====================
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS command_locks
+        (
+            command TEXT PRIMARY KEY,
+            rank TEXT NOT NULL
+        )
+        """)
+
+        # =====================
+        # الأوامر المضافة
+        # =====================
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS custom_commands
+        (
+            id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+            old_command TEXT,
+            new_command TEXT UNIQUE
+        )
+        """)
+
+        # =====================
+        # المطورين
+        # =====================
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS developers
+        (
+            user_id BIGINT PRIMARY KEY,
+            developer_type TEXT NOT NULL DEFAULT 'secondary',
+            added_by BIGINT,
+            added_date TEXT
+        )
+        """)
+
+        # =====================
+        # صلاحيات المطورين
+        # =====================
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS developer_permissions
+        (
+            user_id BIGINT,
+            permission TEXT,
+            allowed INTEGER DEFAULT 1,
+
+            PRIMARY KEY
+            (
+                user_id,
+                permission
+            )
+        )
+        """)
+
+        # =====================
+        # صلاحيات المستخدمين
+        # =====================
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS user_permissions
+        (
+            user_id BIGINT,
+            permission TEXT,
+            allowed INTEGER DEFAULT 1,
+
+            PRIMARY KEY
+            (
+                user_id,
+                permission
+            )
+        )
+        """)
+
+        # =====================
+        # إعدادات القروبات
+        # =====================
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS group_settings
+        (
+            chat_id BIGINT PRIMARY KEY,
+            created_date TEXT
+        )
+        """)
+
+        # =====================
+        # إعدادات الحماية
+        # =====================
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS protection_settings
+        (
+            chat_id BIGINT PRIMARY KEY,
+
+            repetition_enabled INTEGER DEFAULT 0,
+            repetition_limit INTEGER DEFAULT 3,
+            repetition_seconds INTEGER DEFAULT 5,
+            repetition_action TEXT DEFAULT 'mute',
+
+            links_enabled INTEGER DEFAULT 0,
+            mentions_enabled INTEGER DEFAULT 0,
+            spam_enabled INTEGER DEFAULT 0
+        )
+        """)
+
+        # =====================
+        # الكلمات المحظورة
+        # =====================
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS blocked_words
+        (
+            chat_id BIGINT,
+            word TEXT,
+
+            PRIMARY KEY
+            (
+                chat_id,
+                word
+            )
+        )
+        """)
+
+        # =====================
+        # إعدادات الكلمات المحظورة
+        # =====================
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS blocked_words_settings
+        (
+            chat_id BIGINT PRIMARY KEY,
+            enabled INTEGER DEFAULT 0,
+            action TEXT DEFAULT 'mute'
+        )
+        """)
+
+        # =====================
+        # رسائل البوت
+        # =====================
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS bot_messages
+        (
+            message_key TEXT PRIMARY KEY,
+            message_text TEXT
+        )
+        """)
+
+        # =====================
+        # أزرار اللوحات
+        # =====================
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS panel_buttons
+        (
+            id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+
+            panel TEXT,
+            button_key TEXT,
+            button_text TEXT,
+            button_url TEXT,
+            row_number INTEGER DEFAULT 0,
+            button_order INTEGER DEFAULT 0
+        )
+        """)
+
+        # =====================
+        # بيانات المطور والمالك
+        # =====================
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS profile_settings
+        (
+            profile_type TEXT PRIMARY KEY,
+            user_id BIGINT,
+            username TEXT
+        )
+        """)
+
+        # =====================
+        # المطور الأساسي
+        # =====================
+
+        cur.execute("""
+        INSERT INTO developers
         (
             user_id,
-            permission
+            developer_type
         )
-    )
-    """)
-
-    # =====================
-    # إعدادات القروبات
-    # =====================
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS group_settings
-    (
-        chat_id BIGINT PRIMARY KEY,
-        created_date TEXT
-    )
-    """)
-
-    # =====================
-    # إعدادات الحماية
-    # =====================
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS protection_settings
-    (
-        chat_id BIGINT PRIMARY KEY,
-
-        repetition_enabled INTEGER DEFAULT 0,
-        repetition_limit INTEGER DEFAULT 3,
-        repetition_seconds INTEGER DEFAULT 5,
-        repetition_action TEXT DEFAULT 'mute',
-
-        links_enabled INTEGER DEFAULT 0,
-        mentions_enabled INTEGER DEFAULT 0,
-        spam_enabled INTEGER DEFAULT 0
-    )
-    """)
-
-    # =====================
-    # الكلمات المحظورة
-    # =====================
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS blocked_words
-    (
-        chat_id BIGINT,
-        word TEXT,
-
-        PRIMARY KEY
+        VALUES
         (
-            chat_id,
-            word
+            8453977662,
+            'primary'
         )
-    )
-    """)
+        ON CONFLICT (user_id) DO NOTHING
+        """)
 
-    # =====================
-    # إعدادات الكلمات المحظورة
-    # =====================
+        # =====================
+        # صلاحيات المستخدمين لكل قروب
+        # =====================
 
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS blocked_words_settings
-    (
-        chat_id BIGINT PRIMARY KEY,
-        enabled INTEGER DEFAULT 0,
-        action TEXT DEFAULT 'mute'
-    )
-    """)
-
-    # =====================
-    # رسائل البوت
-    # =====================
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS bot_messages
-    (
-        message_key TEXT PRIMARY KEY,
-        message_text TEXT
-    )
-    """)
-
-    # =====================
-    # أزرار اللوحات
-    # =====================
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS panel_buttons
-    (
-        id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-
-        panel TEXT,
-        button_key TEXT,
-        button_text TEXT,
-        button_url TEXT,
-        row_number INTEGER DEFAULT 0,
-        button_order INTEGER DEFAULT 0
-    )
-    """)
-
-    # =====================
-    # بيانات المطور والمالك
-    # =====================
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS profile_settings
-    (
-        profile_type TEXT PRIMARY KEY,
-        user_id BIGINT,
-        username TEXT
-    )
-    """)
-
-    # =====================
-    # المطور الأساسي
-    # =====================
-
-    cur.execute("""
-    INSERT INTO developers
-    (
-        user_id,
-        developer_type
-    )
-    VALUES
-    (
-        8453977662,
-        'primary'
-    )
-    ON CONFLICT (user_id) DO NOTHING
-    """)
-
-    # =====================
-    # صلاحيات المستخدمين لكل قروب
-    # =====================
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS group_user_permissions
-    (
-        chat_id BIGINT,
-        user_id BIGINT,
-        permission TEXT,
-        allowed INTEGER DEFAULT 0,
-
-        PRIMARY KEY
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS group_user_permissions
         (
-            chat_id,
-            user_id,
-            permission
+            chat_id BIGINT,
+            user_id BIGINT,
+            permission TEXT,
+            allowed INTEGER DEFAULT 0,
+
+            PRIMARY KEY
+            (
+                chat_id,
+                user_id,
+                permission
+            )
         )
-    )
-    """)
+        """)
 
-    # ==================================================
-    # ألوان أزرار البوت
-    # ==================================================
+        # ==================================================
+        # ألوان أزرار البوت
+        # ==================================================
 
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS button_colors
-    (
-        button_text TEXT PRIMARY KEY,
-        color TEXT NOT NULL DEFAULT 'شفاف'
-    )
-    """)
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS button_colors
+        (
+            button_text TEXT PRIMARY KEY,
+            color TEXT NOT NULL DEFAULT 'شفاف'
+        )
+        """)
 
-    conn.commit()
+        conn.commit()
 
-    cur.close()
-    conn.close()
+    except Exception:
+
+        conn.rollback()
+        raise
+
+    finally:
+
+        try:
+            cur.close()
+        except Exception:
+            pass
+
+        conn.close()
