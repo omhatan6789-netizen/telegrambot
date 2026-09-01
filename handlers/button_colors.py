@@ -7,6 +7,8 @@ from button_colors import (
     set_button_color
 )
 
+from telegram.ext import ApplicationHandlerStop
+
 from database import connect
 
 from handlers.roles import (
@@ -104,7 +106,7 @@ async def change_button_color_start(
         "• طيب ياحلو ارسل اسم الزر الي تبي تغير لونه،"
     )
 
-
+    raise ApplicationHandlerStop
 # ==================================================
 # استقبال اسم الزر / اللون
 # ==================================================
