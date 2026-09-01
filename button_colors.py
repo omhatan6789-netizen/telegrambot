@@ -30,16 +30,17 @@ def register_button(button_text):
 
     cur.execute(
         """
-        INSERT OR IGNORE INTO button_colors
+        INSERT INTO button_colors
         (
             button_text,
             color
         )
         VALUES
         (
-            ?,
+            %s,
             'شفاف'
         )
+        ON CONFLICT (button_text) DO NOTHING
         """,
         (button_text,)
     )
