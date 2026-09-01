@@ -200,6 +200,45 @@ from games.games_manager import (
     check_game_answer
 )
 
+from button_colors import (
+    patch_inline_keyboard_buttons,
+    register_existing_panel_buttons
+)
+
+from handlers.button_colors import (
+    change_button_color_start,
+    change_button_color_handler
+)
+
+import os
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+
+class HealthHandler(BaseHTTPRequestHandler):
+
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is running")
+
+    def log_message(self, format, *args):
+        return
+
+
+def start_web_server():
+    port = int(os.environ.get("PORT", 10000))
+
+    server = HTTPServer(
+        ("0.0.0.0", port),
+        HealthHandler
+    )
+
+    print(f"🌐 Web server running on port {port}")
+
+    server.serve_forever()
+
+
 
 # ==================================================
 # MAIN
@@ -213,6 +252,8 @@ def main():
 
     create_tables()
 
+    patch_inline_keyboard_buttons()
+    register_existing_panel_buttons()
 
     # ==================================================
     # إنشاء التطبيق
@@ -752,6 +793,29 @@ def main():
     # الألعاب
     # ==================================================
 
+    # ==================================================
+    # تعديل لون زر
+    # ==================================================
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(r"^تعديل لون$"),
+            change_button_color_start
+        ),
+        group=-20
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.TEXT
+            & ~filters.COMMAND,
+            change_button_color_handler
+        ),
+        group=-19
+    )
+
     # --------------------------------------------------
     # إضافة لعبة
     # --------------------------------------------------
@@ -1100,6 +1164,11 @@ def main():
     # ==================================================
 
     print("🤖 Bot Started...")
+
+    threading.Thread(
+        target=start_web_server,
+        daemon=True
+    ).start()
 
     app.run_polling()
 

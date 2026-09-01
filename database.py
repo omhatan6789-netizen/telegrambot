@@ -589,6 +589,18 @@ def create_tables():
     )
     """)
 
+    # ==================================================
+    # ألوان أزرار البوت
+    # ==================================================
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS button_colors
+    (
+        button_text TEXT PRIMARY KEY,
+        color TEXT NOT NULL DEFAULT 'شفاف'
+    )
+    """)
+
     conn.commit()
 
     cur.close()
