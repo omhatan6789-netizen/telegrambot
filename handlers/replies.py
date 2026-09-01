@@ -235,7 +235,6 @@ async def add_reply_handler(
         conn = connect()
         cur = conn.cursor()
 
-
         cur.execute(
             """
             INSERT INTO replies
@@ -260,11 +259,10 @@ async def add_reply_handler(
             )
         )
 
-
         conn.commit()
         conn.close()
 
-INSERT OR REPLACE INTO replies
+
 
         del add_reply_sessions[user_id]
 
@@ -890,8 +888,6 @@ async def add_special_reply_handler(
         conn = connect()
         cur = conn.cursor()
 
-
-
         cur.execute(
             """
             INSERT INTO special_replies
@@ -915,8 +911,6 @@ async def add_special_reply_handler(
                 caption
             )
         )
-
-
 
         conn.commit()
         conn.close()
