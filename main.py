@@ -1099,25 +1099,9 @@ def main():
     # تشغيل البوت
     # ==================================================
 
-print("🤖 Bot Started...")
+    print("🤖 Bot Started...")
 
-import asyncio
-
-
-async def start_bot():
-    await app.initialize()
-    await app.start()
-    await app.updater.start_polling()
-
-    try:
-        await asyncio.Event().wait()
-    finally:
-        await app.updater.stop()
-        await app.stop()
-        await app.shutdown()
-
-
-asyncio.run(start_bot())
+    app.run_polling()
 
 
 # ==================================================
