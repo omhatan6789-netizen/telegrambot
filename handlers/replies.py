@@ -16,13 +16,12 @@ delete_reply_sessions = {}
 # Cache للردود
 # =========================
 
-replies_cache = None
-special_replies_cache = None
-
-
-def load_replies_cache():
+def invalidate_replies_cache():
     global replies_cache
     global special_replies_cache
+
+    replies_cache = None
+    special_replies_cache = None
 
     conn = connect()
 
@@ -325,7 +324,7 @@ async def add_reply_handler(
         conn.commit()
         conn.close()
 
-
+        invalidate_replies_cache()
 
         del add_reply_sessions[user_id]
 
@@ -1090,6 +1089,8 @@ async def add_special_reply_handler(
         conn.commit()
         conn.close()
 
+        invalidate_replies_cache()
+
 
 
         del add_special_reply_sessions[user_id]
@@ -1216,6 +1217,8 @@ async def delete_special_reply_handler(
 
     conn.commit()
     conn.close()
+
+    invalidate_replies_cache()
 
 
 
@@ -1449,6 +1452,8 @@ async def edit_special_reply_handler(
 
         conn.commit()
         conn.close()
+
+        invalidate_replies_cache()
 
 
 
@@ -1684,6 +1689,8 @@ async def edit_reply_handler(
         conn.commit()
         conn.close()
 
+        invalidate_replies_cache()
+
 
 
         del edit_reply_sessions[user_id]
@@ -1790,6 +1797,8 @@ async def delete_reply_handler(
     conn.commit()
     conn.close()
 
+    invalidate_replies_cache()
+
 
 
     del delete_reply_sessions[user_id]
@@ -1824,6 +1833,8 @@ async def delete_all_replies(
     conn.commit()
     conn.close()
 
+    invalidate_replies_cache()
+
 
     await update.message.reply_text(
         "✅ تم حذف جميع الردود العادية"
@@ -1854,7 +1865,10 @@ async def delete_all_special_replies(
     conn.commit()
     conn.close()
 
+    invalidate_replies_cache()
+
 
     await update.message.reply_text(
         "⭐ تم حذف جميع الردود المميزة"
     ) 
+
