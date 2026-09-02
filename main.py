@@ -28,7 +28,7 @@ from games.hide_and_seek import (
 from games.penalties import (
     start_penalty_game,
     join_penalty_game,
-    distribute_penalty_game,
+    distribute_penalties,
     penalty_distribution_callback,
     manual_red,
     manual_blue,
