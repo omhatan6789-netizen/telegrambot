@@ -1,191 +1,273 @@
 import asyncio
 import random
-import re
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import ContextTypes, ApplicationHandlerStop
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup
+)
+from telegram.ext import ContextTypes
 
 from handlers.roles import get_rank_level
 from handlers.points import add_points
 
 
-# =========================================================
-# الحالة
-# =========================================================
+# ==================================================
+# الإعدادات
+# ==================================================
 
-active_penalty_games = {}
+TURN_TIME = 30
+WIN_POINTS = 50
 
 
-# =========================================================
-# الصور
-# =========================================================
+# ==================================================
+# صور الاستعداد
+# ==================================================
 
-START_IMAGES = {
+READY_IMAGES = {
     "red": "AgACAgQAAxkBAAICx2qXXRF_tg0mysuxrFyg-TzQFOFWAAJvEmsbkuPAUDW0ZFs8Jpp0AQADAgADeQADPQQ",
     "blue": "AgACAgQAAxkBAAICzWqXXSelWf1kB8pPZa_v_tT75xNZAAJwEmsbkuPAUAaqxmTbcl6BAQADAgADeQADPQQ",
 }
 
 
-RESULT_IMAGES = {
-    "red": {
-        "right": {
-            "right": "AgACAgQAAyEFAATwGwEUAAJP-2qXQ8T5AtOCk6Tgh_lxF3uj8CLbAAIhE2sbtou5UESSt8Vei3-fAQADAgADeQADPQQ",
-            "center": "AgACAgQAAxkBAAIC3mqXXm9DsfMF7RKuGnjX0DZZCDElAAJ2EmsbkuPAUGcJXuHpNXeRAQADAgADeQADPQQ",
-            "left": "AgACAgQAAxkBAAIC4mqXXuc962m3PinFC3de9Cnd0yn9AAJ4EmsbkuPAUPPtWgmjylC3AQADAgADeQADPQQ",
-        },
-        "center": {
-            "right": "AgACAgQAAxkBAAIC3GqXXk_YkocGUIQQLrUjVUsT6WFJAAJ1EmsbkuPAUKlvrIEsTFKiAQADAgADeQADPQQ",
-            "center": "AgACAgQAAxkBAAIC1mqXXaAJP0tj2fHk37IEYyLojq8-AAJyEmsbkuPAUMnwQohZeWMRAQADAgADeQADPQQ",
-            "left": "AgACAgQAAxkBAAIC4GqXXq47KtcOgOu_X2FaUbKinv5bAAJ3EmsbkuPAUM6TlGij3IEHAQADAgADeQADPQQ",
-        },
-        "left": {
-            "right": "AgACAgQAAxkBAAIC2GqXXd6JOsmKg6XY4QmjioYpY6JBAAJzEmsbkuPAUN2RFOQM76ZjAQADAgADeQADPQQ",
-            "center": "AgACAgQAAxkBAAIC5GqXXw7IjhzegXCjpRcxZwqjVS6WAAJ5EmsbkuPAUFp8zcXUDTg5AQADAgADeQADPQQ",
-            "left": "AgACAgQAAxkBAAIC2mqXXi2MCyP1bavd0hR1Z7qzHoCAAAJ0EmsbkuPAUKVIWnY0MYkOAQADAgADeQADPQQ",
-        },
-    },
+# ==================================================
+# صور النتائج
+# ==================================================
 
-    "blue": {
-        "left": {
-            "left": "AgACAgQAAxkBAAIC5mqXX1YLbKkPxyFAuXt4GIyWpwr0AAJ6EmsbkuPAUJauXBMfrdsmAQADAgADeQADPQQ",
-            "right": "AgACAgQAAxkBAAIC6mqXX5umjMZgl8QvHQ9cWVE7OBkrAAJ8EmsbkuPAUETvi9lxwAABoAEAAwIAA3kAAz0E",
-            "center": "AgACAgQAAxkBAAIC-2qXY5T0b_X374-vZzZGl0HLQEEYAAKIEmsbkuPAUFT-iD8IXTJ6AQADAgADeQADPQQ",
-        },
-        "right": {
-            "left": "AgACAgQAAxkBAAIC6GqXX3Rokn49gwNhssRA_Jr5Mim6AAJ7EmsbkuPAUBloAjhQo03mAQADAgADeQADPQQ",
-            "center": "AgACAgQAAxkBAAIC7GqXX81g1Ntcm7CbDJFBr4XBTj0nAAJ9EmsbkuPAUC1szPgbscpJAQADAgADeQADPQQ",
-            "right": "AgACAgQAAxkBAAIC7mqXX_UXpeFNif4tcrDWx1_KUoeSAAJ_EmsbkuPAUIc2qNsrW-HMAQADAgADeQADPQQ",
-        },
-        "center": {
-            "left": "AgACAgQAAxkBAAIC8mqXYJiHXfglNwRGoIhIfxfC8bjdAAKCEmsbkuPAUGkJ2VH7L0tAAQADAgADeQADPQQ",
-            "center": "AgACAgQAAxkBAAIC8GqXYHN9_lRYWV7MQ-2ViZNxESDxAAKAEmsbkuPAUBIAAa6Cdmoz2AEAAwIAA3kAAz0E",
-            "right": "AgACAgQAAxkBAAIC9GqXYNPEKxVz0lKOSKIvI8jMwlTPAAKFEmsbkuPAUMilU52EcjlsAQADAgADeQADPQQ",
-        },
-    },
+RESULT_IMAGES = {
+
+    # =========================
+    # الحارس الأحمر
+    # =========================
+
+    ("red", "يسار", "يسار"):
+        "AgACAgQAAxkBAAIC2mqXXi2MCyP1bavd0hR1Z7qzHoCAAAJ0EmsbkuPAUKVIWnY0MYkOAQADAgADeQADPQQ",
+
+    ("red", "يسار", "وسط"):
+        "AgACAgQAAxkBAAIC5GqXXw7IjhzegXCjpRcxZwqjVS6WAAJ5EmsbkuPAUFp8zcXUDTg5AQADAgADeQADPQQ",
+
+    ("red", "يسار", "يمين"):
+        "AgACAgQAAxkBAAIC2GqXXd6JOsmKg6XY4QmjioYpY6JBAAJzEmsbkuPAUN2RFOQM76ZjAQADAgADeQADPQQ",
+
+    ("red", "وسط", "يسار"):
+        "AgACAgQAAxkBAAIC4GqXXq47KtcOgOu_X2FaUbKinv5bAAJ3EmsbkuPAUM6TlGij3IEHAQADAgADeQADPQQ",
+
+    ("red", "وسط", "وسط"):
+        "AgACAgQAAxkBAAIC1mqXXaAJP0tj2fHk37IEYyLojq8-AAJyEmsbkuPAUMnwQohZeWMRAQADAgADeQADPQQ",
+
+    ("red", "وسط", "يمين"):
+        "AgACAgQAAxkBAAIC3GqXXk_YkocGUIQQLrUjVUsT6WFJAAJ1EmsbkuPAUKlvrIEsTFKiAQADAgADeQADPQQ",
+
+    ("red", "يمين", "يسار"):
+        "AgACAgQAAxkBAAIC4mqXXuc962m3PinFC3de9Cnd0yn9AAJ4EmsbkuPAUPPtWgmjylC3AQADAgADeQADPQQ",
+
+    ("red", "يمين", "وسط"):
+        "AgACAgQAAxkBAAIC3mqXXm9DsfMF7RKuGnjX0DZZCDElAAJ2EmsbkuPAUGcJXuHpNXeRAQADAgADeQADPQQ",
+
+    ("red", "يمين", "يمين"):
+        "AgACAgQAAyEFAATwGwEUAAJP-2qXQ8T5AtOCk6Tgh_lxF3uj8CLbAAIhE2sbtou5UESSt8Vei3-fAQADAgADeQADPQQ",
+
+
+    # =========================
+    # الحارس الأزرق
+    # =========================
+
+    ("blue", "يسار", "يسار"):
+        "AgACAgQAAxkBAAIC5mqXX1YLbKkPxyFAuXt4GIyWpwr0AAJ6EmsbkuPAUJauXBMfrdsmAQADAgADeQADPQQ",
+
+    ("blue", "يسار", "وسط"):
+        "AgACAgQAAxkBAAIC-2qXY5T0b_X374-vZzZGl0HLQEEYAAKIEmsbkuPAUFT-iD8IXTJ6AQADAgADeQADPQQ",
+
+    ("blue", "يسار", "يمين"):
+        "AgACAgQAAxkBAAIC6mqXX5umjMZgl8QvHQ9cWVE7OBkrAAJ8EmsbkuPAUETvi9lxwAABoAEAAwIAA3kAAz0E",
+
+    ("blue", "وسط", "يسار"):
+        "AgACAgQAAxkBAAIC8mqXYJiHXfglNwRGoIhIfxfC8bjdAAKCEmsbkuPAUGkJ2VH7L0tAAQADAgADeQADPQQ",
+
+    ("blue", "وسط", "وسط"):
+        "AgACAgQAAxkBAAIC8GqXYHN9_lRYWV7MQ-2ViZNxESDxAAKAEmsbkuPAUBIAAa6Cdmoz2AEAAwIAA3kAAz0E",
+
+    ("blue", "وسط", "يمين"):
+        "AgACAgQAAxkBAAIC9GqXYNPEKxVz0lKOSKIvI8jMwlTPAAKFEmsbkuPAUMilU52EcjlsAQADAgADeQADPQQ",
+
+    ("blue", "يمين", "يسار"):
+        "AgACAgQAAxkBAAIC6GqXX3Rokn49gwNhssRA_Jr5Mim6AAJ7EmsbkuPAUBloAjhQo03mAQADAgADeQADPQQ",
+
+    ("blue", "يمين", "وسط"):
+        "AgACAgQAAxkBAAIC7GqXX81g1Ntcm7CbDJFBr4XBTj0nAAJ9EmsbkuPAUC1szPgbscpJAQADAgADeQADPQQ",
+
+    ("blue", "يمين", "يمين"):
+        "AgACAgQAAxkBAAIC7mqXX_UXpeFNif4tcrDWx1_KUoeSAAJ_EmsbkuPAUIc2qNsrW-HMAQADAgADeQADPQQ",
 }
 
 
-# =========================================================
-# أسماء الحسابات
-# =========================================================
+# ==================================================
+# الاتجاهات
+# ==================================================
 
-def get_account_name(user):
-    """
-    اسم الحساب الظاهر في تيليجرام.
-    لا يستخدم username ولا @username.
-    """
+DIRECTIONS = {
+    "يسار": "👈🏻",
+    "وسط": "🎯",
+    "يمين": "👉🏻",
+}
+
+
+# ==================================================
+# الألعاب النشطة
+# ==================================================
+
+active_penalty_games = {}
+
+
+# ==================================================
+# اسم اللاعب
+# ==================================================
+
+def get_player_name(user):
+    if not user:
+        return "مستخدم"
+
     return user.full_name or user.first_name or "مستخدم"
 
 
-# =========================================================
-# الصلاحية - نفس نظام غميضة
-# =========================================================
+# ==================================================
+# الصلاحيات
+# ==================================================
 
 def can_manage_penalties(user_id):
     return get_rank_level(user_id) > 0
 
 
-# =========================================================
-# أدوات
-# =========================================================
+# ==================================================
+# لوحة الاتجاهات
+# ==================================================
 
-TEAM_NAMES = {
-    "red": "الفريق الأحمر 🔴",
-    "blue": "الفريق الأزرق 🔵",
-}
-
-TEAM_EMOJIS = {
-    "red": "🔴",
-    "blue": "🔵",
-}
-
-DIRECTION_NAMES = {
-    "left": "اليسار",
-    "center": "الوسط",
-    "right": "اليمين",
-}
-
-DIRECTION_EMOJIS = {
-    "left": "👈🏻",
-    "center": "🎯",
-    "right": "👉🏻",
-}
-
-
-def opposite_team(team):
-    return "blue" if team == "red" else "red"
-
-
-def get_team_ids(game, team):
-    return list(dict.fromkeys(
-        game["teams"][team]["shooters"]
-        + game["teams"][team]["goalies"]
-    ))
-
-
-def get_team_names(game, team, role):
-    return [
-        get_account_name(game["players"][uid])
-        for uid in game["teams"][team][role]
-    ]
-
-
-def format_names(names):
-    if not names:
-        return "لا يوجد"
-    return "، ".join(names)
-
-
-def distribution_keyboard(chat_id):
+def direction_keyboard(chat_id):
     return InlineKeyboardMarkup([
         [
             InlineKeyboardButton(
-                "🔘 يدوي",
-                callback_data=f"penalty:dist:{chat_id}:manual"
+                f"يسار {DIRECTIONS['يسار']}",
+                callback_data=f"penalty:{chat_id}:يسار"
             ),
             InlineKeyboardButton(
-                "🔘 عشوائي",
-                callback_data=f"penalty:dist:{chat_id}:random"
+                f"وسط {DIRECTIONS['وسط']}",
+                callback_data=f"penalty:{chat_id}:وسط"
+            ),
+            InlineKeyboardButton(
+                f"يمين {DIRECTIONS['يمين']}",
+                callback_data=f"penalty:{chat_id}:يمين"
             ),
         ]
     ])
 
 
-def kick_keyboard(chat_id, user_id):
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton(
-                "يسار 👈🏻",
-                callback_data=f"penalty:kick:{chat_id}:{user_id}:left"
-            ),
-            InlineKeyboardButton(
-                "وسط 🎯",
-                callback_data=f"penalty:kick:{chat_id}:{user_id}:center"
-            ),
-            InlineKeyboardButton(
-                "يمين 👉🏻",
-                callback_data=f"penalty:kick:{chat_id}:{user_id}:right"
-            ),
-        ]
-    ])
+# ==================================================
+# رسالة حالة الركلة
+# ==================================================
+
+def build_kick_status(game):
+    team = game["current_team"]
+    goalie_team = "blue" if team == "red" else "red"
+
+    shooter = game["players"].get(game["current_shooter"])
+    goalie = game["players"].get(game["current_goalie"])
+
+    shooter_emoji = "🔴" if team == "red" else "🔵"
+    goalie_emoji = "🔵" if goalie_team == "blue" else "🔴"
+
+    kick_word = (
+        "الأولى"
+        if game["kick_number"] == 1
+        else "التالية"
+    )
+
+    shooter_status = (
+        "✅ جاهز"
+        if game["shooter_choice"] is not None
+        else "⏳ ينتظر الاختيار"
+    )
+
+    goalie_status = (
+        "✅ جاهز"
+        if game["goalie_choice"] is not None
+        else "⏳ ينتظر الاختيار"
+    )
+
+    return (
+        f"🎮 الجولة {game['kick_number']} — الركلة {kick_word} {shooter_emoji}\n\n"
+        f"🎯 المسدد: {get_player_name(shooter)} {shooter_emoji} ({shooter_status})\n"
+        f"🛡️ الحارس: {get_player_name(goalie)} {goalie_emoji} ({goalie_status})\n\n"
+        "اختر الزاوية من الأزرار بالأسفل:"
+    )
 
 
-# =========================================================
-# بدء اللعبة
-# =========================================================
+# ==================================================
+# تحديث رسالة الركلة نفسها
+# ==================================================
+
+async def update_kick_status(context, chat_id):
+    game = active_penalty_games.get(chat_id)
+
+    if not game:
+        return
+
+    message_id = game.get("kick_message_id")
+
+    if not message_id:
+        return
+
+    try:
+        await context.bot.edit_message_caption(
+            chat_id=chat_id,
+            message_id=message_id,
+            caption=build_kick_status(game),
+            reply_markup=direction_keyboard(chat_id)
+        )
+    except Exception:
+        pass
+
+
+# ==================================================
+# صورة الاستعداد
+# ==================================================
+
+async def send_ready_image(
+    context,
+    chat_id,
+    goalie_team,
+    caption=None,
+    reply_markup=None
+):
+    file_id = READY_IMAGES.get(goalie_team)
+
+    if not file_id:
+        return None
+
+    try:
+        return await context.bot.send_photo(
+            chat_id=chat_id,
+            photo=file_id,
+            caption=caption,
+            reply_markup=reply_markup
+        )
+    except Exception:
+        return None
+
+
+# ==================================================
+# بداية المباراة
+# ==================================================
 
 async def start_penalty_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    message = update.effective_message
-    user = update.effective_user
     chat_id = update.effective_chat.id
-
-    if not can_manage_penalties(user.id):
-        return
+    user = update.effective_user
 
     if chat_id in active_penalty_games:
-        await message.reply_text("❌ فيه مباراة بلنتيات شغالة بالفعل.")
-        raise ApplicationHandlerStop
+        await update.message.reply_text(
+            "• فيه مباراة بلنتيات شغالة بالفعل."
+        )
+        return
 
     active_penalty_games[chat_id] = {
         "players": {},
@@ -193,75 +275,55 @@ async def start_penalty_game(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
         "phase": "registration",
 
-        "teams": {
-            "red": {
-                "shooters": [],
-                "goalies": [],
-            },
-            "blue": {
-                "shooters": [],
-                "goalies": [],
-            },
-        },
+        "red_shooters": [],
+        "blue_shooters": [],
 
-        "assigned": {},
+        "red_goalies": [],
+        "blue_goalies": [],
 
-        "distribution_message_id": None,
-        "distribution_mode": None,
+        "red_shooter_index": 0,
+        "blue_shooter_index": 0,
 
-        "scores": {
-            "red": 0,
-            "blue": 0,
-        },
+        "red_goalie_index": 0,
+        "blue_goalie_index": 0,
 
-        "kicks": {
-            "red": 0,
-            "blue": 0,
-        },
+        "red_score": 0,
+        "blue_score": 0,
 
-        "shooter_index": {
-            "red": 0,
-            "blue": 0,
-        },
-
-        "goalie_index": {
-            "red": 0,
-            "blue": 0,
-        },
-
-        "turn_team": "red",
-
-        "total_kicks": 0,
+        "kick_number": 1,
+        "current_team": "red",
 
         "current_shooter": None,
         "current_goalie": None,
-        "current_shooting_team": None,
-        "current_goalie_team": None,
 
         "shooter_choice": None,
         "goalie_choice": None,
 
+        "shooter_ready": False,
+        "goalie_ready": False,
+
+        "shooter_task": None,
+        "goalie_task": None,
+
         "kick_message_id": None,
-        "choice_task": None,
 
-        "kick_resolving": False,
-        "waiting_continue": False,
+        "resolving": False,
 
-        "sudden_death": False,
+        "manual_message_id": None,
+
+        "used_players": set(),
     }
 
-    await message.reply_text(
-        "⚽️ تم بدء لعبة البلنتيات 🥅\n"
-        "• للانضمام اكتب: دخول\n"
-        "• للبدء اكتب: .ابدا"
+    await update.message.reply_text(
+        "⚽ *مباراة البلنتيات بدأت!*\n\n"
+        "اكتب *دخول* للانضمام إلى المباراة.",
+        parse_mode="Markdown"
     )
 
-    raise ApplicationHandlerStop
 
-
-# =========================================================
-# دخول اللاعبين
-# =========================================================
+# ==================================================
+# دخول لاعب
+# ==================================================
 
 async def join_penalty_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -276,31 +338,26 @@ async def join_penalty_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if game["phase"] != "registration":
         return
 
-    if user.id not in game["players"]:
-        game["players"][user.id] = user
-        game["order"].append(user.id)
+    if user.id in game["players"]:
+        return
 
-        name = get_account_name(user)
+    game["players"][user.id] = user
+    game["order"].append(user.id)
 
-        await update.effective_message.reply_text(
-            f"انضم {name} ⚽ (العدد: {len(game['players'])})"
-        )
+    await update.message.reply_text(
+        f"انضم {get_player_name(user)} ⚽ "
+        f"(العدد: {len(game['players'])})"
+    )
 
-    raise ApplicationHandlerStop
 
+# ==================================================
+# توزيع الفرق
+# ==================================================
 
-# =========================================================
-# رسالة التوزيع
-# =========================================================
-
-async def distribute_penalty_game(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
+async def distribute_penalties(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     chat_id = update.effective_chat.id
     user = update.effective_user
-    message = update.effective_message
 
     game = active_penalty_games.get(chat_id)
 
@@ -310,132 +367,40 @@ async def distribute_penalty_game(
     if not can_manage_penalties(user.id):
         return
 
-    if game["phase"] not in ("registration", "distribution", "manual"):
-        await message.reply_text("❌ التوزيع انتهى بالفعل.")
-        raise ApplicationHandlerStop
+    if game["phase"] != "registration":
+        return
 
     if len(game["players"]) < 2:
-        await message.reply_text("❌ تحتاج لاعبين على الأقل.")
-        raise ApplicationHandlerStop
-
-    # إعادة التوزيع من جديد
-    game["phase"] = "distribution"
-    game["distribution_mode"] = None
-    game["assigned"] = {}
-
-    game["teams"] = {
-        "red": {
-            "shooters": [],
-            "goalies": [],
-        },
-        "blue": {
-            "shooters": [],
-            "goalies": [],
-        },
-    }
-
-    admin_name = get_account_name(user)
-
-    sent = await message.reply_text(
-        f"🛡️ توزيع فرق مباراة البلنتيات (أحمر ضد أزرق)\n"
-        f"يا {admin_name}، كيف تبي نوزّع اللاعبين؟",
-        reply_markup=distribution_keyboard(chat_id)
-    )
-
-    game["distribution_message_id"] = sent.message_id
-
-    # تثبيت رسالة التوزيع إذا البوت يملك الصلاحية
-    try:
-        await context.bot.pin_chat_message(
-            chat_id=chat_id,
-            message_id=sent.message_id,
-            disable_notification=True
+        await update.message.reply_text(
+            "• لازم يدخل لاعبين على الأقل."
         )
-    except Exception:
-        pass
+        return
 
-    raise ApplicationHandlerStop
-
-
-# =========================================================
-# عرض التوزيع اليدوي
-# =========================================================
-
-def build_manual_distribution_text(game):
-
-    lines = [
-        "🛡️ التوزيع اليدوي لمباراة البلنتيات:",
-        "",
-        "📋 اللاعبين:",
-    ]
-
-    for index, uid in enumerate(game["order"], start=1):
-        name = get_account_name(game["players"][uid])
-        lines.append(f"{index}. {name}")
-
-    lines.extend([
-        "",
-        "استخدم الأوامر:",
-        ".احمر 1 2*",
-        ".ازرق 3",
-        "",
-        "⭐ النجمة * = حارس",
-        "بدون نجمة = مسدد",
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(
+                "يدوي",
+                callback_data=f"penalty_dist:{chat_id}:manual"
+            ),
+            InlineKeyboardButton(
+                "عشوائي",
+                callback_data=f"penalty_dist:{chat_id}:random"
+            ),
+        ]
     ])
 
-    unassigned = [
-        uid for uid in game["order"]
-        if uid not in game["assigned"]
-    ]
-
-    if unassigned:
-        lines.extend([
-            "",
-            "⏳ المتبقي:",
-        ])
-
-        for uid in unassigned:
-            index = game["order"].index(uid) + 1
-            name = get_account_name(game["players"][uid])
-            lines.append(f"{index}. {name}")
-
-    return "\n".join(lines)
-
-
-def build_current_distribution(game):
-
-    red_shooters = format_names(
-        get_team_names(game, "red", "shooters")
-    )
-
-    red_goalies = format_names(
-        get_team_names(game, "red", "goalies")
-    )
-
-    blue_shooters = format_names(
-        get_team_names(game, "blue", "shooters")
-    )
-
-    blue_goalies = format_names(
-        get_team_names(game, "blue", "goalies")
-    )
-
-    return (
-        "\n\n"
-        "🔴 الأحمر:\n"
-        f"🎯 المسددين: {red_shooters}\n"
-        f"🛡️ الحراس: {red_goalies}\n\n"
-        "🔵 الأزرق:\n"
-        f"🎯 المسددين: {blue_shooters}\n"
-        f"🛡️ الحراس: {blue_goalies}"
+    await update.message.reply_text(
+        "🛡️ توزيع فرق مباراة البلنتيات (أحمر ضد أزرق)\n"
+        f"يا {get_player_name(user)}، كيف تبي نوزّع اللاعبين؟",
+        reply_markup=keyboard
     )
 
 
-# =========================================================
+# ==================================================
 # Callback التوزيع
-# =========================================================
+# ==================================================
 
-async def penalty_distribution_callback(
+async def distribution_callback(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
@@ -445,911 +410,765 @@ async def penalty_distribution_callback(
 
     data = query.data.split(":")
 
-    if len(data) != 4:
+    if len(data) < 3:
         return
 
-    _, _, chat_id_text, mode = data
-
-    try:
-        chat_id = int(chat_id_text)
-    except ValueError:
-        return
+    chat_id = int(data[1])
+    mode = data[2]
 
     game = active_penalty_games.get(chat_id)
 
     if not game:
-        await query.edit_message_text("❌ انتهت مباراة البلنتيات.")
         return
 
-    user = query.from_user
-
-    if not can_manage_penalties(user.id):
-        await query.answer(
-            "❌ ما عندك صلاحية.",
-            show_alert=True
-        )
-        return
-
-    # -----------------------------------------------------
-    # يدوي
-    # -----------------------------------------------------
+    await query.edit_message_reply_markup(reply_markup=None)
 
     if mode == "manual":
+        await show_manual_distribution(context, chat_id)
 
-        game["phase"] = "manual"
-        game["distribution_mode"] = "manual"
-
-        await query.edit_message_text(
-            build_manual_distribution_text(game)
-        )
-
-        return
-
-    # -----------------------------------------------------
-    # عشوائي
-    # -----------------------------------------------------
-
-    if mode == "random":
-
-        game["phase"] = "ready"
-        game["distribution_mode"] = "random"
-
-        assign_random_teams(game)
-
-        await query.edit_message_text(
-            build_distribution_complete_text(game)
-        )
-
-        return
+    elif mode == "random":
+        await make_random_teams(context, chat_id)
 
 
-# =========================================================
+# ==================================================
 # التوزيع العشوائي
-# =========================================================
+# ==================================================
 
-def assign_random_teams(game):
+async def make_random_teams(context, chat_id):
+
+    game = active_penalty_games.get(chat_id)
+
+    if not game:
+        return
 
     ids = list(game["order"])
     random.shuffle(ids)
 
     count = len(ids)
 
+    game["red_shooters"] = []
+    game["blue_shooters"] = []
+    game["red_goalies"] = []
+    game["blue_goalies"] = []
+
     if count == 2:
 
-        red_id = ids[0]
-        blue_id = ids[1]
+        game["red_shooters"] = [ids[0]]
+        game["blue_shooters"] = [ids[1]]
 
-        game["teams"]["red"]["shooters"] = [red_id]
-        game["teams"]["red"]["goalies"] = [red_id]
+        game["red_goalies"] = [ids[0]]
+        game["blue_goalies"] = [ids[1]]
 
-        game["teams"]["blue"]["shooters"] = [blue_id]
-        game["teams"]["blue"]["goalies"] = [blue_id]
+    else:
 
-        game["assigned"] = {
-            red_id: "red",
-            blue_id: "blue",
-        }
+        red_count = (count + 1) // 2
 
-        return
+        red_players = ids[:red_count]
+        blue_players = ids[red_count:]
 
-    red_size = count // 2
-    blue_size = count // 2
+        game["red_shooters"] = red_players.copy()
+        game["blue_shooters"] = blue_players.copy()
 
-    if count % 2:
-        if random.choice([True, False]):
-            red_size += 1
-        else:
-            blue_size += 1
+        game["red_goalies"] = red_players[:max(1, len(red_players) // 3)]
+        game["blue_goalies"] = blue_players[:max(1, len(blue_players) // 3)]
 
-    red_players = ids[:red_size]
-    blue_players = ids[red_size:]
+        if not game["red_goalies"]:
+            game["red_goalies"] = [red_players[0]]
 
-    game["assigned"] = {}
+        if not game["blue_goalies"]:
+            game["blue_goalies"] = [blue_players[0]]
 
-    for uid in red_players:
-        game["assigned"][uid] = "red"
-
-    for uid in blue_players:
-        game["assigned"][uid] = "blue"
-
-    game["teams"]["red"] = make_random_roles(red_players)
-    game["teams"]["blue"] = make_random_roles(blue_players)
+    await send_distribution_result(context, chat_id)
 
 
-def make_random_roles(players):
-
-    players = list(players)
-    random.shuffle(players)
-
-    if len(players) == 1:
-        return {
-            "shooters": [players[0]],
-            "goalies": [players[0]],
-        }
-
-    goalie = random.choice(players)
-
-    shooters = [
-        uid for uid in players
-        if uid != goalie
-    ]
-
-    random.shuffle(shooters)
-
-    return {
-        "shooters": shooters,
-        "goalies": [goalie],
-    }
-
-
-# =========================================================
+# ==================================================
 # التوزيع اليدوي
-# =========================================================
+# ==================================================
 
-async def manual_red(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-
-    await handle_manual_assignment(
-        update,
-        context,
-        "red"
-    )
-
-
-async def manual_blue(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-
-    await handle_manual_assignment(
-        update,
-        context,
-        "blue"
-    )
-
-
-async def handle_manual_assignment(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-    team
-):
-
-    chat_id = update.effective_chat.id
-    user = update.effective_user
-    message = update.effective_message
+async def show_manual_distribution(context, chat_id):
 
     game = active_penalty_games.get(chat_id)
 
     if not game:
+        return
+
+    game["phase"] = "manual"
+
+    text = (
+        "🛡️ *التوزيع اليدوي*\n\n"
+        "استخدم الأوامر التالية:\n\n"
+        "`.أحمر رقم`\n"
+        "`.أزرق رقم`\n"
+        "`.حارس أحمر رقم`\n"
+        "`.حارس أزرق رقم`\n\n"
+        "مثال:\n"
+        "`.أحمر 1`"
+    )
+
+    message = await context.bot.send_message(
+        chat_id=chat_id,
+        text=text,
+        parse_mode="Markdown"
+    )
+
+    game["manual_message_id"] = message.message_id
+
+
+# ==================================================
+# الحصول على اللاعب بالرقم
+# ==================================================
+
+def get_player_by_number(game, number):
+
+    try:
+        number = int(number)
+    except Exception:
+        return None
+
+    if number < 1 or number > len(game["order"]):
+        return None
+
+    player_id = game["order"][number - 1]
+
+    return player_id
+
+
+# ==================================================
+# الأمر اليدوي
+# ==================================================
+
+async def manual_team_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    chat_id = update.effective_chat.id
+    user = update.effective_user
+
+    game = active_penalty_games.get(chat_id)
+
+    if not game:
+        return
+
+    if not can_manage_penalties(user.id):
         return
 
     if game["phase"] != "manual":
         return
 
-    if not can_manage_penalties(user.id):
+    text = update.message.text.strip()
+
+    parts = text.split()
+
+    if len(parts) < 2:
         return
 
-    text = message.text.strip()
+    command = parts[0]
+    number = parts[-1]
 
-    prefix = ".احمر" if team == "red" else ".ازرق"
+    player_id = get_player_by_number(game, number)
 
-    raw = text[len(prefix):].strip()
-
-    if not raw:
-        return
-
-    tokens = raw.split()
-
-    for token in tokens:
-
-        is_goalie = token.endswith("*")
-
-        number_text = token[:-1] if is_goalie else token
-
-        if not number_text.isdigit():
-            await message.reply_text(
-                "❌ استخدم أرقام اللاعبين فقط."
-            )
-            raise ApplicationHandlerStop
-
-        number = int(number_text)
-
-        if number < 1 or number > len(game["order"]):
-            await message.reply_text(
-                "❌ رقم اللاعب غير موجود."
-            )
-            raise ApplicationHandlerStop
-
-        uid = game["order"][number - 1]
-
-        # اللاعب معين لفريق آخر
-        if uid in game["assigned"]:
-
-            if game["assigned"][uid] != team:
-                await message.reply_text(
-                    "❌ هذا اللاعب موزع بالفعل في الفريق الآخر."
-                )
-                raise ApplicationHandlerStop
-
-            await message.reply_text(
-                "❌ هذا اللاعب موزع بالفعل في هذا الفريق."
-            )
-            raise ApplicationHandlerStop
-
-        game["assigned"][uid] = team
-
-        if is_goalie:
-            game["teams"][team]["goalies"].append(uid)
-        else:
-            game["teams"][team]["shooters"].append(uid)
-
-    # -----------------------------------------------------
-    # إذا اكتمل التوزيع
-    # -----------------------------------------------------
-
-    if len(game["assigned"]) == len(game["players"]):
-
-        # الفريق الذي فيه لاعب واحد:
-        # اللاعب يكون مسدد + حارس
-        for current_team in ("red", "blue"):
-
-            ids = get_team_ids(game, current_team)
-
-            if len(ids) == 1:
-
-                uid = ids[0]
-
-                if uid not in game["teams"][current_team]["shooters"]:
-                    game["teams"][current_team]["shooters"].append(uid)
-
-                if uid not in game["teams"][current_team]["goalies"]:
-                    game["teams"][current_team]["goalies"].append(uid)
-
-        valid, reason = validate_manual_distribution(game)
-
-        if not valid:
-
-            await message.reply_text(
-                f"❌ ما اكتمل التوزيع اليدوي.\n{reason}\n\n"
-                "تقدر تكتب .وزع لإعادة التوزيع."
-            )
-
-            raise ApplicationHandlerStop
-
-        game["phase"] = "ready"
-
-        await message.reply_text(
-            build_distribution_complete_text(game)
+    if not player_id:
+        await update.message.reply_text(
+            "• رقم اللاعب غير صحيح."
         )
+        return
 
-        raise ApplicationHandlerStop
+    if command == ".أحمر":
+        if player_id not in game["red_shooters"]:
+            game["red_shooters"].append(player_id)
 
-    # -----------------------------------------------------
-    # ما زال فيه لاعبين
-    # -----------------------------------------------------
+    elif command == ".أزرق":
+        if player_id not in game["blue_shooters"]:
+            game["blue_shooters"].append(player_id)
 
-    await message.reply_text(
-        build_manual_distribution_text(game)
-        + build_current_distribution(game)
-    )
+    elif command == ".حارس":
+        return
 
-    raise ApplicationHandlerStop
+    elif command == ".حارس_أحمر":
+        if player_id not in game["red_goalies"]:
+            game["red_goalies"].append(player_id)
 
+    elif command == ".حارس_أزرق":
+        if player_id not in game["blue_goalies"]:
+            game["blue_goalies"].append(player_id)
 
-def validate_manual_distribution(game):
+    else:
+        return
 
-    for team in ("red", "blue"):
-
-        ids = get_team_ids(game, team)
-
-        if not ids:
-            return False, f"❌ الفريق {TEAM_NAMES[team]} ما فيه لاعبين."
-
-        if not game["teams"][team]["shooters"]:
-            return False, f"❌ الفريق {TEAM_NAMES[team]} ما فيه مسدد."
-
-        if not game["teams"][team]["goalies"]:
-            return False, f"❌ الفريق {TEAM_NAMES[team]} ما فيه حارس."
-
-    return True, ""
+    await show_manual_status(context, chat_id)
+    await check_manual_completion(context, chat_id)
 
 
-# =========================================================
-# رسالة اكتمال التوزيع
-# =========================================================
+# ==================================================
+# حالة التوزيع اليدوي
+# ==================================================
 
-def build_distribution_complete_text(game):
-
-    red_shooters = format_names(
-        get_team_names(game, "red", "shooters")
-    )
-
-    red_goalies = format_names(
-        get_team_names(game, "red", "goalies")
-    )
-
-    blue_shooters = format_names(
-        get_team_names(game, "blue", "shooters")
-    )
-
-    blue_goalies = format_names(
-        get_team_names(game, "blue", "goalies")
-    )
-
-    return (
-        "🎯 اكتمل التوزيع اليدوي لمباراة البلنتيات!\n\n"
-        "🔴 الفريق الأحمر:\n"
-        f"🎯 المسددين: {red_shooters}\n"
-        f"🛡️ الحراس: {red_goalies}\n\n"
-        "🔵 الفريق الأزرق:\n"
-        f"🎯 المسددين: {blue_shooters}\n"
-        f"🛡️ الحراس: {blue_goalies}\n\n"
-        "الأدمن يكتب .ابدا لبدء ركلات الترجيح! 🚀"
-    )
-
-
-# =========================================================
-# بدء ركلات الترجيح
-# =========================================================
-
-async def begin_penalty_shootout(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-
-    chat_id = update.effective_chat.id
-    user = update.effective_user
-    message = update.effective_message
+async def show_manual_status(context, chat_id):
 
     game = active_penalty_games.get(chat_id)
 
     if not game:
         return
 
-    if not can_manage_penalties(user.id):
-        return
+    def names(ids):
+        return ", ".join(
+            get_player_name(game["players"].get(pid))
+            for pid in ids
+        ) or "لا يوجد"
 
-    if game["phase"] != "ready":
-        await message.reply_text(
-            "❌ وزّع الفرق أولًا."
-        )
-        raise ApplicationHandlerStop
-
-    game["phase"] = "shooting"
-
-    # إزالة تثبيت رسالة التوزيع
-    if game.get("distribution_message_id"):
-
-        try:
-            await context.bot.unpin_chat_message(
-                chat_id=chat_id,
-                message_id=game["distribution_message_id"]
-            )
-        except Exception:
-            pass
-
-    # لا نحذف الرسالة، فقط نتركها في المحادثة.
-    # التثبيت هو الذي يروح بعد بداية المباراة.
-
-    await start_next_penalty_kick(
-        context,
-        chat_id
+    text = (
+        "🛡️ *التوزيع الحالي*\n\n"
+        f"🔴 لاعبو الأحمر:\n{names(game['red_shooters'])}\n\n"
+        f"🔵 لاعبو الأزرق:\n{names(game['blue_shooters'])}\n\n"
+        f"🧤 حراس الأحمر:\n{names(game['red_goalies'])}\n\n"
+        f"🧤 حراس الأزرق:\n{names(game['blue_goalies'])}"
     )
 
-    raise ApplicationHandlerStop
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=text,
+        parse_mode="Markdown"
+    )
 
 
-# =========================================================
-# تحديد رسالة ركلة حاسمة / بقاء
-# =========================================================
+# ==================================================
+# فحص اكتمال التوزيع
+# ==================================================
 
-def get_decisive_warning(
-    game,
-    shooting_team,
-    shooter_name,
-    goalie_name
-):
+async def check_manual_completion(context, chat_id):
 
-    if game["sudden_death"]:
+    game = active_penalty_games.get(chat_id)
+
+    if not game:
+        return
+
+    if not game["red_shooters"]:
+        return
+
+    if not game["blue_shooters"]:
+        return
+
+    if not game["red_goalies"]:
+        return
+
+    if not game["blue_goalies"]:
+        return
+
+    await send_distribution_result(context, chat_id)
+
+
+# ==================================================
+# إرسال نتيجة التوزيع
+# ==================================================
+
+async def send_distribution_result(context, chat_id):
+
+    game = active_penalty_games.get(chat_id)
+
+    if not game:
+        return
+
+    game["phase"] = "shootout"
+
+    def names(ids):
+        return ", ".join(
+            get_player_name(game["players"].get(pid))
+            for pid in ids
+        ) or "لا يوجد"
+
+    text = (
+        "🛡️ *تم توزيع الفرق!*\n\n"
+        f"🔴 *الفريق الأحمر*\n"
+        f"🎯 المسددون: {names(game['red_shooters'])}\n"
+        f"🧤 الحراس: {names(game['red_goalies'])}\n\n"
+        f"🔵 *الفريق الأزرق*\n"
+        f"🎯 المسددون: {names(game['blue_shooters'])}\n"
+        f"🧤 الحراس: {names(game['blue_goalies'])}\n\n"
+        "⚽ تبدأ المباراة الآن!"
+    )
+
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=text,
+        parse_mode="Markdown"
+    )
+
+    await begin_penalties(context, chat_id)
+
+
+# ==================================================
+# بداية البلنتيات
+# ==================================================
+
+async def begin_penalties(context, chat_id):
+
+    game = active_penalty_games.get(chat_id)
+
+    if not game:
+        return
+
+    game["phase"] = "shootout"
+    game["kick_number"] = 1
+    game["current_team"] = "red"
+
+    await next_shooter(context, chat_id)
+
+
+# ==================================================
+# الحصول على المسدد
+# ==================================================
+
+def next_shooter(game, team):
+
+    if team == "red":
+        shooters = game["red_shooters"]
+        index = game["red_shooter_index"]
+
+        if not shooters:
+            return None
+
+        player_id = shooters[index % len(shooters)]
+        game["red_shooter_index"] += 1
+
+        return player_id
+
+    shooters = game["blue_shooters"]
+    index = game["blue_shooter_index"]
+
+    if not shooters:
         return None
 
-    opponent = opposite_team(shooting_team)
+    player_id = shooters[index % len(shooters)]
+    game["blue_shooter_index"] += 1
 
-    shooting_score = game["scores"][shooting_team]
-    opponent_score = game["scores"][opponent]
-
-    shooting_kicks = game["kicks"][shooting_team]
-    opponent_kicks = game["kicks"][opponent]
-
-    # هذه الركلة هي الركلة رقم shooting_kicks + 1
-    remaining_shooting_after = 5 - (shooting_kicks + 1)
-    remaining_opponent = 5 - opponent_kicks
-
-    # إذا سجل، يحسم المباراة
-    score_if_goal = shooting_score + 1
-
-    if score_if_goal > opponent_score + remaining_opponent:
-
-        return (
-            "⚠️ ركلة حاسمة للبطولة!\n"
-            f"إذا سجلها {shooter_name}، يفوز "
-            f"{TEAM_NAMES[shooting_team]} باللقب! 🏆"
-        )
-
-    # إذا لم يسجل، الفريق الآخر يفوز رياضيًا
-    if (
-        opponent_score > shooting_score
-        and opponent_score
-        > shooting_score + remaining_shooting_after
-    ):
-
-        return (
-            "⚠️ ضغوط هائلة!\n"
-            f"يجب على {shooter_name} التسجيل للاستمرار، "
-            f"إذا ضاعت أو صدها الحارس {goalie_name} "
-            f"يفوز {TEAM_NAMES[opponent]} باللقب! 🏆"
-        )
-
-    return None
+    return player_id
 
 
-# =========================================================
-# نص الاختيار
-# =========================================================
+# ==================================================
+# الحصول على الحارس
+# ==================================================
 
-def build_kick_caption(game):
+def next_goalie(game, team):
 
-    shooting_team = game["current_shooting_team"]
-    goalie_team = game["current_goalie_team"]
+    if team == "red":
+        goalies = game["red_goalies"]
+        index = game["red_goalie_index"]
 
-    shooter = game["current_shooter"]
-    goalie = game["current_goalie"]
+        if not goalies:
+            return None
 
-    shooter_name = get_account_name(game["players"][shooter])
-    goalie_name = get_account_name(game["players"][goalie])
+        player_id = goalies[index % len(goalies)]
+        game["red_goalie_index"] += 1
 
-    shooter_status = (
-        "✅ جاهز"
-        if game["shooter_choice"] is not None
-        else "⏳ ينتظر الاختيار"
-    )
+        return player_id
 
-    goalie_status = (
-        "✅ جاهز"
-        if game["goalie_choice"] is not None
-        else "⏳ ينتظر الاختيار"
-    )
+    goalies = game["blue_goalies"]
+    index = game["blue_goalie_index"]
 
-    round_number = game["total_kicks"]
+    if not goalies:
+        return None
 
-    if round_number == 1:
-        kick_text = "الركلة الأولى"
-    else:
-        kick_text = f"الركلة {round_number}"
+    player_id = goalies[index % len(goalies)]
+    game["blue_goalie_index"] += 1
 
-    return (
-        f"🎮 *الجولة {round_number} — {kick_text} "
-        f"{TEAM_EMOJIS[shooting_team]}*\n\n"
-        f"🎯 المسدد: {shooter_name} "
-        f"{TEAM_EMOJIS[shooting_team]} ({shooter_status})\n"
-        f"🛡️ الحارس: {goalie_name} "
-        f"{TEAM_EMOJIS[goalie_team]} ({goalie_status})\n\n"
-        "اختر الزاوية من الأزرار بالأسفل:"
-    )
+    return player_id
 
 
-# =========================================================
+# ==================================================
 # بدء الركلة
-# =========================================================
+# ==================================================
 
-async def start_next_penalty_kick(
-    context: ContextTypes.DEFAULT_TYPE,
-    chat_id
-):
+async def start_kick(context, chat_id):
 
     game = active_penalty_games.get(chat_id)
 
     if not game:
         return
 
-    if game["phase"] != "shooting":
+    if game["phase"] != "shootout":
         return
 
-    game["waiting_continue"] = False
-    game["kick_resolving"] = False
+    team = game["current_team"]
+    goalie_team = "blue" if team == "red" else "red"
 
-    shooting_team = game["turn_team"]
-    goalie_team = opposite_team(shooting_team)
-
-    shooters = game["teams"][shooting_team]["shooters"]
-    goalies = game["teams"][goalie_team]["goalies"]
-
-    if not shooters or not goalies:
-        return
-
-    shooter_index = (
-        game["shooter_index"][shooting_team]
-        % len(shooters)
-    )
-
-    goalie_index = (
-        game["goalie_index"][goalie_team]
-        % len(goalies)
-    )
-
-    shooter_id = shooters[shooter_index]
-    goalie_id = goalies[goalie_index]
+    shooter_id = next_shooter(game, team)
+    goalie_id = next_goalie(game, goalie_team)
 
     game["current_shooter"] = shooter_id
     game["current_goalie"] = goalie_id
 
-    game["current_shooting_team"] = shooting_team
-    game["current_goalie_team"] = goalie_team
-
     game["shooter_choice"] = None
     game["goalie_choice"] = None
 
-    game["total_kicks"] += 1
+    game["shooter_ready"] = False
+    game["goalie_ready"] = False
 
-    # -----------------------------------------------------
-    # ركلة حاسمة / بقاء
-    # -----------------------------------------------------
+    game["resolving"] = False
+    game["kick_message_id"] = None
 
-    warning = get_decisive_warning(
-        game,
-        shooting_team,
-        get_account_name(game["players"][shooter_id]),
-        get_account_name(game["players"][goalie_id])
+    caption = build_kick_status(game)
+
+    message = await send_ready_image(
+        context,
+        chat_id,
+        goalie_team,
+        caption=caption,
+        reply_markup=direction_keyboard(chat_id)
     )
 
-    if warning:
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text=warning
-        )
+    if message:
+        game["kick_message_id"] = message.message_id
 
-    # -----------------------------------------------------
-    # صورة الاستعداد + الكابشن في نفس الرسالة
-    # -----------------------------------------------------
+    game["shooter_task"] = asyncio.create_task(
+        choice_timeout(context, chat_id, "shooter")
+    )
 
-    caption = build_kick_caption(game)
-
-    image_id = START_IMAGES[goalie_team]
-
-    try:
-
-        sent = await context.bot.send_photo(
-            chat_id=chat_id,
-            photo=image_id,
-            caption=caption,
-            parse_mode="Markdown",
-            reply_markup=kick_keyboard(
-                chat_id,
-                shooter_id
-            )
-        )
-
-    except Exception:
-
-        # في حال فشل إرسال الصورة، لا تتوقف اللعبة
-        sent = await context.bot.send_message(
-            chat_id=chat_id,
-            text=caption,
-            parse_mode="Markdown",
-            reply_markup=kick_keyboard(
-                chat_id,
-                shooter_id
-            )
-        )
-
-    game["kick_message_id"] = sent.message_id
-
-    # -----------------------------------------------------
-    # مؤقت 30 ثانية
-    # -----------------------------------------------------
-
-    game["choice_task"] = asyncio.create_task(
-        penalty_choice_timeout(
-            context,
-            chat_id
-        )
+    game["goalie_task"] = asyncio.create_task(
+        choice_timeout(context, chat_id, "goalie")
     )
 
 
-# =========================================================
-# تحديث كابشن رسالة الصورة
-# =========================================================
+# ==================================================
+# تحذير الركلة
+# ==================================================
 
-async def update_kick_message(
-    context,
-    chat_id,
-    game,
-    remove_buttons=False
-):
+def get_kick_warning(game):
 
-    message_id = game.get("kick_message_id")
+    red_score = game["red_score"]
+    blue_score = game["blue_score"]
 
-    if not message_id:
-        return
+    team = game["current_team"]
+    kick_number = game["kick_number"]
 
-    caption = build_kick_caption(game)
+    # ==============================================
+    # الركلات الخمس الأولى
+    # ==============================================
 
-    markup = None
+    if kick_number <= 10:
 
-    if not remove_buttons:
-        markup = kick_keyboard(
-            chat_id,
-            game["current_shooter"]
-        )
+        if team == "red":
+
+            red_kicks = (kick_number + 1) // 2
+            blue_kicks = kick_number // 2
+
+            blue_remaining = max(0, 5 - blue_kicks)
+            red_remaining_after = max(0, 5 - red_kicks)
+
+            # إذا سجل الأحمر الآن يصبح غير قابل للحاق
+            if red_score + 1 > blue_score + blue_remaining:
+                shooter = game["players"].get(game["current_shooter"])
+
+                return (
+                    "⚠️ ركلة حاسمة للبطولة!\n"
+                    f"إذا سجلها {get_player_name(shooter)}، "
+                    "يفوز 🔴 الفريق الأحمر باللقب! 🏆"
+                )
+
+            # إذا كان الأحمر متأخرًا ومضيعة هذه الركلة تنهي المباراة
+            if (
+                red_score < blue_score
+                and red_score + red_remaining_after < blue_score
+            ):
+                shooter = game["players"].get(game["current_shooter"])
+                goalie = game["players"].get(game["current_goalie"])
+
+                return (
+                    "⚠️ ضغوط هائلة!\n"
+                    f"يجب على {get_player_name(shooter)} التسجيل للاستمرار، "
+                    f"إذا ضاعت أو صدها الحارس {get_player_name(goalie)} "
+                    "يفوز 🔵 الفريق الأزرق باللقب! 🏆"
+                )
+
+        else:
+
+            blue_kicks = (kick_number + 1) // 2
+            red_kicks = kick_number // 2
+
+            red_remaining = max(0, 5 - red_kicks)
+            blue_remaining_after = max(0, 5 - blue_kicks)
+
+            # إذا سجل الأزرق الآن يصبح غير قابل للحاق
+            if blue_score + 1 > red_score + red_remaining:
+                shooter = game["players"].get(game["current_shooter"])
+
+                return (
+                    "⚠️ ركلة حاسمة للبطولة!\n"
+                    f"إذا سجلها {get_player_name(shooter)}، "
+                    "يفوز 🔵 الفريق الأزرق باللقب! 🏆"
+                )
+
+            # إذا كان الأزرق متأخرًا ومضيعة هذه الركلة تنهي المباراة
+            if (
+                blue_score < red_score
+                and blue_score + blue_remaining_after < red_score
+            ):
+                shooter = game["players"].get(game["current_shooter"])
+                goalie = game["players"].get(game["current_goalie"])
+
+                return (
+                    "⚠️ ضغوط هائلة!\n"
+                    f"يجب على {get_player_name(shooter)} التسجيل للاستمرار، "
+                    f"إذا ضاعت أو صدها الحارس {get_player_name(goalie)} "
+                    "يفوز 🔴 الفريق الأحمر باللقب! 🏆"
+                )
+
+    # ==============================================
+    # الموت المفاجئ
+    # ==============================================
+
+    elif kick_number > 10 and kick_number % 2 == 0:
+
+        # الأزرق هو المسدد الثاني في الجولة المفاجئة
+        shooter = game["players"].get(game["current_shooter"])
+        goalie = game["players"].get(game["current_goalie"])
+
+        if blue_score < red_score:
+
+            return (
+                "⚠️ ضغوط هائلة!\n"
+                f"يجب على {get_player_name(shooter)} التسجيل للاستمرار، "
+                f"إذا ضاعت أو صدها الحارس {get_player_name(goalie)} "
+                "يفوز 🔴 الفريق الأحمر باللقب! 🏆"
+            )
+
+        if blue_score == red_score:
+
+            return (
+                "⚠️ ركلة حاسمة للبطولة!\n"
+                f"إذا سجلها {get_player_name(shooter)}، "
+                "يفوز 🔵 الفريق الأزرق باللقب! 🏆"
+            )
+
+    return None
+
+
+# ==================================================
+# مؤقت الاختيار
+# ==================================================
+
+async def choice_timeout(context, chat_id, role):
 
     try:
+        await asyncio.sleep(TURN_TIME)
 
-        await context.bot.edit_message_caption(
-            chat_id=chat_id,
-            message_id=message_id,
-            caption=caption,
-            parse_mode="Markdown",
-            reply_markup=markup
-        )
+        game = active_penalty_games.get(chat_id)
 
-    except Exception:
+        if not game:
+            return
 
-        try:
-            await context.bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=message_id,
-                text=caption,
-                parse_mode="Markdown",
-                reply_markup=markup
-            )
-        except Exception:
-            pass
+        if game["phase"] != "shootout":
+            return
+
+        if game["resolving"]:
+            return
+
+        if role == "shooter":
+
+            if game["shooter_choice"] is None:
+                game["shooter_choice"] = "وسط"
+                game["shooter_ready"] = True
+
+                await update_kick_status(context, chat_id)
+
+        elif role == "goalie":
+
+            if game["goalie_choice"] is None:
+                game["goalie_choice"] = "وسط"
+                game["goalie_ready"] = True
+
+                await update_kick_status(context, chat_id)
+
+        if (
+            game["shooter_choice"] is not None
+            and game["goalie_choice"] is not None
+            and not game["resolving"]
+        ):
+            game["resolving"] = True
+
+            await resolve_kick(context, chat_id)
+
+    except asyncio.CancelledError:
+        pass
 
 
-# =========================================================
-# اختيار اللاعب
-# =========================================================
+# ==================================================
+# اختيار الاتجاه
+# ==================================================
 
-async def penalty_kick_callback(
+async def penalty_direction_callback(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
 
     query = update.callback_query
+    await query.answer()
 
     data = query.data.split(":")
 
-    if len(data) != 5:
-        await query.answer()
+    if len(data) < 3:
         return
 
-    _, _, chat_id_text, callback_user_text, direction = data
-
-    try:
-        chat_id = int(chat_id_text)
-        callback_user_id = int(callback_user_text)
-    except ValueError:
-        await query.answer()
-        return
+    chat_id = int(data[1])
+    direction = data[2]
 
     game = active_penalty_games.get(chat_id)
 
     if not game:
-        await query.answer(
-            "❌ انتهت المباراة.",
-            show_alert=True
-        )
+        return
+
+    if game["phase"] != "shootout":
+        return
+
+    if game["resolving"]:
         return
 
     user_id = query.from_user.id
 
-    if user_id != callback_user_id:
-        await query.answer(
-            "❌ هذا الزر مو لك.",
-            show_alert=True
-        )
-        return
+    shooter_id = game["current_shooter"]
+    goalie_id = game["current_goalie"]
 
-    # -----------------------------------------------------
-    # من خارج المباراة
-    # -----------------------------------------------------
-
-    if user_id not in game["players"]:
-
-        await query.answer(
-            "❌ انت مو بالقيم اصلا!",
-            show_alert=True
-        )
-        return
-
-    # -----------------------------------------------------
-    # إذا انتهت الركلة
-    # -----------------------------------------------------
-
-    if game["kick_resolving"]:
-
-        await query.answer(
-            "❌ تم اختيار الاتجاه بالفعل.",
-            show_alert=True
-        )
-        return
-
-    # -----------------------------------------------------
-    # المسدد
-    # -----------------------------------------------------
-
-    if user_id == game["current_shooter"]:
+    if user_id == shooter_id:
 
         if game["shooter_choice"] is not None:
-
             await query.answer(
-                "❌ اخترت اتجاهك بالفعل.",
+                "اخترت اتجاهك بالفعل.",
                 show_alert=True
             )
             return
 
         game["shooter_choice"] = direction
+        game["shooter_ready"] = True
 
-        await query.answer(
-            "✅ تم اختيار اتجاه التسديد."
-        )
-
-    # -----------------------------------------------------
-    # الحارس
-    # -----------------------------------------------------
-
-    elif user_id == game["current_goalie"]:
+    elif user_id == goalie_id:
 
         if game["goalie_choice"] is not None:
-
             await query.answer(
-                "❌ اخترت اتجاهك بالفعل.",
+                "اخترت اتجاهك بالفعل.",
                 show_alert=True
             )
             return
 
         game["goalie_choice"] = direction
-
-        await query.answer(
-            "✅ تم اختيار اتجاه الحارس."
-        )
-
-    # -----------------------------------------------------
-    # لاعب موجود لكنه مو دوره
-    # -----------------------------------------------------
+        game["goalie_ready"] = True
 
     else:
 
         await query.answer(
-            "❌ انتظر، ليس دورك!",
+            "• هذي الركلة مو لك.",
             show_alert=True
         )
         return
 
-    # تحديث نفس رسالة الصورة
-    await update_kick_message(
-        context,
-        chat_id,
-        game
-    )
-
-    # -----------------------------------------------------
-    # الاثنين اختاروا
-    # -----------------------------------------------------
+    await update_kick_status(context, chat_id)
 
     if (
         game["shooter_choice"] is not None
         and game["goalie_choice"] is not None
+        and not game["resolving"]
     ):
 
-        game["kick_resolving"] = True
+        game["resolving"] = True
 
-        if game.get("choice_task"):
-            game["choice_task"].cancel()
-            game["choice_task"] = None
+        if game.get("shooter_task"):
+            game["shooter_task"].cancel()
 
-        await update_kick_message(
-            context,
-            chat_id,
-            game,
-            remove_buttons=True
-        )
+        if game.get("goalie_task"):
+            game["goalie_task"].cancel()
 
-        await resolve_penalty_kick(
-            context,
-            chat_id
-        )
+        await resolve_kick(context, chat_id)
 
 
-# =========================================================
-# انتهاء 30 ثانية
-# =========================================================
+# ==================================================
+# تحديد الفائز
+# ==================================================
 
-async def penalty_choice_timeout(
-    context,
-    chat_id
-):
+def get_winner_if_finished(game):
 
-    try:
+    red_score = game["red_score"]
+    blue_score = game["blue_score"]
 
-        await asyncio.sleep(30)
+    kick_number = game["kick_number"]
 
-    except asyncio.CancelledError:
-        return
+    # ==============================================
+    # الركلات الخمس الأولى
+    # ==============================================
+
+    if kick_number <= 10:
+
+        red_kicks = (kick_number + 1) // 2
+        blue_kicks = kick_number // 2
+
+        red_remaining = max(0, 5 - red_kicks)
+        blue_remaining = max(0, 5 - blue_kicks)
+
+        if red_score > blue_score + blue_remaining:
+            return "red"
+
+        if blue_score > red_score + red_remaining:
+            return "blue"
+
+        if red_kicks == 5 and blue_kicks == 5:
+
+            if red_score > blue_score:
+                return "red"
+
+            if blue_score > red_score:
+                return "blue"
+
+            return None
+
+    # ==============================================
+    # الموت المفاجئ
+    # ==============================================
+
+    else:
+
+        # بعد ركلة الأزرق الثانية في كل زوج
+        if kick_number % 2 == 0:
+
+            if red_score > blue_score:
+                return "red"
+
+            if blue_score > red_score:
+                return "blue"
+
+    return None
+
+
+# ==================================================
+# حل الركلة
+# ==================================================
+
+async def resolve_kick(context, chat_id):
 
     game = active_penalty_games.get(chat_id)
 
     if not game:
         return
 
-    if game["kick_resolving"]:
-        return
+    team = game["current_team"]
+    goalie_team = "blue" if team == "red" else "red"
 
-    game["kick_resolving"] = True
+    shooter_choice = game["shooter_choice"]
+    goalie_choice = game["goalie_choice"]
 
-    # الذي ما اختار = وسط
-    if game["shooter_choice"] is None:
-        game["shooter_choice"] = "center"
+    shooter = game["players"].get(game["current_shooter"])
+    goalie = game["players"].get(game["current_goalie"])
 
-    if game["goalie_choice"] is None:
-        game["goalie_choice"] = "center"
+    # ==============================================
+    # التحذير
+    # ==============================================
 
-    # نفس رسالة الصورة تتحدث إلى جاهز
-    await update_kick_message(
-        context,
-        chat_id,
-        game,
-        remove_buttons=True
-    )
+    warning = get_kick_warning(game)
 
-    await resolve_penalty_kick(
-        context,
-        chat_id
-    )
+    if warning:
 
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=warning
+        )
 
-# =========================================================
-# نتيجة الركلة
-# =========================================================
-
-async def resolve_penalty_kick(
-    context,
-    chat_id
-):
-
-    game = active_penalty_games.get(chat_id)
-
-    if not game:
-        return
-
-    shooter_direction = game["shooter_choice"]
-    goalie_direction = game["goalie_choice"]
-
-    shooting_team = game["current_shooting_team"]
-    goalie_team = game["current_goalie_team"]
-
-    shooter_id = game["current_shooter"]
-    goalie_id = game["current_goalie"]
-
-    shooter_name = get_account_name(
-        game["players"][shooter_id]
-    )
-
-    goalie_name = get_account_name(
-        game["players"][goalie_id]
-    )
-
-    # نفس الاتجاه = تصدي
-    is_goal = shooter_direction != goalie_direction
-
-    if is_goal:
-        game["scores"][shooting_team] += 1
-
-    # -----------------------------------------------------
-    # التشويقية
-    # -----------------------------------------------------
+    # ==============================================
+    # التشويق
+    # ==============================================
 
     teaser = await context.bot.send_message(
         chat_id=chat_id,
@@ -1358,98 +1177,83 @@ async def resolve_penalty_kick(
 
     await asyncio.sleep(5)
 
-    # لو الأدمن أنهى اللعبة أثناء الانتظار
-    if active_penalty_games.get(chat_id) is not game:
-        try:
-            await teaser.delete()
-        except Exception:
-            pass
-        return
-
     try:
-        await teaser.delete()
+        await context.bot.delete_message(
+            chat_id=chat_id,
+            message_id=teaser.message_id
+        )
     except Exception:
         pass
 
-    # -----------------------------------------------------
-    # صورة النتيجة
-    # -----------------------------------------------------
+    # ==============================================
+    # تحديد النتيجة
+    # ==============================================
 
-    image_id = RESULT_IMAGES[
-        goalie_team
-    ][
-        goalie_direction
-    ][
-        shooter_direction
-    ]
+    goal = shooter_choice != goalie_choice
 
-    shooter_direction_text = DIRECTION_NAMES[shooter_direction]
-    goalie_direction_text = DIRECTION_NAMES[goalie_direction]
+    if goal:
 
-    shooter_direction_emoji = DIRECTION_EMOJIS[
-        shooter_direction
-    ]
+        if team == "red":
+            game["red_score"] += 1
+        else:
+            game["blue_score"] += 1
 
-    goalie_direction_emoji = DIRECTION_EMOJIS[
-        goalie_direction
-    ]
+    image_id = RESULT_IMAGES.get(
+        (
+            goalie_team,
+            shooter_choice,
+            goalie_choice
+        )
+    )
 
-    if is_goal:
+    red_score = game["red_score"]
+    blue_score = game["blue_score"]
 
-        caption = (
-            f"⚽ قوووول!! هدف لصالح {shooter_name} "
-            f"(فريق {'الأحمر 🔴' if shooting_team == 'red' else 'الأزرق 🔵'}) 🔥\n\n"
-            f"🎯 المسدد سدد في {shooter_direction_text} "
-            f"{shooter_direction_emoji} والحارس ارتمى إلى "
-            f"{goalie_direction_text} {goalie_direction_emoji}!\n\n"
-            f"📊 النتيجة: "
-            f"🔴 الأحمر {game['scores']['red']} - "
-            f"{game['scores']['blue']} الأزرق 🔵"
+    shooter_emoji = "🔴" if team == "red" else "🔵"
+    goalie_emoji = "🔵" if goalie_team == "blue" else "🔴"
+
+    if goal:
+
+        result_text = (
+            f"⚽ هدف!\n\n"
+            f"🎯 المسدد: {get_player_name(shooter)} {shooter_emoji}\n"
+            f"🛡️ الحارس: {get_player_name(goalie)} {goalie_emoji}\n\n"
+            f"🎯 اختيار المسدد: {DIRECTIONS[shooter_choice]}\n"
+            f"🛡️ اختيار الحارس: {DIRECTIONS[goalie_choice]}\n\n"
+            f"📊 النتيجة: 🔴 {red_score} - {blue_score} 🔵"
         )
 
     else:
 
-        caption = (
-            "🧤 ياساتر صدها الحارس! مستحييل! 💥\n\n"
-            f"🛡️ الحارس {goalie_name} "
-            f"(فريق {'الأحمر 🔴' if goalie_team == 'red' else 'الأزرق 🔵'}) "
-            f"تصدى للكرة في {goalie_direction_text} "
-            f"{goalie_direction_emoji}!"
-            "\n\n"
-            f"📊 النتيجة: "
-            f"🔴 الأحمر {game['scores']['red']} - "
-            f"{game['scores']['blue']} الأزرق 🔵"
+        result_text = (
+            f"🧤 تصدي!\n\n"
+            f"🎯 المسدد: {get_player_name(shooter)} {shooter_emoji}\n"
+            f"🛡️ الحارس: {get_player_name(goalie)} {goalie_emoji}\n\n"
+            f"🎯 اختيار المسدد: {DIRECTIONS[shooter_choice]}\n"
+            f"🛡️ اختيار الحارس: {DIRECTIONS[goalie_choice]}\n\n"
+            f"📊 النتيجة: 🔴 {red_score} - {blue_score} 🔵"
         )
 
-    try:
+    if image_id:
 
         await context.bot.send_photo(
             chat_id=chat_id,
             photo=image_id,
-            caption=caption
+            caption=result_text
         )
 
-    except Exception:
+    else:
 
         await context.bot.send_message(
             chat_id=chat_id,
-            text=caption
+            text=result_text
         )
 
-    # -----------------------------------------------------
-    # تحديث عدد الركلات
-    # -----------------------------------------------------
+    # ==============================================
+    # فحص الفائز
+    # ==============================================
 
-    game["kicks"][shooting_team] += 1
-
-    game["shooter_index"][shooting_team] += 1
-    game["goalie_index"][goalie_team] += 1
-
-    # -----------------------------------------------------
-    # هل انتهت المباراة؟
-    # -----------------------------------------------------
-
-    winner = get_match_winner(game)
+    winner = get_winner_if_finished(game)
 
     if winner:
 
@@ -1461,16 +1265,9 @@ async def resolve_penalty_kick(
 
         return
 
-    # -----------------------------------------------------
-    # الانتقال للفريق الآخر
-    # -----------------------------------------------------
-
-    game["turn_team"] = opposite_team(
-        shooting_team
-    )
-
-    game["waiting_continue"] = True
-    game["kick_resolving"] = False
+    # ==============================================
+    # انتظار .كمل
+    # ==============================================
 
     await context.bot.send_message(
         chat_id=chat_id,
@@ -1478,120 +1275,43 @@ async def resolve_penalty_kick(
     )
 
 
-# =========================================================
-# تحديد الفائز
-# =========================================================
+# ==================================================
+# الركلة التالية
+# ==================================================
 
-def get_match_winner(game):
-
-    red_score = game["scores"]["red"]
-    blue_score = game["scores"]["blue"]
-
-    red_kicks = game["kicks"]["red"]
-    blue_kicks = game["kicks"]["blue"]
-
-    # -----------------------------------------------------
-    # الركلات المفاجئة
-    # -----------------------------------------------------
-
-    if game["sudden_death"]:
-
-        # بعد أن نفذ الفريقان نفس العدد
-        if red_kicks == blue_kicks:
-
-            if red_score > blue_score:
-                return "red"
-
-            if blue_score > red_score:
-                return "blue"
-
-        return None
-
-    # -----------------------------------------------------
-    # أول خمس ركلات
-    # -----------------------------------------------------
-
-    remaining_red = 5 - red_kicks
-    remaining_blue = 5 - blue_kicks
-
-    if red_score > blue_score + remaining_red:
-        return "red"
-
-    if blue_score > red_score + remaining_blue:
-        return "blue"
-
-    # -----------------------------------------------------
-    # خلصت الخمس لكل فريق
-    # -----------------------------------------------------
-
-    if red_kicks >= 5 and blue_kicks >= 5:
-
-        if red_score > blue_score:
-            return "red"
-
-        if blue_score > red_score:
-            return "blue"
-
-        # تعادل -> ركلات مفاجئة
-        game["sudden_death"] = True
-
-        return None
-
-    return None
-
-
-# =========================================================
-# .كمل
-# =========================================================
-
-async def continue_penalty_shootout(
+async def continue_penalties(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
 
     chat_id = update.effective_chat.id
     user = update.effective_user
-    message = update.effective_message
 
     game = active_penalty_games.get(chat_id)
 
     if not game:
         return
 
+    if game["phase"] != "shootout":
+        return
+
     if not can_manage_penalties(user.id):
         return
 
-    if game["phase"] != "shooting":
-        return
+    game["kick_number"] += 1
 
-    if not game["waiting_continue"]:
-        return
-
-    game["waiting_continue"] = False
-
-    # بعد نهاية الخمس بالتعادل
-    if game["sudden_death"] and game["kicks"]["red"] == 5:
-
-        # أول ركلة مفاجئة ستكون للأحمر
-        game["turn_team"] = "red"
-
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text="🔥 تعادل بعد 5 ركلات لكل فريق!\n"
-                 "ننتقل الآن للركلات الحاسمة!!."
-        )
-
-    await start_next_penalty_kick(
-        context,
-        chat_id
+    game["current_team"] = (
+        "blue"
+        if game["current_team"] == "red"
+        else "red"
     )
 
-    raise ApplicationHandlerStop
+    await start_kick(context, chat_id)
 
 
-# =========================================================
-# إنهاء المباراة وإعطاء الجوائز
-# =========================================================
+# ==================================================
+# إنهاء المباراة
+# ==================================================
 
 async def finish_penalty_game(
     context,
@@ -1599,85 +1319,81 @@ async def finish_penalty_game(
     winner
 ):
 
-    game = active_penalty_games.pop(
-        chat_id,
-        None
-    )
+    game = active_penalty_games.get(chat_id)
 
     if not game:
         return
 
     game["phase"] = "finished"
 
-    # إلغاء المؤقت
-    if game.get("choice_task"):
+    if game.get("shooter_task"):
+        game["shooter_task"].cancel()
 
-        try:
-            game["choice_task"].cancel()
-        except Exception:
-            pass
+    if game.get("goalie_task"):
+        game["goalie_task"].cancel()
 
-        game["choice_task"] = None
+    red_score = game["red_score"]
+    blue_score = game["blue_score"]
 
-    red_score = game["scores"]["red"]
-    blue_score = game["scores"]["blue"]
+    if winner == "red":
 
-    winner_emoji = TEAM_EMOJIS[winner]
-
-    await context.bot.send_message(
-        chat_id=chat_id,
-        text=(
-            "🏆 انتهت مباراة البلنتيات! 🏆\n\n"
-            f"🎉 الفائز: {winner_emoji} "
-            f"{TEAM_NAMES[winner]}!\n\n"
-            f"النتيجة النهائية: "
-            f"🔴 الأحمر {red_score} - "
-            f"{blue_score} الأزرق 🔵"
+        winner_ids = (
+            game["red_shooters"]
+            + game["red_goalies"]
         )
-    )
 
-    # -----------------------------------------------------
-    # إلغاء تثبيت رسالة التوزيع بعد انتهاء المباراة
-    # -----------------------------------------------------
-
-    if game.get("distribution_message_id"):
-
-        try:
-
-            await context.bot.unpin_chat_message(
-                chat_id=chat_id,
-                message_id=game["distribution_message_id"]
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=(
+                f"🏆 فاز 🔴 الفريق الأحمر!\n\n"
+                f"📊 النتيجة النهائية: "
+                f"🔴 {red_score} - {blue_score} 🔵"
             )
+        )
 
-        except Exception:
-            pass
+    else:
 
-    # -----------------------------------------------------
+        winner_ids = (
+            game["blue_shooters"]
+            + game["blue_goalies"]
+        )
+
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=(
+                f"🏆 فاز 🔵 الفريق الأزرق!\n\n"
+                f"📊 النتيجة النهائية: "
+                f"🔴 {red_score} - {blue_score} 🔵"
+            )
+        )
+
+    # ==============================================
     # الجوائز
-    # -----------------------------------------------------
-
-    winner_ids = get_team_ids(
-        game,
-        winner
-    )
+    # ==============================================
 
     reward_lines = [
         "✨ جوائز الفريق الفائز: ✨"
     ]
 
-    for uid in winner_ids:
+    rewarded = set()
 
-        try:
-            add_points(uid, 50)
-        except Exception:
-            pass
+    for player_id in winner_ids:
 
-        name = get_account_name(
-            game["players"][uid]
-        )
+        if player_id in rewarded:
+            continue
+
+        rewarded.add(player_id)
+
+        player = game["players"].get(player_id)
+
+        if not player:
+            continue
+
+        add_points(player_id, WIN_POINTS)
 
         reward_lines.append(
-            f"• {name} — حصل على 50 نقطة! 🎖️"
+            f"• {get_player_name(player)} — "
+            f"حصل على {WIN_POINTS} نقطة! 🎖️"
         )
 
     await context.bot.send_message(
@@ -1685,51 +1401,4 @@ async def finish_penalty_game(
         text="\n".join(reward_lines)
     )
 
-
-# =========================================================
-# إنهاء يدوي
-# =========================================================
-
-async def end_penalty_game(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-
-    chat_id = update.effective_chat.id
-    user = update.effective_user
-
-    game = active_penalty_games.get(chat_id)
-
-    if not game:
-        return
-
-    if not can_manage_penalties(user.id):
-        return
-
-    if game.get("choice_task"):
-
-        try:
-            game["choice_task"].cancel()
-        except Exception:
-            pass
-
-    active_penalty_games.pop(
-        chat_id,
-        None
-    )
-
-    try:
-
-        await context.bot.unpin_chat_message(
-            chat_id=chat_id,
-            message_id=game.get("distribution_message_id")
-        )
-
-    except Exception:
-        pass
-
-    await update.effective_message.reply_text(
-        "🛑 تم إنهاء مباراة البلنتيات."
-    )
-
-    raise ApplicationHandlerStop
+    del active_penalty_games[chat_id]
