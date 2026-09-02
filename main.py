@@ -1168,7 +1168,6 @@ def main():
     # ==================================================
     # لعبة البلنتيات
     # ==================================================
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^بلنتيات$"),
@@ -1176,77 +1175,65 @@ def main():
         ),
         group=0
     )
-
     # نحط دخول البلنتيات قبل دخول غميضة
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(r"^دخول$"),
-            join_penalty_game
-        ),
-        group=-1
-    )
-
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(r"^\.وزع$"),
-            distribute_penalty_game
-        ),
-        group=0
-    )
-
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(r"^\.احمر(?:\s+\d+\*?)+$"),
-            manual_red
-        ),
-        group=0
-    )
-
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(r"^\.ازرق(?:\s+\d+\*?)+$"),
-            manual_blue
-        ),
-        group=0
-    )
-
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(r"^\.ابدا$"),
-            begin_penalty_shootout
-        ),
-        group=0
-    )
-
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(r"^\.كمل$"),
-            continue_penalty_shootout
-        ),
-        group=0
-    )
-
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(r"^انهاء بلنتيات$"),
-            end_penalty_game
-        ),
-        group=0
-    )
-
-    app.add_handler(
-        CallbackQueryHandler(
-            penalty_distribution_callback,
-            pattern=r"^penalty:dist:"
-        )
-    )
-
-    app.add_handler(
-        CallbackQueryHandler(
-            penalty_kick_callback,
-            pattern=r"^penalty:kick:"
-        )
-    )
+   app.add_handler(
+       MessageHandler(
+           filters.Regex(r"^دخول$"),
+           join_penalty_game
+       ),
+       group=-1
+   )
+   app.add_handler(
+       MessageHandler(
+           filters.Regex(r"^\.وزع$"),
+           distribute_penalties
+       ),
+       group=0
+   )
+   # التوزيع اليدوي: .احمر 1 2*
+   # أو .ازرق 1 2*
+   app.add_handler(
+       MessageHandler(
+           filters.Regex(r"^\.(?:احمر|ازرق)(?:\s+\d+\*?)+$"),
+           manual_team_command
+       ),
+       group=0
+   )
+   app.add_handler(
+       MessageHandler(
+           filters.Regex(r"^\.ابدا$"),
+           begin_penalties
+       ),
+       group=0
+   )
+   app.add_handler(
+       MessageHandler(
+           filters.Regex(r"^\.كمل$"),
+           continue_penalties
+       ),
+       group=0
+   )
+   app.add_handler(
+       MessageHandler(
+           filters.Regex(r"^انهاء بلنتيات$"),
+           end_penalty_game
+       ),
+       group=0
+   )
+   # أزرار اختيار طريقة التوزيع
+   app.add_handler(
+       CallbackQueryHandler(
+           distribution_callback,
+           pattern=r"^penalty:distribution:"
+       )
+   )
+   # أزرار اختيار اتجاه البلنتي
+   app.add_handler(
+       CallbackQueryHandler(
+           penalty_direction_callback,
+           pattern=r"^penalty:direction:"
+       )
+   )
 
     # ==================================================
     # لعبة الغميضة
