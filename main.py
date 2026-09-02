@@ -134,7 +134,8 @@ from handlers.points import (
 from handlers.users import (
     user_id_command,
     save_join_date,
-    save_user_message
+    save_user_message,
+    flush_user_messages
 )
 
 
@@ -226,6 +227,7 @@ from handlers.button_colors import (
 
 import os
 import threading
+import asyncio
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 
@@ -332,10 +334,86 @@ def main():
     # إنشاء التطبيق
     # ==================================================
 
+    # ==================================================
+    # الحفظ التلقائي لرسائل المستخدمين
+    # ==================================================
+
+    message_flush_task = None
+
+
+    async def automatic_message_flush():
+
+        while True:
+
+            try:
+
+                # حفظ الرسائل المعلقة
+                await flush_user_messages()
+
+            except asyncio.CancelledError:
+
+                # عند إيقاف المهمة
+                break
+
+            except Exception as e:
+
+                print(
+                    f"⚠️ خطأ في الحفظ التلقائي للرسائل: {e}"
+                )
+
+            # الانتظار 5 ثوانٍ قبل الفحص التالي
+            await asyncio.sleep(5)
+
+
+    async def post_init(application):
+
+        global message_flush_task
+
+        message_flush_task = asyncio.create_task(
+            automatic_message_flush()
+        )
+
+
+    async def post_shutdown(application):
+
+        global message_flush_task
+
+        # إيقاف مهمة الحفظ التلقائي
+        if message_flush_task:
+
+            message_flush_task.cancel()
+
+            try:
+                await message_flush_task
+            except asyncio.CancelledError:
+                pass
+
+        # حفظ أي رسائل بقيت في الذاكرة
+        try:
+
+            await flush_user_messages()
+
+            print(
+            "💾 تم حفظ الرسائل المعلقة قبل إيقاف البوت"
+            )
+
+        except Exception as e:
+
+            print(
+                f"⚠️ تعذر حفظ الرسائل عند الإيقاف: {e}"
+            )
+
+
+    # ==================================================
+    # إنشاء التطبيق
+    # ==================================================
+
     app = (
         Application
         .builder()
         .token(BOT_TOKEN)
+        .post_init(post_init)
+        .post_shutdown(post_shutdown)
         .build()
     )
 
