@@ -25,16 +25,18 @@ from games.hide_and_seek import (
     search_number_callback
 )
 
+
 from games.penalties import (
     start_penalty_game,
     join_penalty_game,
     distribute_penalties,
     distribution_callback,
+    manual_team_command,
+    begin_penalties,
     penalty_direction_callback,
     continue_penalties,
-    manual_team_command,
+    end_penalty_game,
 )
-
 # ==================================================
 # الأنمي
 # ==================================================
