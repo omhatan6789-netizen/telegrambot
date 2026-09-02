@@ -1577,6 +1577,8 @@ async def choice_timeout(
 
 def cancel_kick_tasks(game):
 
+    current_task = asyncio.current_task()
+
     for key in (
         "shooter_task",
         "goalie_task"
@@ -1586,7 +1588,9 @@ def cancel_kick_tasks(game):
 
         if task:
 
-            task.cancel()
+            # لا تلغي المهمة الحالية إذا كانت هي التي تنفذ النتيجة
+            if task is not current_task:
+                task.cancel()
 
         game[key] = None
 
@@ -1731,272 +1735,305 @@ async def resolve_kick(
     if game["phase"] != "shootout":
         return
 
-    # منع تنفيذ نفس الركلة مرتين
+    # منع تنفيذ نفس الركلة أكثر من مرة
     if game.get("resolving"):
         return
 
     game["resolving"] = True
 
-    # ==============================
-    # إذا أحد ما اختار
-    # ==============================
-
-    if game.get("shooter_choice") is None:
-        game["shooter_choice"] = "وسط"
-
-    if game.get("goalie_choice") is None:
-        game["goalie_choice"] = "وسط"
-
-    game["shooter_ready"] = True
-    game["goalie_ready"] = True
-
-    shooter_choice = game["shooter_choice"]
-    goalie_choice = game["goalie_choice"]
-
-    # إلغاء التايمرات
-    cancel_kick_tasks(game)
-
-    shooter_id = game["current_shooter"]
-    goalie_id = game["current_goalie"]
-
-    shooter = game["players"].get(shooter_id)
-    goalie = game["players"].get(goalie_id)
-
-    if not shooter or not goalie:
-        game["resolving"] = False
-        return
-
-    shooting_team = game["current_team"]
-
-    goalie_team = (
-        "blue"
-        if shooting_team == "red"
-        else "red"
-    )
-
-    warning = get_kick_warning(game)
-
-    is_decisive_kick = (
-        warning is not None
-        and "ركلة حاسمة للبطولة" in warning
-    )
-
-    is_survival_kick = (
-        warning is not None
-        and "ضغوط هائلة" in warning
-    )
-
-    # ==============================
-    # تحديد الهدف
-    # ==============================
-
-    goal = (
-        shooter_choice != goalie_choice
-    )
-
-    if goal:
-        game["score"][shooting_team] += 1
-
-    # ==============================
-    # رسالة التشويق
-    # ==============================
-
-    teaser = None
-
     try:
 
-        teaser = await context.bot.send_message(
-            chat_id=chat_id,
-            text="هل يسجلها المسدد؟ ام يصدها الحارس…🧤🔥"
-        )
+        # ==============================
+        # إذا أحد ما اختار
+        # ==============================
 
-    except Exception as e:
+        if game.get("shooter_choice") is None:
+            game["shooter_choice"] = "وسط"
 
-        print(
-            f"❌ خطأ في إرسال رسالة التشويق: {e}"
-        )
+        if game.get("goalie_choice") is None:
+            game["goalie_choice"] = "وسط"
 
-    await asyncio.sleep(5)
+        game["shooter_ready"] = True
+        game["goalie_ready"] = True
 
-    if teaser:
+        shooter_choice = game["shooter_choice"]
+        goalie_choice = game["goalie_choice"]
 
-        try:
-            await teaser.delete()
+        # ==============================
+        # إلغاء التايمرات
+        # ==============================
 
-        except Exception:
-            pass
+        cancel_kick_tasks(game)
 
-    # ==============================
-    # صورة النتيجة
-    # ==============================
+        shooter_id = game["current_shooter"]
+        goalie_id = game["current_goalie"]
 
-    image_id = RESULT_IMAGES.get(
-        (
-            goalie_team,
-            goalie_choice,
-            shooter_choice
-        )
-    )
+        shooter = game["players"].get(shooter_id)
+        goalie = game["players"].get(goalie_id)
 
-    # ==============================
-    # نص النتيجة
-    # ==============================
+        if not shooter or not goalie:
+            return
 
-    if goal:
+        shooting_team = game["current_team"]
 
-        team_name = (
-            "الأحمر 🔴"
+        goalie_team = (
+            "blue"
             if shooting_team == "red"
-            else
-            "الأزرق 🔵"
+            else "red"
         )
 
-        text = (
-            f"⚽ قوووول!! هدف لصالح "
-            f"{get_player_name(shooter)} "
-            f"(فريق {team_name}) 🔥\n\n"
+        # ==============================
+        # التحذير
+        # ==============================
 
-            f"🎯 المسدد سدد في "
-            f"{shooter_choice} "
-            f"{DIRECTIONS[shooter_choice]} "
-            f"والحارس ارتمى إلى "
-            f"{goalie_choice} "
-            f"{DIRECTIONS[goalie_choice]}!\n\n"
+        warning = get_kick_warning(game)
 
-            f"📊 النتيجة: "
-            f"🔴 الأحمر {game['score']['red']} "
-            f"- {game['score']['blue']} الأزرق 🔵"
+        is_decisive_kick = (
+            warning is not None
+            and "ركلة حاسمة للبطولة" in warning
         )
 
-    else:
-
-        goalie_team_name = (
-            "الأحمر 🔴"
-            if goalie_team == "red"
-            else
-            "الأزرق 🔵"
+        is_survival_kick = (
+            warning is not None
+            and "ضغوط هائلة" in warning
         )
 
-        text = (
-            "🧤 ياساتر صدها الحارس! مستحييل! 💥\n\n"
+        # ==============================
+        # تحديد الهدف
+        # ==============================
 
-            f"🛡️ الحارس {get_player_name(goalie)} "
-            f"(فريق {goalie_team_name}) "
-            f"تصدى للكرة في "
-            f"{goalie_choice} "
-            f"{DIRECTIONS[goalie_choice]}!\n\n"
-
-            f"📊 النتيجة: "
-            f"🔴 الأحمر {game['score']['red']} "
-            f"- {game['score']['blue']} الأزرق 🔵"
+        goal = (
+            shooter_choice != goalie_choice
         )
 
-    # ==============================
-    # إرسال النتيجة
-    # ==============================
+        if goal:
+            game["score"][shooting_team] += 1
 
-    try:
+        # ==============================
+        # التشويق
+        # ==============================
 
-        if image_id:
-
-            await context.bot.send_photo(
-                chat_id=chat_id,
-                photo=image_id,
-                caption=text
-            )
-
-        else:
-
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text=text
-            )
-
-    except Exception as e:
-
-        print(
-            f"❌ خطأ في إرسال صورة النتيجة: {e}"
-        )
+        teaser = None
 
         try:
 
-            await context.bot.send_message(
+            teaser = await context.bot.send_message(
                 chat_id=chat_id,
-                text=text
+                text="هل يسجلها المسدد؟ ام يصدها الحارس…🧤🔥"
             )
 
-        except Exception as e2:
+        except Exception as e:
 
             print(
-                f"❌ خطأ في إرسال النتيجة: {e2}"
+                f"❌ خطأ في إرسال رسالة التشويق: {e}"
             )
 
-    # ==============================
-    # ركلة حاسمة
-    # ==============================
+        # ==============================
+        # انتظار 5 ثواني
+        # ==============================
 
-    if is_decisive_kick:
+        await asyncio.sleep(5)
+
+        if teaser:
+
+            try:
+                await teaser.delete()
+
+            except Exception:
+                pass
+
+        # ==============================
+        # صورة النتيجة
+        # ==============================
+
+        image_id = RESULT_IMAGES.get(
+            (
+                goalie_team,
+                goalie_choice,
+                shooter_choice
+            )
+        )
+
+        # ==============================
+        # نص النتيجة
+        # ==============================
 
         if goal:
 
-            await finish_penalty_game(
-                context,
-                chat_id,
-                shooting_team
+            team_name = (
+                "الأحمر 🔴"
+                if shooting_team == "red"
+                else
+                "الأزرق 🔵"
+            )
+
+            text = (
+                f"⚽ قوووول!! هدف لصالح "
+                f"{get_player_name(shooter)} "
+                f"(فريق {team_name}) 🔥\n\n"
+
+                f"🎯 المسدد سدد في "
+                f"{shooter_choice} "
+                f"{DIRECTIONS[shooter_choice]} "
+                f"والحارس ارتمى إلى "
+                f"{goalie_choice} "
+                f"{DIRECTIONS[goalie_choice]}!\n\n"
+
+                f"📊 النتيجة: "
+                f"🔴 الأحمر {game['score']['red']} "
+                f"- {game['score']['blue']} الأزرق 🔵"
             )
 
         else:
 
-            await finish_penalty_game(
-                context,
-                chat_id,
-                goalie_team
+            goalie_team_name = (
+                "الأحمر 🔴"
+                if goalie_team == "red"
+                else
+                "الأزرق 🔵"
             )
 
-        return
+            text = (
+                "🧤 ياساتر صدها الحارس! مستحييل! 💥\n\n"
 
-    # ==============================
-    # ركلة البقاء
-    # ==============================
+                f"🛡️ الحارس {get_player_name(goalie)} "
+                f"(فريق {goalie_team_name}) "
+                f"تصدى للكرة في "
+                f"{goalie_choice} "
+                f"{DIRECTIONS[goalie_choice]}!\n\n"
 
-    if is_survival_kick:
+                f"📊 النتيجة: "
+                f"🔴 الأحمر {game['score']['red']} "
+                f"- {game['score']['blue']} الأزرق 🔵"
+            )
 
-        if not goal:
+        # ==============================
+        # إرسال صورة النتيجة
+        # ==============================
+
+        try:
+
+            if image_id:
+
+                await context.bot.send_photo(
+                    chat_id=chat_id,
+                    photo=image_id,
+                    caption=text
+                )
+
+            else:
+
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=text
+                )
+
+        except Exception as e:
+
+            print(
+                f"❌ خطأ في إرسال صورة النتيجة: {e}"
+            )
+
+            try:
+
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=text
+                )
+
+            except Exception as e2:
+
+                print(
+                    f"❌ خطأ في إرسال النتيجة: {e2}"
+                )
+
+        # ==============================
+        # ركلة حاسمة
+        # ==============================
+
+        if is_decisive_kick:
+
+            if goal:
+
+                await finish_penalty_game(
+                    context,
+                    chat_id,
+                    shooting_team
+                )
+
+            else:
+
+                await finish_penalty_game(
+                    context,
+                    chat_id,
+                    goalie_team
+                )
+
+            return
+
+        # ==============================
+        # ركلة البقاء
+        # ==============================
+
+        if is_survival_kick:
+
+            if not goal:
+
+                await finish_penalty_game(
+                    context,
+                    chat_id,
+                    goalie_team
+                )
+
+                return
+
+        # ==============================
+        # التحقق من انتهاء المباراة
+        # ==============================
+
+        winner = get_winner_if_finished(game)
+
+        if winner:
 
             await finish_penalty_game(
                 context,
                 chat_id,
-                goalie_team
+                winner
             )
 
             return
 
-    # ==============================
-    # التحقق من انتهاء المباراة
-    # ==============================
+        # ==============================
+        # انتظار .كمل
+        # ==============================
 
-    winner = get_winner_if_finished(game)
-
-    if winner:
-
-        await finish_penalty_game(
-            context,
-            chat_id,
-            winner
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="⏸️ اكتب .كمل للركلة التالية."
         )
 
-        return
+    except asyncio.CancelledError:
 
-    # ==============================
-    # انتظار .كمل
-    # ==============================
+        # لا نخلي إلغاء مهمة جانبية يسكت الخطأ
+        print(
+            f"⚠️ تم إلغاء مهمة نتيجة الركلة في القروب {chat_id}"
+        )
 
-    game["resolving"] = False
+    except Exception as e:
 
-    await context.bot.send_message(
-        chat_id=chat_id,
-        text="⏸️ اكتب .كمل للركلة التالية."
-    )
+        print(
+            f"خطأ غير متوقع ❌"
+            f"للقروب {chat_id}: {e}"
+        )
+
+    finally:
+
+        # إذا اللعبة ما انتهت، افتحها للركلة التالية
+        current_game = active_penalty_games.get(chat_id)
+
+        if current_game:
+            if current_game["phase"] == "shootout":
+                current_game["resolving"] = False
 
 # ==================================================
 # تحديد الفائز حسب نظام الركلات الحقيقي
