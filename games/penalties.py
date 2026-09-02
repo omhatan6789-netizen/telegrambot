@@ -1755,10 +1755,11 @@ async def resolve_kick(
     # منع التكرار
     # ==================================================
 
-    if game.get("resolving"):
+    if game.get("resolving") and game.get("_kick_started"):
         return
 
     game["resolving"] = True
+    game["_kick_started"] = True
 
     cancel_kick_tasks(game)
 
@@ -1770,6 +1771,7 @@ async def resolve_kick(
 
     if not shooter or not goalie:
         game["resolving"] = False
+        game["_kick_started"] = False
         return
 
     shooting_team = game["current_team"]
@@ -1811,6 +1813,8 @@ async def resolve_kick(
     # رسالة التشويق
     # ==================================================
 
+    teaser = None
+
     try:
 
         teaser = await context.bot.send_message(
@@ -1821,10 +1825,8 @@ async def resolve_kick(
     except Exception as e:
 
         print(
-            f"❌ خطأ في رسالة التشويق: {e}"
+            f"❌ خطأ في إرسال رسالة التشويق: {e}"
         )
-
-        teaser = None
 
     # ==================================================
     # انتظار 5 ثواني
@@ -1833,13 +1835,14 @@ async def resolve_kick(
     await asyncio.sleep(5)
 
     # ==================================================
-    # حذف التشويق
+    # حذف رسالة التشويق
     # ==================================================
 
     if teaser:
 
         try:
             await teaser.delete()
+
         except Exception:
             pass
 
@@ -1936,7 +1939,7 @@ async def resolve_kick(
     except Exception as e:
 
         print(
-            f"❌ خطأ في إرسال نتيجة الركلة: {e}"
+            f"❌ خطأ في إرسال صورة النتيجة: {e}"
         )
 
         try:
@@ -1949,11 +1952,11 @@ async def resolve_kick(
         except Exception as e2:
 
             print(
-                f"❌ تعذر إرسال نتيجة الركلة: {e2}"
+                f"❌ خطأ في إرسال النتيجة: {e2}"
             )
 
     # ==================================================
-    # 🔥 الحاسمة
+    # 🔥 الركلة الحاسمة
     # ==================================================
 
     if is_decisive_kick:
@@ -1966,8 +1969,6 @@ async def resolve_kick(
                 shooting_team
             )
 
-            return
-
         else:
 
             await finish_penalty_game(
@@ -1976,7 +1977,7 @@ async def resolve_kick(
                 goalie_team
             )
 
-            return
+        return
 
     # ==================================================
     # 🔥 ركلة البقاء
@@ -1984,14 +1985,8 @@ async def resolve_kick(
 
     if is_survival_kick:
 
-        if goal:
+        if not goal:
 
-            # سجل = يستمر اللعب
-            game["resolving"] = False
-
-        else:
-
-            # ضاعت = الفريق الآخر يفوز
             await finish_penalty_game(
                 context,
                 chat_id,
@@ -2001,8 +1996,7 @@ async def resolve_kick(
             return
 
     # ==================================================
-    # فحص نهاية أول 5 ركلات
-    # أو الموت المفاجئ
+    # فحص نهاية المباراة
     # ==================================================
 
     winner = get_winner_if_finished(game)
@@ -2022,11 +2016,12 @@ async def resolve_kick(
     # ==================================================
 
     game["resolving"] = False
+    game["_kick_started"] = False
 
     await context.bot.send_message(
         chat_id=chat_id,
         text="⏸️ اكتب .كمل للركلة التالية."
-    )   
+    )
 
 # ==================================================
 # تحديد الفائز حسب نظام الركلات الحقيقي
