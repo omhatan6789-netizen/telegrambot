@@ -11,14 +11,12 @@ from telegram.ext import ContextTypes
 from handlers.roles import get_rank_level
 from handlers.points import add_points
 
-
 # ==================================================
 # إعدادات اللعبة
 # ==================================================
 
 TURN_TIME = 30
 WIN_POINTS = 50
-
 
 # ==================================================
 # صور الاستعداد
@@ -28,7 +26,6 @@ READY_IMAGES = {
     "red": "AgACAgQAAxkBAAICx2qXXRF_tg0mysuxrFyg-TzQFOFWAAJvEmsbkuPAUDW0ZFs8Jpp0AQADAgADeQADPQQ",
     "blue": "AgACAgQAAxkBAAICzWqXXSelWf1kB8pPZa_v_tT75xNZAAJwEmsbkuPAUAaqxmTbcl6BAQADAgADeQADPQQ",
 }
-
 
 # ==================================================
 # صور النتائج
@@ -106,7 +103,6 @@ RESULT_IMAGES = {
     ):
         "AgACAgQAAyEFAATwGwEUAAJP-2qXQ8T5AtOCk6Tgh_lxF3uj8CLbAAIhE2sbtou5UESSt8Vei3-fAQADAgADeQADPQQ",
 
-
     # ==============================================
     # الحارس الأزرق
     # ==============================================
@@ -175,7 +171,6 @@ RESULT_IMAGES = {
         "AgACAgQAAxkBAAIC7mqXX_UXpeFNif4tcrDWx1_KUoeSAAJ_EmsbkuPAUIc2qNsrW-HMAQADAgADeQADPQQ",
 }
 
-
 # ==================================================
 # الاتجاهات
 # ==================================================
@@ -186,13 +181,11 @@ DIRECTIONS = {
     "يمين": "👉🏻",
 }
 
-
 # ==================================================
 # الألعاب النشطة
 # ==================================================
 
 active_penalty_games = {}
-
 
 # ==================================================
 # الصلاحية
@@ -202,7 +195,6 @@ active_penalty_games = {}
 def can_manage_penalties(user_id):
 
     return get_rank_level(user_id) > 0
-
 
 # ==================================================
 # اسم اللاعب
@@ -215,7 +207,6 @@ def get_player_name(user):
 
     # اسم الحساب الظاهر في تيليجرام، وليس اليوزر
     return user.full_name or user.first_name or "مستخدم"
-
 
 # ==================================================
 # لوحة الاتجاهات
@@ -239,7 +230,6 @@ def direction_keyboard(chat_id):
             )
         ]
     ])
-
 
 # ==================================================
 # بدء التسجيل
@@ -342,7 +332,6 @@ async def start_penalty_game(
         "• للبدء اكتب: ابدا"
     )
 
-
 # ==================================================
 # دخول اللاعب
 # ==================================================
@@ -383,7 +372,6 @@ async def join_penalty_game(
         f"انضم {get_player_name(user)} ⚽ "
         f"(العدد: {len(game['players'])})"
     )
-
 
 # ==================================================
 # بدء التوزيع
@@ -439,11 +427,9 @@ async def distribute_penalties(
         reply_markup=keyboard
     )
 
-
 # ==================================================
 # callback التوزيع
 # ==================================================
-
 
 async def distribution_callback(
     update: Update,
@@ -538,7 +524,6 @@ async def distribution_callback(
 
         return
 
-
 # ==================================================
 # التوزيع العشوائي
 # ==================================================
@@ -598,7 +583,6 @@ def make_random_teams(game):
     assign_team(red_players, "red")
     assign_team(blue_players, "blue")
 
-
 async def random_distribution(
     context,
     chat_id
@@ -618,7 +602,6 @@ async def random_distribution(
         chat_id,
         random_mode=True
     )
-
 
 # ==================================================
 # عرض التوزيع اليدوي
@@ -669,7 +652,6 @@ async def show_manual_distribution(
 
     game["manual_message_id"] = message.message_id
 
-
 # ==================================================
 # تحويل رقم اللاعب
 # ==================================================
@@ -682,7 +664,6 @@ def get_player_by_number(game, number):
     player_id = game["order"][number - 1]
 
     return player_id
-
 
 # ==================================================
 # الأمر اليدوي
@@ -817,7 +798,6 @@ async def manual_team_command(
         chat_id
     )
 
-
 # ==================================================
 # حالة التوزيع اليدوي
 # ==================================================
@@ -879,7 +859,6 @@ async def show_manual_status(
         )
 
     await update.message.reply_text(text)
-
 
 # ==================================================
 # إكمال التوزيع اليدوي
@@ -968,7 +947,6 @@ async def check_manual_completion(
         random_mode=False
     )
 
-
 # ==================================================
 # نتيجة التوزيع
 # ==================================================
@@ -1008,7 +986,6 @@ async def send_distribution_result(
         chat_id=chat_id,
         text=text
     )
-
 
 # ==================================================
 # بدء ركلات الترجيح
@@ -1050,7 +1027,6 @@ async def begin_penalties(
         chat_id
     )
 
-
 # ==================================================
 # جلب المسدد التالي
 # ==================================================
@@ -1066,7 +1042,6 @@ def next_shooter(game, team):
     game["shoot_index"][team] += 1
 
     return player_id
-
 
 # ==================================================
 # جلب الحارس التالي
@@ -1085,13 +1060,13 @@ def next_goalie(game, team):
     return player_id
 
 
-
 def get_kick_warning(game):
 
-    red = game["score"]["red"]
-    blue = game["score"]["blue"]
+    red_score = game["score"]["red"]
+    blue_score = game["score"]["blue"]
 
     team = game["current_team"]
+    kick_number = game["kick_number"]
 
     shooter = game["players"].get(
         game["current_shooter"]
@@ -1108,66 +1083,52 @@ def get_kick_warning(game):
     goalie_name = get_player_name(goalie)
 
     # ==================================================
-    # الركلة الخامسة للأحمر
+    # أول 5 ركلات لكل فريق
     # ==================================================
 
-    if game["kick_number"] == 9 and team == "red":
+    if kick_number <= 10:
 
-        # الأحمر متأخر بفارق يجعل هذه ركلة بقاء
-        if red < blue:
+        # عدد الركلات المكتملة قبل الركلة الحالية
+        red_taken = (kick_number - 1) // 2
+        blue_taken = (kick_number - 1) // 2
 
-            return (
-                "⚠️ *ضغوط هائلة!* "
-                f"يجب على *{shooter_name}* التسجيل للاستمرار، "
-                f"إذا ضاعت أو صدها الحارس *{goalie_name}* "
-                "يفوز *🔵 الفريق الأزرق* باللقب! 🏆"
-            )
+        # إذا كانت الركلة الحالية للأزرق
+        if team == "blue":
+            red_taken += 1
 
-        # الأحمر متقدم، ويمكن أن يحسم إذا كان الفارق
-        # أكبر من إمكانية تعويض الأزرق في ركلته الخامسة
-        if red > blue:
-
-            return (
-                "⚠️ *ركلة حاسمة للبطولة!* "
-                f"إذا سجلها *{shooter_name}*، "
-                "يفوز *🔴 الفريق الأحمر* باللقب! 🏆"
-            )
-
-    # ==================================================
-    # الركلة الخامسة للأزرق
-    # ==================================================
-
-    if game["kick_number"] == 10 and team == "blue":
-
-        # الأزرق متأخر
-        if blue < red:
-
-            return (
-                "⚠️ *ضغوط هائلة!* "
-                f"يجب على *{shooter_name}* التسجيل للاستمرار، "
-                f"إذا ضاعت أو صدها الحارس *{goalie_name}* "
-                "يفوز *🔴 الفريق الأحمر* باللقب! 🏆"
-            )
-
-        # الأزرق متقدم
-        if blue > red:
-
-            return (
-                "⚠️ *ركلة حاسمة للبطولة!* "
-                f"إذا سجلها *{shooter_name}*، "
-                "يفوز *🔵 الفريق الأزرق* باللقب! 🏆"
-            )
-
-    # ==================================================
-    # الركلات الحاسمة بعد التعادل
-    # ==================================================
-
-    if game["kick_number"] > 10:
-
+        # الركلات المتبقية بعد الركلة الحالية
         if team == "red":
 
-            if red < blue:
+            red_remaining_after = 5 - red_taken - 1
+            blue_remaining_after = 5 - blue_taken
 
+            current_score = red_score
+            opponent_score = blue_score
+
+            # ------------------------------------------
+            # ركلة حاسمة
+            # ------------------------------------------
+
+            if (
+                current_score + 1
+                >
+                opponent_score + blue_remaining_after
+            ):
+                return (
+                    "⚠️ *ركلة حاسمة للبطولة!* "
+                    f"إذا سجلها *{shooter_name}*، "
+                    "يفوز *🔴 الفريق الأحمر* باللقب! 🏆"
+                )
+
+            # ------------------------------------------
+            # ركلة بقاء
+            # ------------------------------------------
+
+            if (
+                current_score
+                + red_remaining_after
+                <= opponent_score
+            ):
                 return (
                     "⚠️ *ضغوط هائلة!* "
                     f"يجب على *{shooter_name}* التسجيل للاستمرار، "
@@ -1175,8 +1136,78 @@ def get_kick_warning(game):
                     "يفوز *🔵 الفريق الأزرق* باللقب! 🏆"
                 )
 
-            if red > blue:
+        else:
 
+            red_remaining_after = 5 - red_taken
+            blue_remaining_after = 5 - blue_taken - 1
+
+            current_score = blue_score
+            opponent_score = red_score
+
+            # ------------------------------------------
+            # ركلة حاسمة
+            # ------------------------------------------
+
+            if (
+                current_score + 1
+                >
+                opponent_score + red_remaining_after
+            ):
+                return (
+                    "⚠️ *ركلة حاسمة للبطولة!* "
+                    f"إذا سجلها *{shooter_name}*، "
+                    "يفوز *🔵 الفريق الأزرق* باللقب! 🏆"
+                )
+
+            # ------------------------------------------
+            # ركلة بقاء
+            # ------------------------------------------
+
+            if (
+                current_score
+                + blue_remaining_after
+                <= opponent_score
+            ):
+                return (
+                    "⚠️ *ضغوط هائلة!* "
+                    f"يجب على *{shooter_name}* التسجيل للاستمرار، "
+                    f"إذا ضاعت أو صدها الحارس *{goalie_name}* "
+                    "يفوز *🔴 الفريق الأحمر* باللقب! 🏆"
+                )
+
+    # ==================================================
+    # Sudden Death
+    # ==================================================
+
+    if kick_number > 10:
+
+        # ------------------------------------------
+        # الركلة الأولى من ثنائي Sudden Death
+        # ------------------------------------------
+
+        if kick_number % 2 == 1:
+
+            # أول ركلة لا تكون حاسمة بحد ذاتها،
+            # لأن الفريق الآخر سيأخذ ركلته بعدها.
+            return None
+
+        # ------------------------------------------
+        # الركلة الثانية من ثنائي Sudden Death
+        # ------------------------------------------
+
+        if team == "red":
+
+            # إذا كان الأحمر متأخرًا قبل الركلة
+            if red_score < blue_score:
+                return (
+                    "⚠️ *ضغوط هائلة!* "
+                    f"يجب على *{shooter_name}* التسجيل للاستمرار، "
+                    f"إذا ضاعت أو صدها الحارس *{goalie_name}* "
+                    "يفوز *🔵 الفريق الأزرق* باللقب! 🏆"
+                )
+
+            # إذا كان التعادل، فالهدف يحسم
+            if red_score == blue_score:
                 return (
                     "⚠️ *ركلة حاسمة للبطولة!* "
                     f"إذا سجلها *{shooter_name}*، "
@@ -1185,8 +1216,8 @@ def get_kick_warning(game):
 
         else:
 
-            if blue < red:
-
+            # إذا كان الأزرق متأخرًا قبل الركلة
+            if blue_score < red_score:
                 return (
                     "⚠️ *ضغوط هائلة!* "
                     f"يجب على *{shooter_name}* التسجيل للاستمرار، "
@@ -1194,8 +1225,8 @@ def get_kick_warning(game):
                     "يفوز *🔴 الفريق الأحمر* باللقب! 🏆"
                 )
 
-            if blue > red:
-
+            # إذا كان التعادل، فالهدف يحسم
+            if blue_score == red_score:
                 return (
                     "⚠️ *ركلة حاسمة للبطولة!* "
                     f"إذا سجلها *{shooter_name}*، "
@@ -1275,22 +1306,6 @@ async def start_kick(
         chat_id,
         goalie_team
     )
-
-    # تحذير الركلة الحاسمة يظهر مع بداية الركلة
-    warning = get_kick_warning(game)
-
-    if warning:
-
-        try:
-
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text=warning
-            )
-
-        except Exception:
-            pass
-
 
 # ==================================================
 # صورة استعداد الحارس
@@ -1398,7 +1413,6 @@ async def send_ready_image(
 
     game["ready_message_id"] = message.message_id
 
-
 async def update_ready_message(context, chat_id):
 
     game = active_penalty_games.get(chat_id)
@@ -1493,148 +1507,6 @@ async def update_ready_message(context, chat_id):
         pass
 
 # ==================================================
-# ضغط اتجاه
-# ==================================================
-
-async def penalty_direction_callback(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-
-    query = update.callback_query
-
-    try:
-
-        _, _, chat_id_text, direction = query.data.split(":")
-
-        chat_id = int(chat_id_text)
-
-    except Exception:
-
-        await query.answer()
-
-        return
-
-    game = active_penalty_games.get(chat_id)
-
-    if not game:
-
-        await query.answer(
-            "❌ انتهت المباراة.",
-            show_alert=True
-        )
-
-        return
-
-    if game["phase"] != "shootout":
-
-        await query.answer(
-            "❌ لا توجد ركلة حالية.",
-            show_alert=True
-        )
-
-        return
-
-    user_id = query.from_user.id
-
-    shooter_id = game["current_shooter"]
-    goalie_id = game["current_goalie"]
-
-    if user_id not in game["players"]:
-
-        await query.answer(
-            "❌ انت مو بالقيم اصلا!",
-            show_alert=True
-        )
-
-        return
-
-    if user_id != shooter_id and user_id != goalie_id:
-
-        await query.answer(
-            "❌ انتظر، ليس دورك!",
-            show_alert=True
-        )
-
-        return
-
-    if user_id == shooter_id:
-
-        if game["shooter_choice"] is not None:
-
-            await query.answer(
-                "❌ اخترت اتجاهك بالفعل.",
-                show_alert=True
-            )
-
-            return
-
-        game["shooter_choice"] = direction
-        game["shooter_ready"] = True
-
-        await update_ready_message(
-    
-            context,
-            chat_id
-        )
-        task = game.get("shooter_task")
-
-        if task:
-            task.cancel()
-
-        game["shooter_task"] = None
-
-        await query.answer(
-            "✅ تم تسجيل اختيارك."
-        )
-
-    elif user_id == goalie_id:
-
-        if game["goalie_choice"] is not None:
-
-            await query.answer(
-                "❌ اخترت اتجاهك بالفعل.",
-                show_alert=True
-            )
-
-            return
-
-        game["goalie_choice"] = direction
-        game["goalie_ready"] = True
-
-        await update_ready_message(
-    
-            context,
-            chat_id
-        )
-        task = game.get("goalie_task")
-
-        if task:
-            task.cancel()
-
-        game["goalie_task"] = None
-
-        await query.answer(
-            "✅ تم تسجيل اختيارك."
-        )
-
-    if (
-        game["shooter_choice"] is not None
-        and game["goalie_choice"] is not None
-    ):
-
-        if game["resolving"]:
-            return
-
-        game["resolving"] = True
-
-        await resolve_kick(
-            context,
-            chat_id
-        )
-
-
-# ==================================================
 # تحديث حالة الاختيار
 # ==================================================
 
@@ -1646,7 +1518,6 @@ async def update_kick_status(
     # الحالة تعرض في رسالة جديدة عند بدء الركلة.
     # النتائج نفسها تعتمد على الاختيارات المخزنة.
     return
-
 
 # ==================================================
 # مؤقت الاختيار
@@ -1724,7 +1595,6 @@ async def choice_timeout(
         )
     
 
-
 # ==================================================
 # إلغاء المؤقتات
 # ==================================================
@@ -1744,11 +1614,9 @@ def cancel_kick_tasks(game):
 
         game[key] = None
 
-
 # ==================================================
 # نتيجة الركلة
 # ==================================================
-
 
 async def penalty_direction_callback(
     update: Update,
@@ -1851,66 +1719,108 @@ async def penalty_direction_callback(
         )
 
 
+
+    
 async def resolve_kick(
     context,
     chat_id
 ):
+
     game = active_penalty_games.get(chat_id)
+
     if not game:
         return
+
     if game["phase"] != "shootout":
         return
-    # ==========================================
+
+    # ==================================================
     # أي شخص ما اختار = وسط
-    # ==========================================
+    # ==================================================
+
     if game.get("shooter_choice") is None:
         game["shooter_choice"] = "وسط"
+
     if game.get("goalie_choice") is None:
         game["goalie_choice"] = "وسط"
+
     game["shooter_ready"] = True
     game["goalie_ready"] = True
+
     shooter_choice = game["shooter_choice"]
     goalie_choice = game["goalie_choice"]
-    # ==========================================
+
+    # ==================================================
     # منع التكرار
-    # ==========================================
-    if game.get("resolving") is False:
-        game["resolving"] = True
+    # ==================================================
+
+    game["resolving"] = True
+
     cancel_kick_tasks(game)
+
     shooter_id = game["current_shooter"]
     goalie_id = game["current_goalie"]
+
     shooter = game["players"].get(shooter_id)
     goalie = game["players"].get(goalie_id)
+
     if not shooter or not goalie:
         game["resolving"] = False
         return
+
     shooting_team = game["current_team"]
+
     goalie_team = (
         "blue"
         if shooting_team == "red"
         else "red"
     )
-    # ==========================================
+
+    # ==================================================
+    # تحديد حالة الركلة قبل تنفيذها
+    # ==================================================
+
+    warning = get_kick_warning(game)
+
+    is_decisive_kick = (
+        warning is not None
+        and "ركلة حاسمة للبطولة" in warning
+    )
+
+    is_survival_kick = (
+        warning is not None
+        and "ضغوط هائلة" in warning
+    )
+
+    # ==================================================
     # تحديد الهدف
-    # ==========================================
+    # ==================================================
+
     goal = shooter_choice != goalie_choice
+
     if goal:
         game["score"][shooting_team] += 1
-    # ==========================================
+
+    # ==================================================
     # رسالة التشويق
-    # ==========================================
+    # ==================================================
+
     teaser = await context.bot.send_message(
         chat_id=chat_id,
         text="هل يسجلها المسدد؟ ام يصدها الحارس…🧤🔥"
     )
+
     await asyncio.sleep(5)
+
     try:
         await teaser.delete()
     except Exception:
         pass
-    # ==========================================
+
+    # ==================================================
     # صورة النتيجة
-    # ==========================================
+    # ==================================================
+
     image_id = RESULT_IMAGES.get(
         (
             goalie_team,
@@ -1918,91 +1828,148 @@ async def resolve_kick(
             shooter_choice
         )
     )
-    # ==========================================
+
+    # ==================================================
     # كابشن الهدف
-    # ==========================================
+    # ==================================================
+
     if goal:
+
         team_name = (
             "الأحمر 🔴"
             if shooting_team == "red"
             else
             "الأزرق 🔵"
         )
+
         text = (
             f"⚽ قوووول!! هدف لصالح "
             f"{get_player_name(shooter)} "
             f"(فريق {team_name}) 🔥\n\n"
+
             f"🎯 المسدد سدد في "
             f"{shooter_choice} "
             f"{DIRECTIONS[shooter_choice]} "
             f"والحارس ارتمى إلى "
             f"{goalie_choice} "
             f"{DIRECTIONS[goalie_choice]}!\n\n"
+
             f"📊 النتيجة: "
             f"🔴 الأحمر {game['score']['red']} "
             f"- {game['score']['blue']} الأزرق 🔵"
         )
-    # ==========================================
+
+    # ==================================================
     # كابشن التصدي
-    # ==========================================
+    # ==================================================
+
     else:
+
         goalie_team_name = (
             "الأحمر 🔴"
             if goalie_team == "red"
             else
             "الأزرق 🔵"
         )
+
         text = (
             "🧤 ياساتر صدها الحارس! مستحييل! 💥\n\n"
+
             f"🛡️ الحارس {get_player_name(goalie)} "
             f"(فريق {goalie_team_name}) "
             f"تصدى للكرة في "
             f"{goalie_choice} "
             f"{DIRECTIONS[goalie_choice]}!\n\n"
+
             f"📊 النتيجة: "
             f"🔴 الأحمر {game['score']['red']} "
             f"- {game['score']['blue']} الأزرق 🔵"
         )
-    # ==========================================
+
+    # ==================================================
     # إرسال صورة النتيجة
-    # ==========================================
+    # ==================================================
+
     if image_id:
+
         try:
+
             await context.bot.send_photo(
                 chat_id=chat_id,
                 photo=image_id,
                 caption=text
             )
+
         except Exception:
+
             await context.bot.send_message(
                 chat_id=chat_id,
                 text=text
             )
+
     else:
+
         await context.bot.send_message(
             chat_id=chat_id,
             text=text
         )
-    # ==========================================
-    # فحص نهاية المباراة
-    # ==========================================
+
+    # ==================================================
+    # الركلة الحاسمة
+    # ==================================================
+
+    if is_decisive_kick and goal:
+
+        await finish_penalty_game(
+            context,
+            chat_id,
+            shooting_team
+        )
+
+        return
+
+    # ==================================================
+    # ركلة البقاء
+    # إذا ضاعت أو صدها الحارس يفوز الفريق الآخر
+    # ==================================================
+
+    if is_survival_kick and not goal:
+
+        await finish_penalty_game(
+            context,
+            chat_id,
+            goalie_team
+        )
+
+        return
+
+    # ==================================================
+    # فحص نهاية أول 5 ركلات
+    # أو الموت المفاجئ
+    # ==================================================
+
     winner = get_winner_if_finished(game)
+
     if winner:
+
         await finish_penalty_game(
             context,
             chat_id,
             winner
         )
+
         return
-    # ==========================================
+
+    # ==================================================
     # الركلة انتهت
-    # ==========================================
+    # ==================================================
+
     game["resolving"] = False
+
     await context.bot.send_message(
         chat_id=chat_id,
         text="⏸️ اكتب .كمل للركلة التالية."
-    )
-
+    )   
 
 # ==================================================
 # تحديد الفائز حسب نظام الركلات الحقيقي
@@ -2010,62 +1977,66 @@ async def resolve_kick(
 
 def get_winner_if_finished(game):
 
-    red = game["score"]["red"]
-    blue = game["score"]["blue"]
+    red_score = game["score"]["red"]
+    blue_score = game["score"]["blue"]
 
     kick_number = game["kick_number"]
 
     # ==================================================
-    # تحديد عدد الركلات المكتملة
-    #
-    # 1 = الأحمر 1
-    # 2 = الأزرق 1
-    # 3 = الأحمر 2
-    # 4 = الأزرق 2
-    # 5 = الأحمر 3
-    # 6 = الأزرق 3
-    # 7 = الأحمر 4
-    # 8 = الأزرق 4
-    # 9 = الأحمر 5
-    # 10 = الأزرق 5
+    # أول 5 ركلات لكل فريق
     # ==================================================
 
-    if kick_number % 2 == 1:
+    if kick_number <= 10:
 
-        # الركلة الحالية للأحمر
-        red_kicks = (kick_number - 1) // 2
-        blue_kicks = (kick_number - 1) // 2
+        # عدد الركلات المكتملة بعد الركلة الحالية
+        if kick_number % 2 == 1:
+            # الأحمر هو الذي أخذ الركلة الحالية
+            red_taken = (kick_number + 1) // 2
+            blue_taken = (kick_number - 1) // 2
 
-    else:
+        else:
+            # الأزرق هو الذي أخذ الركلة الحالية
+            red_taken = kick_number // 2
+            blue_taken = kick_number // 2
 
-        # الركلة الحالية للأزرق
-        red_kicks = kick_number // 2
-        blue_kicks = (kick_number // 2) - 1
+        # لازم الفريقين يكملون 5 ركلات
+        if red_taken < 5 or blue_taken < 5:
+            return None
 
-    # ==================================================
-    # بعد الركلة الخامسة للأحمر
-    # لا نحسم المباراة لأن الأزرق لم يسدد الخامسة بعد
-    # ==================================================
+        # بعد إكمال 5-5
+        if red_score > blue_score:
+            return "red"
 
-    if red_kicks < 5 or blue_kicks < 5:
+        if blue_score > red_score:
+            return "blue"
+
+        # التعادل = Sudden Death
         return None
 
     # ==================================================
-    # كل فريق سدد 5 ركلات
+    # Sudden Death
     # ==================================================
 
-    if red != blue:
+    if kick_number > 10:
 
-        return (
-            "red"
-            if red > blue
-            else "blue"
-        )
+        # بعد الركلة الثانية من كل ثنائي
+        # نقارن النتيجة.
+        #
+        # إذا اختلفت النتيجة:
+        # الفريق المتقدم يفوز.
+        #
+        # إذا تعادلت:
+        # نكمل ثنائي جديد.
 
-    # ==================================================
-    # تعادل بعد 5 ركلات
-    # → ركلات حاسمة Sudden Death
-    # ==================================================
+        if kick_number % 2 == 0:
+
+            if red_score > blue_score:
+                return "red"
+
+            if blue_score > red_score:
+                return "blue"
+
+        return None
 
     return None
 
@@ -2144,7 +2115,6 @@ async def continue_penalties(
         chat_id
     )
 
-
 # ==================================================
 # إنهاء المباراة يدويًا
 # ==================================================
@@ -2178,7 +2148,6 @@ async def end_penalty_game(
     await update.message.reply_text(
         "🛑 تم إنهاء مباراة البلنتيات."
     )
-
 
 # ==================================================
 # إنهاء المباراة + الجوائز
