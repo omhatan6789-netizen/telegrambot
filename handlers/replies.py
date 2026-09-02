@@ -15,19 +15,14 @@ delete_reply_sessions = {}
 # =========================
 # Cache للردود
 # =========================
-
-def invalidate_replies_cache():
+replies_cache = None
+special_replies_cache = None
+def load_replies_cache():
     global replies_cache
     global special_replies_cache
-
-    replies_cache = None
-    special_replies_cache = None
-
     conn = connect()
-
     try:
         cur = conn.cursor()
-
         # الردود العادية
         cur.execute(
             """
@@ -35,9 +30,7 @@ def invalidate_replies_cache():
             FROM replies
             """
         )
-
         rows = cur.fetchall()
-
         replies_cache = {
             row[0]: (
                 row[1],
@@ -46,7 +39,6 @@ def invalidate_replies_cache():
             )
             for row in rows
         }
-
         # الردود المميزة
         cur.execute(
             """
@@ -54,25 +46,27 @@ def invalidate_replies_cache():
             FROM special_replies
             """
         )
-
         special_rows = cur.fetchall()
-
         special_replies_cache = special_rows
-
         cur.close()
-
     finally:
         conn.close()
-
-
+def invalidate_replies_cache():
+    """
+    تحديث كاش الردود مباشرة بعد الإضافة
+    أو التعديل أو الحذف.
+    """
+    # نعيد تحميل الكاش فورًا
+    # حتى الرد الجديد يشتغل بدون إعادة تشغيل البوت
+    load_replies_cache()
 def get_replies_cache():
     global replies_cache
     global special_replies_cache
-
     if replies_cache is None or special_replies_cache is None:
         load_replies_cache()
-
     return replies_cache, special_replies_cache
+
+
 # =====================
 # بدء إضافة رد
 # =====================
