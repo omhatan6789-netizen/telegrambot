@@ -24,6 +24,19 @@ from games.hide_and_seek import (
     hide_number_callback,
     search_number_callback
 )
+
+from games.penalties import (
+    start_penalty_game,
+    join_penalty_game,
+    distribute_penalties,
+    distribution_callback,
+    manual_team_command,
+    begin_penalties,
+    continue_penalties,
+    end_penalty_game,
+    penalty_direction_callback
+)
+
 # ==================================================
 # الأنمي
 # ==================================================
@@ -1149,6 +1162,89 @@ def main():
             save_user_message
         ),
         group=50
+    )
+
+    # ==================================================
+    # لعبة البلنتيات
+    # ==================================================
+
+    # بدء البلنتيات
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^بلنتيات$"),
+            start_penalty_game
+        ),
+        group=0
+    )
+
+    # دخول اللاعبين
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^دخول$"),
+            join_penalty_game
+        ),
+        group=0
+    )
+
+    # توزيع الفرق
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^\.وزع$"),
+            distribute_penalties
+        ),
+        group=0
+    )
+
+    # التوزيع اليدوي
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^\.(احمر|ازرق)(?:\s+\d+\*?)+$"),
+            manual_team_command
+        ),
+        group=0
+    )
+
+    # بدء ركلات الترجيح
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^\.ابدا$"),
+            begin_penalties
+        ),
+        group=0
+    )
+
+    # الانتقال للركلة التالية
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^\.كمل$"),
+            continue_penalties
+        ),
+        group=0
+    )
+
+    # إنهاء البلنتيات
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^انهاء بلنتيات$"),
+            end_penalty_game
+        ),
+        group=0
+    )
+
+    # أزرار الاتجاهات
+    app.add_handler(
+        CallbackQueryHandler(
+            penalty_direction_callback,
+            pattern=r"^penalty:direction:"
+        )
+    )
+
+    # أزرار التوزيع
+    app.add_handler(
+        CallbackQueryHandler(
+            distribution_callback,
+            pattern=r"^penalty:distribution:"
+        )
     )
 
     # ==================================================
