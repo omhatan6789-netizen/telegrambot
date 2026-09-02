@@ -25,7 +25,7 @@ from games.hide_and_seek import (
     search_number_callback
 )
 
-from from games.penalties import (
+from games.penalties import (
     start_penalty_game,
     join_penalty_game,
     distribute_penalties,
