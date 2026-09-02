@@ -661,29 +661,184 @@ async def add_question_handler(
 # تشغيل اللعبة
 # =====================
 
+# =====================
+# تشغيل اللعبة
+# =====================
 async def play_game(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
-
     if not update.message:
         return
-
-
     if not update.message.text:
         return
-
-
     text = update.message.text.strip()
-
-
-    # منع أمر إضافة سؤال من الدخول للألعاب
-    if text.startswith("اضف سؤال"):
+    chat_id = update.effective_chat.id
+    global active_games
+    # ==================================================
+    # إذا فيه لعبة شغالة بالفعل
+    # لا تحاول تبدأ لعبة جديدة
+    # خل check_game_answer يتعامل مع الرسالة
+    # ==================================================
+    if chat_id in active_games:
         return
-
-
-    # منع أوامر الإدارة
+    # ==================================================
+    # منع الأوامر من الدخول للألعاب
+    # ==================================================
     blocked = [
+        "اضف لعبة",
+        "اضف سؤال",
+        "حذف سؤال",
+        "حذف لعبة",
+        "تفعيل لعبة",
+        "تعطيل لعبة",
+        "تفعيل الالعاب",
+        "تعطيل الالعاب",
+        "الالعاب",
+        "اسئلة"
+    ]
+    for cmd in blocked:
+        if text.startswith(cmd):
+            return
+    game_name = text
+    # ==================================================
+    # قاعدة البيانات
+    # ==================================================
+    conn = connect()
+    cur = conn.cursor()
+    try:
+        # حالة جميع الألعاب
+        cur.execute(
+            """
+            SELECT status
+            FROM games_settings
+            WHERE id=1
+            """
+        )
+        settings = cur.fetchone()
+        if settings and settings[0] == "off":
+            return
+        # البحث عن اللعبة
+        cur.execute(
+            """
+            SELECT status
+            FROM games
+            WHERE name=?
+            """,
+            (game_name,)
+        )
+        game = cur.fetchone()
+        if not game:
+            return
+        if game[0] == "off":
+            await update.message.reply_text(
+                "❌ هذه اللعبة معطلة"
+            )
+            return
+        # جلب الأسئلة
+        cur.execute(
+            """
+            SELECT
+                id,
+                question,
+                image,
+                caption,
+                answers
+            FROM game_questions
+            WHERE game_name=?
+            """,
+            (game_name,)
+        )
+        questions = cur.fetchall()
+    finally:
+        try:
+            cur.close()
+        except Exception:
+            pass
+        conn.close()
+    # ==================================================
+    # لا توجد أسئلة
+    # ==================================================
+    if not questions:
+        await update.message.reply_text(
+            "❌ لا توجد أسئلة لهذه اللعبة"
+        )
+        return
+    # ==================================================
+    # اختيار سؤال عشوائي
+    # ==================================================
+    question = random.choice(questions)
+    raw_answers = question[4] or ""
+    answers = [
+        x.strip().casefold()
+        for x in raw_answers.split("|")
+        if x.strip()
+    ]
+    if not answers:
+        await update.message.reply_text(
+            "❌ هذا السؤال لا يحتوي على إجابة صحيحة"
+        )
+        return
+    # ==================================================
+    # حفظ اللعبة النشطة
+    # ==================================================
+    active_games[chat_id] = {
+        "answers": answers,
+        "winner": False,
+        "game": game_name
+    }
+    text = (
+        f"❓ {question[1]}\n\n"
+        "أول واحد يجاوب ياخذ\n"
+        "⭐ +3 نقاط"
+    )
+    # ==================================================
+    # إرسال السؤال
+    # ==================================================
+    if question[2]:
+        await update.message.reply_photo(
+            photo=question[2],
+            caption=text
+        )
+    else:
+        await update.message.reply_text(
+            text
+        )
+# =====================
+# فحص الإجابات
+# =====================
+async def check_game_answer(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+    if not update.message:
+        return
+    if not update.message.text:
+        return
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    # ==================================================
+    # إذا كان المستخدم يضيف سؤال
+    # ==================================================
+    if user_id in add_question_sessions:
+        return
+    # ==================================================
+    # لا توجد لعبة شغالة
+    # ==================================================
+    if chat_id not in active_games:
+        return
+    game = active_games[chat_id]
+    # ==================================================
+    # اللعبة انتهت بالفعل
+    # ==================================================
+    if game.get("winner"):
+        return
+    text = update.message.text.strip()
+    # ==================================================
+    # لا نحسب أوامر الإدارة كإجابات
+    # ==================================================
+    blocked = [
+        "اضف سؤال",
         "اضف لعبة",
         "حذف سؤال",
         "حذف لعبة",
@@ -694,308 +849,83 @@ async def play_game(
         "الالعاب",
         "اسئلة"
     ]
-
-
     for cmd in blocked:
         if text.startswith(cmd):
             return
-
-
-
-    game_name = text
-
-
-
-    global active_games
-
-    if "active_games" not in globals():
-        active_games = {}
-
-
-
-    conn = connect()
-    cur = conn.cursor()
-
-
-
-    # فحص حالة جميع الألعاب
-
-    cur.execute(
-        """
-        SELECT status
-        FROM games_settings
-        WHERE id=1
-        """
-    )
-
-    settings = cur.fetchone()
-
-
-
-    if settings and settings[0] == "off":
-
-        conn.close()
-        return
-
-
-
-    # البحث عن اللعبة
-
-    cur.execute(
-        """
-        SELECT status
-        FROM games
-        WHERE name=?
-        """,
-        (game_name,)
-    )
-
-
-    game = cur.fetchone()
-
-
-
-    if not game:
-
-        conn.close()
-        return
-
-
-
-    if game[0] == "off":
-
-        conn.close()
-
-        await update.message.reply_text(
-            "❌ هذه اللعبة معطلة"
-        )
-
-        return
-
-
-
-    # جلب الأسئلة
-
-    cur.execute(
-        """
-        SELECT
-        id,
-        question,
-        image,
-        caption,
-        answers
-
-        FROM game_questions
-
-        WHERE game_name=?
-
-        """,
-        (game_name,)
-    )
-
-
-    questions = cur.fetchall()
-
-
-
-    conn.close()
-
-
-
-    if not questions:
-
-        await update.message.reply_text(
-            "❌ لا توجد أسئلة لهذه اللعبة"
-        )
-
-        return
-
-
-
-    question = random.choice(
-        questions
-    )
-
-
-
-    active_games[
-        update.effective_chat.id
-    ] = {
-
-        "answers":
-        [
-            x.strip().lower()
-            for x in question[4].split("|")
-        ],
-
-        "winner": False,
-
-        "game": game_name
-
-    }
-
-
-
-    text = (
-        
-        f"❓ {question[1]}\n\n"
-        "أول واحد يجاوب ياخذ\n"
-        "⭐ +3 نقاط"
-    )
-
-
-
-    if question[2]:
-
-        await update.message.reply_photo(
-            photo=question[2],
-            caption=text
-        )
-
-    else:
-
-        await update.message.reply_text(
-            text
-        )
-
-
-
-
-
-# =====================
-# فحص الإجابات
-# =====================
-
-async def check_game_answer(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-
-    if not update.message:
-        return
-
-
-    if not update.message.text:
-        return
-
-
-
-    user_id = update.effective_user.id
-
-
-
-    # إذا كان المستخدم يضيف سؤال لا تحسب الإجابة
-    if user_id in add_question_sessions:
-        return
-
-
-
-    text = update.message.text.strip()
-
-
-
-    blocked = [
-        "اضف سؤال",
-        "اضف لعبة",
-        "حذف سؤال",
-        "حذف لعبة",
-        "تفعيل لعبة",
-        "تعطيل لعبة",
-        "الالعاب",
-        "اسئلة"
+    # ==================================================
+    # تطبيع الإجابة
+    # ==================================================
+    answer = text.casefold()
+    correct_answers = [
+        x.strip().casefold()
+        for x in game.get("answers", [])
+        if x and x.strip()
     ]
-
-
-
-    for cmd in blocked:
-        if text.startswith(cmd):
-            return
-
-
-
-    chat_id = update.effective_chat.id
-
-
-
-    global active_games
-
-
-    if "active_games" not in globals():
-        active_games = {}
-
-
-
-    if chat_id not in active_games:
+    # ==================================================
+    # إجابة خاطئة
+    # ==================================================
+    if answer not in correct_answers:
         return
-
-
-
-    game = active_games[chat_id]
-
-
-
+    # ==================================================
+    # منع فوز شخصين بنفس اللحظة
+    # ==================================================
     if game.get("winner"):
         return
-
-
-
-    answer = text.lower()
-
-
-
-    if answer not in game["answers"]:
-        return
-
-
-
     game["winner"] = True
-
-
-
     user = update.effective_user
-
-
-
+    # ==================================================
+    # إضافة النقاط
+    # ==================================================
     conn = connect()
     cur = conn.cursor()
-
-
-
-    cur.execute(
-        """
-        INSERT INTO points
-        (
-            user_id,
-            points
+    try:
+        cur.execute(
+            """
+            INSERT INTO points
+            (
+                user_id,
+                points
+            )
+            VALUES
+            (
+                ?,
+                3
+            )
+            ON CONFLICT(user_id)
+            DO UPDATE SET
+                points = points.points + EXCLUDED.points
+            """,
+            (user.id,)
         )
-
-        VALUES
-        (?, 3)
-
-        ON CONFLICT(user_id)
-
-        DO UPDATE SET
-        points = points + EXCLUDED.points
-        """,
-        (user.id,)
-    )
-
-
-
-    conn.commit()
-    conn.close()
-
-
-
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        game["winner"] = False
+        print(
+            f"❌ خطأ في إضافة نقاط اللعبة للاعب {user.id}"
+        )
+        raise
+    finally:
+        try:
+            cur.close()
+        except Exception:
+            pass
+        conn.close()
+    # ==================================================
+    # إعلان الفائز
+    # ==================================================
     await update.message.reply_text(
-        f" !صح عليك {user.first_name}\n"
+        f"صح عليك {user.first_name} !\n"
         "✅ إجابة صحيحة\n"
-        " خذيت 3 نقاط🌟"
+        "⭐ خذيت 3 نقاط"
     )
-
-
-
-    del active_games[chat_id]
+    # ==================================================
+    # إنهاء اللعبة
+    # ==================================================
+    active_games.pop(
+        chat_id,
+        None
+    )
 
 
 
