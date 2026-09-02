@@ -2183,7 +2183,6 @@ async def end_penalty_game(
 # ==================================================
 # إنهاء المباراة + الجوائز
 # ==================================================
-
 async def finish_penalty_game(
     context,
     chat_id,
@@ -2211,8 +2210,7 @@ async def finish_penalty_game(
     winner_name = (
         "🔴 الفريق الأحمر"
         if winner == "red"
-        else
-        "🔵 الفريق الأزرق"
+        else "🔵 الفريق الأزرق"
     )
 
     text = (
@@ -2223,78 +2221,81 @@ async def finish_penalty_game(
         f"- {game['score']['blue']} الأزرق 🔵"
     )
 
+    # ==================================================
+    # رسالة نهاية المباراة
+    # ==================================================
+
     await context.bot.send_message(
         chat_id=chat_id,
         text=text
     )
 
     # ==================================================
-    # الجوائز - رسالة واحدة لكل الفريق الفائز
+    # جوائز الفريق الفائز
     # ==================================================
 
-        winners = list(dict.fromkeys(
-            game[winner]["shooters"]
-            + game[winner]["goalies"]
-        ))
+    winners = list(dict.fromkeys(
+        game[winner]["shooters"]
+        + game[winner]["goalies"]
+    ))
 
-        reward_lines = [
-          "✨ جوائز الفريق الفائز: ✨"
-        ]
+    reward_lines = [
+        "✨ جوائز الفريق الفائز: ✨"
+    ]
 
-        for player_id in winners:
+    for player_id in winners:
 
-            player = game["players"].get(player_id)
+        player = game["players"].get(player_id)
 
-            if not player:
-                continue
-
-            try:
-                add_points(
-                    player_id,
-                    WIN_POINTS
-                )
-
-                reward_lines.append(
-                    f"• {get_player_name(player)} — "
-                    f"حصل على {WIN_POINTS} نقطة! 🎖️"
-                )
-
-            except Exception as e:
-
-                print(
-                    f"❌ خطأ في إضافة النقاط للاعب "
-                    f"{player_id}: {e}"
-                )
-
-                # حتى لو فشلت إضافة النقاط
-                # لا نوقف رسالة النهاية
-                reward_lines.append(
-                    f"• {get_player_name(player)} — "
-                    f"حصل على {WIN_POINTS} نقطة! 🎖️"
-                )
-
-        # ==================================================
-        # إرسال جوائز الفريق الفائز
-        # ==================================================
+        if not player:
+            continue
 
         try:
 
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text="\n".join(reward_lines)
+            add_points(
+                player_id,
+                WIN_POINTS
+            )
+
+            reward_lines.append(
+                f"• {get_player_name(player)} — "
+                f"حصل على {WIN_POINTS} نقطة! 🎖️"
             )
 
         except Exception as e:
 
             print(
-                f"❌ خطأ في إرسال رسالة الجوائز: {e}"
+                f"❌ خطأ في إضافة النقاط للاعب "
+                f"{player_id}: {e}"
             )
 
-        # ==================================================
-        # حذف اللعبة
-        # ==================================================
+            reward_lines.append(
+                f"• {get_player_name(player)} — "
+                f"حصل على {WIN_POINTS} نقطة! 🎖️"
+            )
 
-        active_penalty_games.pop(
-            chat_id,
-            None
+    # ==================================================
+    # إرسال رسالة الجوائز
+    # ==================================================
+
+    try:
+
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="\n".join(reward_lines)
         )
+
+    except Exception as e:
+
+        print(
+            f"❌ خطأ في إرسال رسالة الجوائز: {e}"
+        )
+
+    # ==================================================
+    # حذف اللعبة
+    # ==================================================
+
+    active_penalty_games.pop(
+        chat_id,
+        None
+    )
