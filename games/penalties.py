@@ -1755,6 +1755,9 @@ async def resolve_kick(
     # منع التكرار
     # ==================================================
 
+    if game.get("resolving"):
+        return
+
     game["resolving"] = True
 
     cancel_kick_tasks(game)
@@ -1797,7 +1800,9 @@ async def resolve_kick(
     # تحديد الهدف
     # ==================================================
 
-    goal = shooter_choice != goalie_choice
+    goal = (
+        shooter_choice != goalie_choice
+    )
 
     if goal:
         game["score"][shooting_team] += 1
@@ -1806,17 +1811,37 @@ async def resolve_kick(
     # رسالة التشويق
     # ==================================================
 
-    teaser = await context.bot.send_message(
-        chat_id=chat_id,
-        text="هل يسجلها المسدد؟ ام يصدها الحارس…🧤🔥"
-    )
+    try:
+
+        teaser = await context.bot.send_message(
+            chat_id=chat_id,
+            text="هل يسجلها المسدد؟ ام يصدها الحارس…🧤🔥"
+        )
+
+    except Exception as e:
+
+        print(
+            f"❌ خطأ في رسالة التشويق: {e}"
+        )
+
+        teaser = None
+
+    # ==================================================
+    # انتظار 5 ثواني
+    # ==================================================
 
     await asyncio.sleep(5)
 
-    try:
-        await teaser.delete()
-    except Exception:
-        pass
+    # ==================================================
+    # حذف التشويق
+    # ==================================================
+
+    if teaser:
+
+        try:
+            await teaser.delete()
+        except Exception:
+            pass
 
     # ==================================================
     # صورة النتيجة
@@ -1891,9 +1916,9 @@ async def resolve_kick(
     # إرسال صورة النتيجة
     # ==================================================
 
-    if image_id:
+    try:
 
-        try:
+        if image_id:
 
             await context.bot.send_photo(
                 chat_id=chat_id,
@@ -1901,48 +1926,79 @@ async def resolve_kick(
                 caption=text
             )
 
-        except Exception:
+        else:
 
             await context.bot.send_message(
                 chat_id=chat_id,
                 text=text
             )
 
-    else:
+    except Exception as e:
 
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text=text
+        print(
+            f"❌ خطأ في إرسال نتيجة الركلة: {e}"
         )
 
+        try:
+
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=text
+            )
+
+        except Exception as e2:
+
+            print(
+                f"❌ تعذر إرسال نتيجة الركلة: {e2}"
+            )
+
     # ==================================================
-    # الركلة الحاسمة
-    # ==================================================
-
-    if is_decisive_kick and goal:
-
-        await finish_penalty_game(
-            context,
-            chat_id,
-            shooting_team
-        )
-
-        return
-
-    # ==================================================
-    # ركلة البقاء
-    # إذا ضاعت أو صدها الحارس يفوز الفريق الآخر
+    # 🔥 الحاسمة
     # ==================================================
 
-    if is_survival_kick and not goal:
+    if is_decisive_kick:
 
-        await finish_penalty_game(
-            context,
-            chat_id,
-            goalie_team
-        )
+        if goal:
 
-        return
+            await finish_penalty_game(
+                context,
+                chat_id,
+                shooting_team
+            )
+
+            return
+
+        else:
+
+            await finish_penalty_game(
+                context,
+                chat_id,
+                goalie_team
+            )
+
+            return
+
+    # ==================================================
+    # 🔥 ركلة البقاء
+    # ==================================================
+
+    if is_survival_kick:
+
+        if goal:
+
+            # سجل = يستمر اللعب
+            game["resolving"] = False
+
+        else:
+
+            # ضاعت = الفريق الآخر يفوز
+            await finish_penalty_game(
+                context,
+                chat_id,
+                goalie_team
+            )
+
+            return
 
     # ==================================================
     # فحص نهاية أول 5 ركلات
