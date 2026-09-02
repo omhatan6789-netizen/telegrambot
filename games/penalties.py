@@ -1521,10 +1521,9 @@ async def update_kick_status(
     return
 
 # ==================================================
-# مؤقت الاختيار
-# ==================================================
-
-
+# مؤقت الاختيار 
+# ==================================================        
+   
 async def choice_timeout(
     context,
     chat_id,
@@ -1545,21 +1544,11 @@ async def choice_timeout(
     if game["phase"] != "shootout":
         return
 
-    # ==================================================
-    # إذا انتهى وقت المسدد
-    # وما اختار = وسط
-    # ==================================================
-
     if role == "shooter":
 
         if game.get("shooter_choice") is None:
             game["shooter_choice"] = "وسط"
             game["shooter_ready"] = True
-
-    # ==================================================
-    # إذا انتهى وقت الحارس
-    # وما اختار = وسط
-    # ==================================================
 
     elif role == "goalie":
 
@@ -1567,49 +1556,20 @@ async def choice_timeout(
             game["goalie_choice"] = "وسط"
             game["goalie_ready"] = True
 
-    # ==================================================
-    # تحديث الكابشن
-    # ==================================================
-
     await update_ready_message(
         context,
         chat_id
     )
 
-    # ==================================================
-    # إذا صار عندنا اختيار الاثنين
-    # نفذ الركلة مباشرة
-    # ==================================================
-
+    # إذا الاثنين اختاروا أو انتهى وقتهم
     if (
         game.get("shooter_choice") is not None
         and game.get("goalie_choice") is not None
     ):
-
-        # منع تنفيذ الركلة مرتين
-        if game.get("_kick_started"):
-            return
-
-        game["_kick_started"] = True
-        game["resolving"] = True
-
-        try:
-
-            await resolve_kick(
-                context,
-                chat_id
-            )
-
-        except Exception as e:
-
-            print(
-                f"❌ خطأ في تنفيذ الركلة بعد انتهاء الوقت: {e}"
-            )
-
-            game["resolving"] = False
-            game["_kick_started"] = False
-   
-    
+        await resolve_kick(
+            context,
+            chat_id
+        )    
 
 # ==================================================
 # إلغاء المؤقتات
@@ -1633,102 +1593,123 @@ def cancel_kick_tasks(game):
 # ==================================================
 # نتيجة الركلة
 # ==================================================
-
 async def penalty_direction_callback(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
+
     query = update.callback_query
+
     try:
         _, _, chat_id_text, direction = query.data.split(":")
         chat_id = int(chat_id_text)
+
     except Exception:
         await query.answer()
         return
+
     game = active_penalty_games.get(chat_id)
+
     if not game:
         await query.answer(
             "❌ انتهت المباراة.",
             show_alert=True
         )
         return
+
     if game["phase"] != "shootout":
         await query.answer(
             "❌ لا توجد ركلة حالية.",
             show_alert=True
         )
         return
+
     user_id = query.from_user.id
+
     shooter_id = game["current_shooter"]
     goalie_id = game["current_goalie"]
+
     if user_id not in game["players"]:
         await query.answer(
             "❌ انت مو بالقيم اصلا!",
             show_alert=True
         )
         return
+
     if user_id != shooter_id and user_id != goalie_id:
         await query.answer(
             "❌ انتظر، ليس دورك!",
             show_alert=True
         )
         return
-    # ==========================================
-    # اختيار المسدد
-    # ==========================================
+
+    # ==============================
+    # المسدد
+    # ==============================
+
     if user_id == shooter_id:
+
         if game["shooter_choice"] is not None:
             await query.answer(
                 "❌ اخترت اتجاهك بالفعل.",
                 show_alert=True
             )
             return
+
         game["shooter_choice"] = direction
         game["shooter_ready"] = True
+
         task = game.get("shooter_task")
+
         if task:
             task.cancel()
+
         game["shooter_task"] = None
-        await update_ready_message(
-            context,
-            chat_id
-        )
+
         await query.answer(
             "✅ تم تسجيل اختيارك."
         )
-    # ==========================================
-    # اختيار الحارس
-    # ==========================================
+
+    # ==============================
+    # الحارس
+    # ==============================
+
     elif user_id == goalie_id:
+
         if game["goalie_choice"] is not None:
             await query.answer(
                 "❌ اخترت اتجاهك بالفعل.",
                 show_alert=True
             )
             return
+
         game["goalie_choice"] = direction
         game["goalie_ready"] = True
+
         task = game.get("goalie_task")
+
         if task:
             task.cancel()
+
         game["goalie_task"] = None
-        await update_ready_message(
-            context,
-            chat_id
-        )
+
         await query.answer(
             "✅ تم تسجيل اختيارك."
         )
-    # ==========================================
-    # الاثنين اختاروا
-    # ==========================================
+
+    await update_ready_message(
+        context,
+        chat_id
+    )
+
+    # ==============================
+    # إذا الاثنين اختاروا
+    # ==============================
+
     if (
         game["shooter_choice"] is not None
         and game["goalie_choice"] is not None
     ):
-        if game["resolving"]:
-            return
-        game["resolving"] = True
         await resolve_kick(
             context,
             chat_id
@@ -1750,9 +1731,15 @@ async def resolve_kick(
     if game["phase"] != "shootout":
         return
 
-    # ==================================================
-    # أي شخص ما اختار = وسط
-    # ==================================================
+    # منع تنفيذ نفس الركلة مرتين
+    if game.get("resolving"):
+        return
+
+    game["resolving"] = True
+
+    # ==============================
+    # إذا أحد ما اختار
+    # ==============================
 
     if game.get("shooter_choice") is None:
         game["shooter_choice"] = "وسط"
@@ -1766,16 +1753,7 @@ async def resolve_kick(
     shooter_choice = game["shooter_choice"]
     goalie_choice = game["goalie_choice"]
 
-    # ==================================================
-    # منع التكرار
-    # ==================================================
-
-    if game.get("resolving") and game.get("_kick_started"):
-        return
-
-    game["resolving"] = True
-    game["_kick_started"] = True
-
+    # إلغاء التايمرات
     cancel_kick_tasks(game)
 
     shooter_id = game["current_shooter"]
@@ -1786,7 +1764,6 @@ async def resolve_kick(
 
     if not shooter or not goalie:
         game["resolving"] = False
-        game["_kick_started"] = False
         return
 
     shooting_team = game["current_team"]
@@ -1796,10 +1773,6 @@ async def resolve_kick(
         if shooting_team == "red"
         else "red"
     )
-
-    # ==================================================
-    # تحديد حالة الركلة قبل تنفيذها
-    # ==================================================
 
     warning = get_kick_warning(game)
 
@@ -1813,9 +1786,9 @@ async def resolve_kick(
         and "ضغوط هائلة" in warning
     )
 
-    # ==================================================
+    # ==============================
     # تحديد الهدف
-    # ==================================================
+    # ==============================
 
     goal = (
         shooter_choice != goalie_choice
@@ -1824,9 +1797,9 @@ async def resolve_kick(
     if goal:
         game["score"][shooting_team] += 1
 
-    # ==================================================
+    # ==============================
     # رسالة التشويق
-    # ==================================================
+    # ==============================
 
     teaser = None
 
@@ -1843,15 +1816,7 @@ async def resolve_kick(
             f"❌ خطأ في إرسال رسالة التشويق: {e}"
         )
 
-    # ==================================================
-    # انتظار 5 ثواني
-    # ==================================================
-
     await asyncio.sleep(5)
-
-    # ==================================================
-    # حذف رسالة التشويق
-    # ==================================================
 
     if teaser:
 
@@ -1861,9 +1826,9 @@ async def resolve_kick(
         except Exception:
             pass
 
-    # ==================================================
+    # ==============================
     # صورة النتيجة
-    # ==================================================
+    # ==============================
 
     image_id = RESULT_IMAGES.get(
         (
@@ -1873,9 +1838,9 @@ async def resolve_kick(
         )
     )
 
-    # ==================================================
-    # كابشن الهدف
-    # ==================================================
+    # ==============================
+    # نص النتيجة
+    # ==============================
 
     if goal:
 
@@ -1903,10 +1868,6 @@ async def resolve_kick(
             f"- {game['score']['blue']} الأزرق 🔵"
         )
 
-    # ==================================================
-    # كابشن التصدي
-    # ==================================================
-
     else:
 
         goalie_team_name = (
@@ -1930,9 +1891,9 @@ async def resolve_kick(
             f"- {game['score']['blue']} الأزرق 🔵"
         )
 
-    # ==================================================
-    # إرسال صورة النتيجة
-    # ==================================================
+    # ==============================
+    # إرسال النتيجة
+    # ==============================
 
     try:
 
@@ -1970,9 +1931,9 @@ async def resolve_kick(
                 f"❌ خطأ في إرسال النتيجة: {e2}"
             )
 
-    # ==================================================
-    # 🔥 الركلة الحاسمة
-    # ==================================================
+    # ==============================
+    # ركلة حاسمة
+    # ==============================
 
     if is_decisive_kick:
 
@@ -1994,9 +1955,9 @@ async def resolve_kick(
 
         return
 
-    # ==================================================
-    # 🔥 ركلة البقاء
-    # ==================================================
+    # ==============================
+    # ركلة البقاء
+    # ==============================
 
     if is_survival_kick:
 
@@ -2010,9 +1971,9 @@ async def resolve_kick(
 
             return
 
-    # ==================================================
-    # فحص نهاية المباراة
-    # ==================================================
+    # ==============================
+    # التحقق من انتهاء المباراة
+    # ==============================
 
     winner = get_winner_if_finished(game)
 
@@ -2026,12 +1987,11 @@ async def resolve_kick(
 
         return
 
-    # ==================================================
-    # الركلة انتهت
-    # ==================================================
+    # ==============================
+    # انتظار .كمل
+    # ==============================
 
     game["resolving"] = False
-    game["_kick_started"] = False
 
     await context.bot.send_message(
         chat_id=chat_id,
