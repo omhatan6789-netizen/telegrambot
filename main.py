@@ -28,13 +28,14 @@ from games.hide_and_seek import (
 from games.penalties import (
     start_penalty_game,
     join_penalty_game,
-    distribute_penalties,
-    distribution_callback,
-    manual_team_command,
-    begin_penalties,
-    continue_penalties,
+    distribute_penalty_game,
+    penalty_distribution_callback,
+    manual_red,
+    manual_blue,
+    begin_penalty_shootout,
+    continue_penalty_shootout,
     end_penalty_game,
-    penalty_direction_callback
+    penalty_kick_callback,
 )
 
 # ==================================================
@@ -1168,7 +1169,6 @@ def main():
     # لعبة البلنتيات
     # ==================================================
 
-    # بدء البلنتيات
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^بلنتيات$"),
@@ -1177,52 +1177,55 @@ def main():
         group=0
     )
 
-    # دخول اللاعبين
+    # نحط دخول البلنتيات قبل دخول غميضة
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^دخول$"),
             join_penalty_game
         ),
-        group=0
+        group=-1
     )
 
-    # توزيع الفرق
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^\.وزع$"),
-            distribute_penalties
+            distribute_penalty_game
         ),
         group=0
     )
 
-    # التوزيع اليدوي
     app.add_handler(
         MessageHandler(
-            filters.Regex(r"^\.(احمر|ازرق)(?:\s+\d+\*?)+$"),
-            manual_team_command
+            filters.Regex(r"^\.احمر(?:\s+\d+\*?)+$"),
+            manual_red
         ),
         group=0
     )
 
-    # بدء ركلات الترجيح
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^\.ازرق(?:\s+\d+\*?)+$"),
+            manual_blue
+        ),
+        group=0
+    )
+
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^\.ابدا$"),
-            begin_penalties
+            begin_penalty_shootout
         ),
         group=0
     )
 
-    # الانتقال للركلة التالية
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^\.كمل$"),
-            continue_penalties
+            continue_penalty_shootout
         ),
         group=0
     )
 
-    # إنهاء البلنتيات
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^انهاء بلنتيات$"),
@@ -1231,19 +1234,17 @@ def main():
         group=0
     )
 
-    # أزرار الاتجاهات
     app.add_handler(
         CallbackQueryHandler(
-            penalty_direction_callback,
-            pattern=r"^penalty:direction:"
+            penalty_distribution_callback,
+            pattern=r"^penalty:dist:"
         )
     )
 
-    # أزرار التوزيع
     app.add_handler(
         CallbackQueryHandler(
-            distribution_callback,
-            pattern=r"^penalty:distribution:"
+            penalty_kick_callback,
+            pattern=r"^penalty:kick:"
         )
     )
 
