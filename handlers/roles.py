@@ -33,7 +33,30 @@ RANK_LEVELS = {
 DEV_PRIMARY = "primary"
 DEV_SECONDARY = "secondary"
 
+# ==================================================
+# Cache لتسريع الصلاحيات والرتب
+# ==================================================
 
+_developer_cache = {}
+_rank_cache = {}
+_command_permission_cache = {}
+
+
+def clear_user_role_cache(user_id):
+    """
+    مسح Cache المستخدم عند تغيير رتبته أو نوع المطور
+    """
+
+    _developer_cache.pop(user_id, None)
+    _rank_cache.pop(user_id, None)
+
+
+def clear_command_permission_cache():
+    """
+    مسح Cache أقفال الأوامر
+    """
+
+    _command_permission_cache.clear()
 # ==================================================
 # توحيد الرتبة
 # ==================================================
@@ -61,26 +84,48 @@ def is_developer(user_id):
     if user_id == OWNER_ID:
         return DEV_PRIMARY
 
+
+    # =========================
+    # Cache
+    # =========================
+
+    if user_id in _developer_cache:
+        return _developer_cache[user_id]
+
+
     conn = connect()
     cur = conn.cursor()
 
-    cur.execute(
-        """
-        SELECT developer_type
-        FROM developers
-        WHERE user_id=?
-        """,
-        (user_id,)
-    )
+    try:
 
-    result = cur.fetchone()
+        cur.execute(
+            """
+            SELECT developer_type
+            FROM developers
+            WHERE user_id=?
+            """,
+            (user_id,)
+        )
 
-    conn.close()
+        result = cur.fetchone()
+
+    finally:
+
+        conn.close()
+
 
     if not result:
+
+        _developer_cache[user_id] = None
+
         return None
 
-    return result[0]
+
+    developer_type = result[0]
+
+    _developer_cache[user_id] = developer_type
+
+    return developer_type
 
 
 def is_primary_developer(user_id):
@@ -102,75 +147,110 @@ def get_rank(user_id):
     if user_id == OWNER_ID:
         return "Dev"
 
+
+    # =========================
+    # Cache
+    # =========================
+
+    if user_id in _rank_cache:
+        return _rank_cache[user_id]
+
+
     conn = connect()
     cur = conn.cursor()
 
-    # أولاً: البحث في users
-    cur.execute(
-        """
-        SELECT rank
-        FROM users
-        WHERE user_id=?
-        """,
-        (user_id,)
-    )
+    try:
 
-    data = cur.fetchone()
+        # ==================================================
+        # أولاً: البحث في users
+        # ==================================================
 
-    if data and data[0]:
-        rank = normalize_rank(data[0])
-
-        conn.close()
-        return rank
-
-    # إذا لم توجد الرتبة في users
-    # نرجع للنسخة الدائمة في ranks
-    cur.execute(
-        """
-        SELECT rank
-        FROM ranks
-        WHERE user_id=?
-        """,
-        (user_id,)
-    )
-
-    rank_data = cur.fetchone()
-
-    if rank_data and rank_data[0]:
-
-        rank = normalize_rank(rank_data[0])
-
-        # إعادة إنشاء سجل المستخدم بالرتبة المحفوظة
         cur.execute(
             """
-            INSERT INTO users
-            (
-                user_id,
-                username,
-                first_name,
-                messages,
-                rank
-            )
-            VALUES (?, '', '', 0, ?)
-
-            ON CONFLICT(user_id)
-            DO UPDATE SET
-                rank=excluded.rank
+            SELECT rank
+            FROM users
+            WHERE user_id=?
             """,
-            (
-                user_id,
-                rank
-            )
+            (user_id,)
         )
 
-        conn.commit()
+        data = cur.fetchone()
+
+
+        if data and data[0]:
+
+            rank = normalize_rank(
+                data[0]
+            )
+
+            _rank_cache[user_id] = rank
+
+            return rank
+
+
+        # ==================================================
+        # إذا لم توجد الرتبة في users
+        # نرجع للنسخة الدائمة في ranks
+        # ==================================================
+
+        cur.execute(
+            """
+            SELECT rank
+            FROM ranks
+            WHERE user_id=?
+            """,
+            (user_id,)
+        )
+
+        rank_data = cur.fetchone()
+
+
+        if rank_data and rank_data[0]:
+
+            rank = normalize_rank(
+                rank_data[0]
+            )
+
+
+            # إعادة إنشاء سجل المستخدم
+            cur.execute(
+                """
+                INSERT INTO users
+                (
+                    user_id,
+                    username,
+                    first_name,
+                    messages,
+                    rank
+                )
+                VALUES (?, '', '', 0, ?)
+
+                ON CONFLICT(user_id)
+                DO UPDATE SET
+                    rank=excluded.rank
+                """,
+                (
+                    user_id,
+                    rank
+                )
+            )
+
+            conn.commit()
+
+
+            _rank_cache[user_id] = rank
+
+            return rank
+
+
+        _rank_cache[user_id] = "عضو"
+
+        return "عضو"
+
+
+    finally:
+
         conn.close()
-
-        return rank
-
-    conn.close()
-
-    return "عضو"
 
 
 # ==================================================
@@ -201,43 +281,120 @@ def get_rank_level(user_id):
 
 def check_command_permission(user_id, command):
 
+    # =========================
+    # Cache
+    # =========================
+
+    cache_key = (
+        user_id,
+        command
+    )
+
+
+    if cache_key in _command_permission_cache:
+
+        return _command_permission_cache[
+            cache_key
+        ]
+
+
     conn = connect()
     cur = conn.cursor()
 
-    cur.execute(
-        """
-        SELECT rank
-        FROM command_locks
-        WHERE command=?
-        """,
-        (command,)
+    try:
+
+        cur.execute(
+            """
+            SELECT rank
+            FROM command_locks
+            WHERE command=?
+            """,
+            (command,)
+        )
+
+        data = cur.fetchone()
+
+    finally:
+
+        conn.close()
+
+
+    # ==================================================
+    # الأمر غير مقفول
+    # ==================================================
+
+    if not data:
+
+        result = (
+            True,
+            None
+        )
+
+        _command_permission_cache[
+            cache_key
+        ] = result
+
+        return result
+
+
+    required_rank = normalize_rank(
+        data[0]
     )
 
-    data = cur.fetchone()
 
-    conn.close()
+    user_level = get_rank_level(
+        user_id
+    )
 
-    # الأمر غير مقفول
-    if not data:
-        return True, None
-
-    required_rank = normalize_rank(data[0])
-
-    user_level = get_rank_level(user_id)
 
     required_level = RANK_LEVELS.get(
         required_rank,
         0
     )
 
+
+    # ==================================================
     # المطورون يتجاوزون القفل
+    # ==================================================
+
     if is_developer(user_id):
-        return True, None
+
+        result = (
+            True,
+            None
+        )
+
+        _command_permission_cache[
+            cache_key
+        ] = result
+
+        return result
+
 
     if user_level >= required_level:
-        return True, None
 
-    return False, required_rank
+        result = (
+            True,
+            None
+        )
+
+        _command_permission_cache[
+            cache_key
+        ] = result
+
+        return result
+
+
+    result = (
+        False,
+        required_rank
+    )
+
+    _command_permission_cache[
+        cache_key
+    ] = result
+
+    return result
 
 
 # ==================================================
@@ -576,6 +733,23 @@ def update_user_rank(
 
     conn.commit()
     conn.close()
+
+
+    # ==================================================
+    # تحديث Cache المستخدم
+    # ==================================================
+
+    clear_user_role_cache(
+        user_id
+    )
+
+
+    # ==================================================
+    # الصلاحيات تعتمد على الرتبة
+    # لذلك نمسح Cache الأوامر
+    # ==================================================
+
+    clear_command_permission_cache()
 
 
 # ==================================================
