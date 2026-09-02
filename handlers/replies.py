@@ -11,6 +11,69 @@ delete_special_reply_sessions = {}
 edit_special_reply_sessions = {}
 edit_reply_sessions = {}
 delete_reply_sessions = {}
+
+# =========================
+# Cache للردود
+# =========================
+
+replies_cache = None
+special_replies_cache = None
+
+
+def load_replies_cache():
+    global replies_cache
+    global special_replies_cache
+
+    conn = connect()
+
+    try:
+        cur = conn.cursor()
+
+        # الردود العادية
+        cur.execute(
+            """
+            SELECT name, text, type, caption
+            FROM replies
+            """
+        )
+
+        rows = cur.fetchall()
+
+        replies_cache = {
+            row[0]: (
+                row[1],
+                row[2],
+                row[3]
+            )
+            for row in rows
+        }
+
+        # الردود المميزة
+        cur.execute(
+            """
+            SELECT name, text, type, caption
+            FROM special_replies
+            """
+        )
+
+        special_rows = cur.fetchall()
+
+        special_replies_cache = special_rows
+
+        cur.close()
+
+    finally:
+        conn.close()
+
+
+def get_replies_cache():
+    global replies_cache
+    global special_replies_cache
+
+    if replies_cache is None or special_replies_cache is None:
+        load_replies_cache()
+
+    return replies_cache, special_replies_cache
 # =====================
 # بدء إضافة رد
 # =====================
@@ -282,7 +345,6 @@ async def add_reply_handler(
 # تشغيل الردود
 # =====================
 
-
 async def check_replies(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
@@ -297,44 +359,7 @@ async def check_replies(
 
     message_text = update.message.text.lower()
 
-
-    conn = connect()
-    cur = conn.cursor()
-
-
-
-    # =====================
-    # بيانات المستخدم
-    # =====================
-
     user = update.effective_user
-
-
-    cur.execute(
-        """
-        SELECT first_name, username, messages, rank
-        FROM users
-        WHERE user_id=?
-        """,
-        (user.id,)
-    )
-
-    user_data = cur.fetchone()
-
-
-
-    cur.execute(
-        """
-        SELECT points
-        FROM points
-        WHERE user_id=?
-        """,
-        (user.id,)
-    )
-
-    points_data = cur.fetchone()
-
-
 
     user_name = user.first_name or "مستخدم"
 
@@ -344,27 +369,24 @@ async def check_replies(
         else "لا يوجد"
     )
 
-    messages = (
-        user_data[2]
-        if user_data
-        else 0
-    )
 
-    rank = (
-        user_data[3]
-        if user_data
-        else "عضو"
-    )
+    # =====================
+    # Cache الردود
+    # =====================
 
-    points = (
-        points_data[0]
-        if points_data
-        else 0
-    )
+    replies_cache, special_replies = get_replies_cache()
 
 
+    # =====================
+    # استبدال البيانات
+    # =====================
 
-    def replace_data(text):
+    def replace_data(
+        text,
+        messages=0,
+        rank="عضو",
+        points=0
+    ):
 
         if not text:
             return text
@@ -410,29 +432,14 @@ async def check_replies(
             str(points)
         )
 
-
         return text
-
 
 
     # =====================
     # الردود المميزة
     # =====================
 
-    cur.execute(
-        """
-        SELECT name, text, type, caption
-        FROM special_replies
-        """
-    )
-
-
-    special_replies = cur.fetchall()
-
-
-
     for reply in special_replies:
-
 
         name = reply[0]
         content = reply[1]
@@ -442,12 +449,102 @@ async def check_replies(
 
         if name.lower() in message_text:
 
+            # =====================
+            # بيانات المستخدم
+            # يتم جلبها فقط عند الحاجة
+            # =====================
 
-            content = replace_data(content)
+            messages = 0
+            rank = "عضو"
+            points = 0
 
-            caption = replace_data(caption)
+
+            needs_user_data = any(
+                placeholder in (content or "") or
+                placeholder in (caption or "")
+                for placeholder in (
+                    "#الرسائل",
+                    "#الرتبه",
+                    "#النقاط"
+                )
+            )
 
 
+            if needs_user_data:
+
+                conn = connect()
+
+                try:
+
+                    cur = conn.cursor()
+
+
+                    cur.execute(
+                        """
+                        SELECT messages, rank
+                        FROM users
+                        WHERE user_id=?
+                        """,
+                        (user.id,)
+                    )
+
+
+                    user_data = cur.fetchone()
+
+
+                    if user_data:
+
+                        messages = user_data[0] or 0
+
+                        rank = (
+                            user_data[1]
+                            or "عضو"
+                        )
+
+
+                    cur.execute(
+                        """
+                        SELECT points
+                        FROM points
+                        WHERE user_id=?
+                        """,
+                        (user.id,)
+                    )
+
+
+                    points_data = cur.fetchone()
+
+
+                    if points_data:
+
+                        points = (
+                            points_data[0]
+                            or 0
+                        )
+
+                finally:
+
+                    conn.close()
+
+
+            content = replace_data(
+                content,
+                messages,
+                rank,
+                points
+            )
+
+            caption = replace_data(
+                caption,
+                messages,
+                rank,
+                points
+            )
+
+
+            # =====================
+            # إرسال الرد
+            # =====================
 
             if reply_type == "text":
 
@@ -508,35 +605,21 @@ async def check_replies(
                 )
 
 
-            conn.close()
             return
-
 
 
     # =====================
     # الردود العادية
     # =====================
 
-    cur.execute(
-        """
-        SELECT text, type, caption
-        FROM replies
-        WHERE name = ?
-        """,
-        (update.message.text,)
+    reply = replies_cache.get(
+        update.message.text
     )
 
 
-    reply = cur.fetchone()
-
-
-    conn.close()
-
-
-
     if not reply:
-        return
 
+        return
 
 
     content = reply[0]
@@ -544,12 +627,105 @@ async def check_replies(
     caption = reply[2]
 
 
+    # =====================
+    # بيانات المستخدم
+    # يتم جلبها فقط عند الحاجة
+    # =====================
 
-    content = replace_data(content)
+    messages = 0
+    rank = "عضو"
+    points = 0
 
-    caption = replace_data(caption)
+
+    needs_user_data = any(
+        placeholder in (content or "") or
+        placeholder in (caption or "")
+        for placeholder in (
+            "#الرسائل",
+            "#الرتبه",
+            "#النقاط"
+        )
+    )
 
 
+    if needs_user_data:
+
+        conn = connect()
+
+        try:
+
+            cur = conn.cursor()
+
+
+            cur.execute(
+                """
+                SELECT messages, rank
+                FROM users
+                WHERE user_id=?
+                """,
+                (user.id,)
+            )
+
+
+            user_data = cur.fetchone()
+
+
+            if user_data:
+
+                messages = (
+                    user_data[0]
+                    or 0
+                )
+
+                rank = (
+                    user_data[1]
+                    or "عضو"
+                )
+
+
+            cur.execute(
+                """
+                SELECT points
+                FROM points
+                WHERE user_id=?
+                """,
+                (user.id,)
+            )
+
+
+            points_data = cur.fetchone()
+
+
+            if points_data:
+
+                points = (
+                    points_data[0]
+                    or 0
+                )
+
+        finally:
+
+            conn.close()
+
+
+    content = replace_data(
+        content,
+        messages,
+        rank,
+        points
+    )
+
+    caption = replace_data(
+        caption,
+        messages,
+        rank,
+        points
+    )
+
+
+    # =====================
+    # إرسال الرد
+    # =====================
 
     if reply_type == "text":
 
@@ -610,7 +786,6 @@ async def check_replies(
             document=content,
             caption=caption
         )
-
 
 
 
