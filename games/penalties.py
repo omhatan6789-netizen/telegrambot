@@ -5,7 +5,7 @@ import re
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes, ApplicationHandlerStop
 
-from database import get_rank_level
+from handlers.roles import get_rank_level
 from handlers.points import add_points
 
 

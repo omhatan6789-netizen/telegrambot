@@ -970,13 +970,12 @@ async def check_game_answer(
         )
 
         VALUES
-        (?,3)
+        (?, 3)
 
         ON CONFLICT(user_id)
 
         DO UPDATE SET
-
-        points = points + 3
+        points = points + EXCLUDED.points
         """,
         (user.id,)
     )
