@@ -26,6 +26,7 @@ from games.hide_and_seek import (
 )
 
 
+
 from games.penalties import (
     start_penalty_game,
     join_penalty_game,
