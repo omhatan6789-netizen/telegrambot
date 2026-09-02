@@ -29,13 +29,10 @@ from games.penalties import (
     start_penalty_game,
     join_penalty_game,
     distribute_penalties,
-    penalty_distribution_callback,
-    manual_red,
-    manual_blue,
-    begin_penalty_shootout,
-    continue_penalty_shootout,
-    end_penalty_game,
-    penalty_kick_callback,
+    distribution_callback,
+    penalty_direction_callback,
+    continue_penalties,
+    manual_team_command,
 )
 
 # ==================================================
