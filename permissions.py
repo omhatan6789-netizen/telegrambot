@@ -15,6 +15,40 @@ OWNER_ID = 8453977662
 
 
 # ==================================================
+# Cache للصلاحيات
+# ==================================================
+
+_user_permission_cache = {}
+
+
+def clear_user_permission_cache(
+    chat_id=None,
+    user_id=None,
+    command=None
+):
+
+    # مسح Cache كامل
+    if chat_id is None and user_id is None and command is None:
+
+        _user_permission_cache.clear()
+
+        return
+
+
+    # مسح صلاحية محددة
+    key = (
+        chat_id,
+        user_id,
+        normalize_command(command)
+        if command
+        else None
+    )
+
+    _user_permission_cache.pop(
+        key,
+        None
+    )
+# ==================================================
 # توحيد اسم الأمر
 # ==================================================
 
@@ -141,6 +175,17 @@ def set_user_permission(
     conn.close()
 
 
+    # ==================================================
+    # تحديث Cache
+    # ==================================================
+
+    clear_user_permission_cache(
+        chat_id=chat_id,
+        user_id=user_id,
+        command=command
+    )
+
+
 # ==================================================
 # فحص صلاحية الشخص
 #
@@ -157,36 +202,96 @@ def check_user_permission(
 
     command = normalize_command(command)
 
+    # لا يوجد أمر
+    if not command:
+        return None
+
+
+    # ==================================================
     # Dev الأساسي فوق النظام
+    # ==================================================
+
     if is_primary_developer(user_id):
         return True
+
+
+    # ==================================================
+    # Cache
+    # ==================================================
+
+    cache_key = (
+        chat_id,
+        user_id,
+        command
+    )
+
+
+    if cache_key in _user_permission_cache:
+
+        return _user_permission_cache[
+            cache_key
+        ]
+
+
+    # ==================================================
+    # قاعدة البيانات
+    # ==================================================
 
     conn = connect()
     cur = conn.cursor()
 
-    cur.execute(
-        """
-        SELECT allowed
-        FROM group_user_permissions
-        WHERE chat_id=?
-        AND user_id=?
-        AND permission=?
-        """,
-        (
-            chat_id,
-            user_id,
-            command
+    try:
+
+        cur.execute(
+            """
+            SELECT allowed
+            FROM group_user_permissions
+            WHERE chat_id=?
+            AND user_id=?
+            AND permission=?
+            """,
+            (
+                chat_id,
+                user_id,
+                command
+            )
         )
-    )
 
-    result = cur.fetchone()
+        result = cur.fetchone()
 
-    conn.close()
+    finally:
+
+        conn.close()
+
+
+    # ==================================================
+    # لا يوجد تخصيص
+    # ==================================================
 
     if not result:
+
+        _user_permission_cache[
+            cache_key
+        ] = None
+
         return None
 
-    return bool(result[0])
+
+    # ==================================================
+    # حفظ النتيجة في Cache
+    # ==================================================
+
+    permission = bool(
+        result[0]
+    )
+
+
+    _user_permission_cache[
+        cache_key
+    ] = permission
+
+
+    return permission
 
 
 # ==================================================
