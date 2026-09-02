@@ -1524,6 +1524,7 @@ async def update_kick_status(
 # مؤقت الاختيار
 # ==================================================
 
+
 async def choice_timeout(
     context,
     chat_id,
@@ -1545,24 +1546,24 @@ async def choice_timeout(
         return
 
     # ==================================================
-    # إذا انتهى وقت المسدد ولم يختر
+    # إذا انتهى وقت المسدد
+    # وما اختار = وسط
     # ==================================================
 
     if role == "shooter":
 
-        if game["shooter_choice"] is None:
-
+        if game.get("shooter_choice") is None:
             game["shooter_choice"] = "وسط"
             game["shooter_ready"] = True
 
     # ==================================================
-    # إذا انتهى وقت الحارس ولم يختر
+    # إذا انتهى وقت الحارس
+    # وما اختار = وسط
     # ==================================================
 
     elif role == "goalie":
 
-        if game["goalie_choice"] is None:
-
+        if game.get("goalie_choice") is None:
             game["goalie_choice"] = "وسط"
             game["goalie_ready"] = True
 
@@ -1576,24 +1577,38 @@ async def choice_timeout(
     )
 
     # ==================================================
-    # إذا الاثنين اختاروا / انتهى وقتهم
-    # يتم حسم الركلة
+    # إذا صار عندنا اختيار الاثنين
+    # نفذ الركلة مباشرة
     # ==================================================
 
     if (
-        game["shooter_choice"] is not None
-        and game["goalie_choice"] is not None
+        game.get("shooter_choice") is not None
+        and game.get("goalie_choice") is not None
     ):
 
-        if game.get("resolving"):
+        # منع تنفيذ الركلة مرتين
+        if game.get("_kick_started"):
             return
 
+        game["_kick_started"] = True
         game["resolving"] = True
 
-        await resolve_kick(
-            context,
-            chat_id
-        )
+        try:
+
+            await resolve_kick(
+                context,
+                chat_id
+            )
+
+        except Exception as e:
+
+            print(
+                f"❌ خطأ في تنفيذ الركلة بعد انتهاء الوقت: {e}"
+            )
+
+            game["resolving"] = False
+            game["_kick_started"] = False
+   
     
 
 # ==================================================
