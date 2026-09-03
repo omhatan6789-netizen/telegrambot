@@ -12,7 +12,11 @@ from telegram.ext import ContextTypes
 from handlers.roles import get_rank_level
 from handlers.points import add_points
 
-
+from games.big_game_lock import (
+    get_big_game,
+    lock_big_game,
+    unlock_big_game
+)
 # ==================================================
 # إعدادات اللعبة
 # ==================================================
@@ -223,6 +227,18 @@ async def start_hide_game(
 
         return
 
+    big_game = get_big_game(chat.id)
+
+    if big_game:
+
+        await update.message.reply_text(
+            f"❌ فيه لعبة شغالة حاليًا!: "
+            f"{big_game['name']}\n\n"
+            "🛑 أنهِ اللعبة الحالية أولًا قبل بدء لعبة أخرى."
+        )
+
+        return
+
     if chat.id in active_hide_games:
 
         await update.message.reply_text(
@@ -231,6 +247,8 @@ async def start_hide_game(
 
         return
 
+
+    
     active_hide_games[chat.id] = {
 
         "players": {},
@@ -271,6 +289,13 @@ async def start_hide_game(
         # يمنع معالجة ضغطتين بنفس اللحظة
         "resolving": False,
     }
+
+    lock_big_game(
+        chat.id,
+        "hide",
+        "غميضة 🕵️"
+    )
+
 
     await update.message.reply_text(
         "🚪 تم فتح التسجيل في لعبة الغميضة!\n\n"
@@ -1442,6 +1467,11 @@ async def end_hide_game(
         None
     )
 
+    unlock_big_game(
+        chat_id,
+        "hide"
+    )
+
     if not game:
         return
 
@@ -1672,4 +1702,9 @@ async def finish_hide_game(
     active_hide_games.pop(
         chat_id,
         None
+    )
+
+    unlock_big_game(
+        chat_id,
+        "hide"
     )

@@ -9,6 +9,11 @@ from permissions import is_admin
 from handlers.points import add_points
 
 
+from games.big_game_lock import (
+    get_big_game,
+    lock_big_game,
+    unlock_big_game
+)
 # =========================================================
 # الإعدادات
 # =========================================================
@@ -362,6 +367,19 @@ async def start_liar_game_lobby(
 
     chat_id = chat.id
 
+
+    big_game = get_big_game(chat.id)
+
+    if big_game:
+
+        await update.message.reply_text(
+            f"❌ فيه لعبة شغالة حاليًا!: "
+            f"{big_game['name']}\n\n"
+            "🛑 أنهِ اللعبة الحالية أولًا قبل بدء لعبة أخرى."
+        )
+
+        return
+
     if chat_id in active_liar_games:
         await update.message.reply_text(
             "⚠️ توجد لعبة كذاب شغالة حاليًا في هذه المجموعة."
@@ -388,6 +406,13 @@ async def start_liar_game_lobby(
     }
 
     active_liar_games[chat_id] = game
+
+
+    lock_big_game(
+        chat_id,
+        "liar",
+        "الكذاب 🎭"
+    )
 
     message = await update.message.reply_text(
         lobby_text(game),
@@ -1285,42 +1310,90 @@ async def check_liar_message(
 # إنهاء اللعبة يدويًا
 # =========================================================
 
+
 async def end_liar_game(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
+
     if not update.message:
         return
 
     chat = update.effective_chat
+    user = update.effective_user
 
     if not chat:
         return
 
-    game = active_liar_games.get(chat.id)
+    chat_id = chat.id
+
+    # ==================================================
+    # التأكد من وجود اللعبة
+    # ==================================================
+
+    game = active_liar_games.get(chat_id)
 
     if not game:
+
+        await update.message.reply_text(
+            "❌ لا توجد لعبة كذاب شغالة حاليًا."
+        )
+
         return
 
-    user = update.effective_user
+    # ==================================================
+    # الصلاحية
+    # ==================================================
 
     if not is_admin(user.id):
+
+        await update.message.reply_text(
+            "❌ هذا الأمر للمشرفين فقط."
+        )
+
         return
 
-    # إلغاء المؤقتات
-    if game.get("discussion_task"):
-        game["discussion_task"].cancel()
+    # ==================================================
+    # إلغاء المهام المؤقتة
+    # ==================================================
 
-    if game.get("guess_task"):
-        game["guess_task"].cancel()
+    tasks = [
+        game.get("timer_task"),
+        game.get("vote_task"),
+        game.get("guess_task"),
+    ]
 
-    del active_liar_games[chat.id]
+    for task in tasks:
+
+        if task and not task.done():
+
+            task.cancel()
+
+    # ==================================================
+    # إزالة اللعبة
+    # ==================================================
+
+    active_liar_games.pop(chat_id, None)
+
+    # ==================================================
+    # فك قفل الألعاب الكبيرة
+    # ==================================================
+
+    unlock_big_game(
+        chat_id,
+        "liar"
+    )
+
+    # ==================================================
+    # رسالة الإنهاء
+    # ==================================================
 
     await update.message.reply_text(
-        "🛑 **تم إنهاء لعبة الكذاب.**\n\n"
-        "❌ لم يتم احتساب أي نقاط.",
-        parse_mode="Markdown"
+        "🛑 تم إنهاء لعبة الكذاب.\n\n"
+        "✅ تم إلغاء اللعبة الحالية.\n"
+        "🎮 يمكن الآن بدء لعبة كبيرة أخرى."
     )
+
 
 
 # =========================================================
@@ -1538,6 +1611,12 @@ async def finish_game(context, game):
             pass
 
     active_liar_games.pop(chat_id, None)
+
+
+    unlock_big_game(
+        chat_id,
+        "liar"
+    )
 
 
 # =========================================================

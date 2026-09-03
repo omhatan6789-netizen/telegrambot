@@ -12,6 +12,11 @@ from telegram.ext import ContextTypes
 from handlers.roles import get_rank_level
 from handlers.points import add_points
 
+from games.big_game_lock import (
+    get_big_game,
+    lock_big_game,
+    unlock_big_game
+)
 # ==================================================
 # إعدادات اللعبة
 # ==================================================
@@ -247,6 +252,10 @@ async def start_penalty_game(
     chat = update.effective_chat
     user = update.effective_user
 
+    # ==================================================
+    # التأكد أنها داخل قروب
+    # ==================================================
+
     if chat.type == "private":
 
         await update.message.reply_text(
@@ -254,6 +263,10 @@ async def start_penalty_game(
         )
 
         return
+
+    # ==================================================
+    # الصلاحية
+    # ==================================================
 
     if not can_manage_penalties(user.id):
 
@@ -263,6 +276,26 @@ async def start_penalty_game(
 
         return
 
+    # ==================================================
+    # فحص قفل الألعاب الكبيرة
+    # ==================================================
+
+    big_game = get_big_game(chat.id)
+
+    if big_game:
+
+        await update.message.reply_text(
+            f"❌ فيه لعبة شغالة حاليًا!: "
+            f"{big_game['name']}\n\n"
+            "🛑 أنهِ اللعبة الحالية أولًا قبل بدء لعبة أخرى."
+        )
+
+        return
+   
+    # ==================================================
+    # التأكد من عدم وجود بلنتيات شغالة
+    # ==================================================
+
     if chat.id in active_penalty_games:
 
         await update.message.reply_text(
@@ -271,7 +304,12 @@ async def start_penalty_game(
 
         return
 
+    # ==================================================
+    # إنشاء اللعبة
+    # ==================================================
+
     active_penalty_games[chat.id] = {
+
         "players": {},
         "order": [],
 
@@ -316,7 +354,7 @@ async def start_penalty_game(
         "goalie_ready": False,
 
         "ready_message_id": None,
-        
+
         "shooter_task": None,
         "goalie_task": None,
 
@@ -326,6 +364,20 @@ async def start_penalty_game(
 
         "used_players": set(),
     }
+
+    # ==================================================
+    # قفل الألعاب الكبيرة
+    # ==================================================
+
+    lock_big_game(
+        chat.id,
+        "penalties",
+        "البلنتيات ⚽"
+    )
+
+    # ==================================================
+    # رسالة البداية
+    # ==================================================
 
     await update.message.reply_text(
         "⚽️ تم بدء لعبة البلنتيات 🥅\n\n"
@@ -2209,6 +2261,11 @@ async def end_penalty_game(
         None
     )
 
+    unlock_big_game(
+        chat_id,
+        "penalties"
+    )
+
     await update.message.reply_text(
         "🛑 تم إنهاء مباراة البلنتيات."
     )
@@ -2331,4 +2388,9 @@ async def finish_penalty_game(
     active_penalty_games.pop(
         chat_id,
         None
+    )
+
+    unlock_big_game(
+        chat_id,
+        "penalties"
     )
