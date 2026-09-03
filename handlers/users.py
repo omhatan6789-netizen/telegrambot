@@ -7,12 +7,49 @@ from telegram.ext import ContextTypes
 from database import connect
 from handlers.roles import get_rank
 
-
-# ==================================================
-# كاش المستخدمين
-# ==================================================
-
 _user_cache = {}
+
+
+# ==================================================
+# تحديد الشخص المستهدف في أمر ايدي
+# ==================================================
+
+async def get_id_target_user(update, context):
+    if not update.message:
+        return None
+
+    message = update.message
+
+    # الرد على شخص
+    if message.reply_to_message:
+        replied_user = message.reply_to_message.from_user
+        if replied_user:
+            return replied_user
+
+    text = (message.text or "").strip()
+    parts = text.split()
+
+    # ايدي فقط = صاحب الرسالة
+    if len(parts) < 2:
+        return update.effective_user
+
+    target = parts[-1].strip()
+
+    # آيدي
+    if target.isdigit():
+        try:
+            return await context.bot.get_chat(int(target))
+        except Exception:
+            return None
+
+    # يوزر
+    if target.startswith("@"):
+        try:
+            return await context.bot.get_chat(target)
+        except Exception:
+            return None
+
+    return None
 
 
 # ==================================================
@@ -23,13 +60,27 @@ async def user_id_command(update, context):
     if not update.message or not update.effective_user:
         return
 
-    user = update.effective_user
+    target = await get_id_target_user(
+        update,
+        context
+    )
 
-    cached = _user_cache.get(user.id)
+    if not target:
+        await update.message.reply_text(
+            "❌ حدد الشخص بالرد أو اليوزر أو الآيدي."
+        )
+        return
+
+    user_id = target.id
+
+    cached = _user_cache.get(user_id)
 
     if cached:
         messages = cached.get("messages", 0)
-        joined_date = cached.get("joined_date", "غير معروف")
+        joined_date = cached.get(
+            "joined_date",
+            "غير معروف"
+        )
     else:
         conn = connect()
 
@@ -40,7 +91,7 @@ async def user_id_command(update, context):
                 SELECT messages, rank, joined_date
                 FROM users
                 WHERE user_id=?
-            """, (user.id,))
+            """, (user_id,))
 
             data = cur.fetchone()
 
@@ -49,7 +100,9 @@ async def user_id_command(update, context):
                 joined_date = data[2] or "غير معروف"
 
             else:
-                joined_date = datetime.now().strftime("%Y/%m/%d")
+                joined_date = datetime.now().strftime(
+                    "%Y/%m/%d"
+                )
 
                 cur.execute("""
                     INSERT INTO users
@@ -65,9 +118,9 @@ async def user_id_command(update, context):
                     ON CONFLICT (user_id)
                     DO NOTHING
                 """, (
-                    user.id,
-                    user.username,
-                    user.first_name,
+                    user_id,
+                    getattr(target, "username", None),
+                    getattr(target, "first_name", ""),
                     0,
                     "عضو",
                     joined_date
@@ -86,34 +139,64 @@ async def user_id_command(update, context):
             conn.close()
 
     # ==================================================
-    # الرتبة تؤخذ دائمًا من المصدر الصحيح
-    # وليس من الكاش القديم
+    # الرتبة من المصدر الصحيح
     # ==================================================
 
-    rank = get_rank(user.id)
+    rank = get_rank(user_id)
 
-    # تحديث الكاش
-    _user_cache[user.id] = {
+    # تحديث الكاش بدون فقدان الرتبة
+    _user_cache[user_id] = {
         "messages": messages,
         "rank": rank,
         "joined_date": joined_date,
-        "username": user.username,
-        "first_name": user.first_name,
+        "username": getattr(
+            target,
+            "username",
+            None
+        ),
+        "first_name": getattr(
+            target,
+            "first_name",
+            ""
+        ),
     }
 
+    username_value = getattr(
+        target,
+        "username",
+        None
+    )
+
+    first_name_value = getattr(
+        target,
+        "first_name",
+        None
+    )
+
     username = (
-        f"@{user.username}"
-        if user.username
+        f"@{username_value}"
+        if username_value
         else "لا يوجد"
     )
 
     bio = "لا يوجد"
 
     try:
-        user_info = await context.bot.get_chat(user.id)
+        user_info = await context.bot.get_chat(
+            user_id
+        )
 
         if user_info.bio:
             bio = user_info.bio
+
+        if not first_name_value:
+            first_name_value = (
+                user_info.first_name
+                or "غير معروف"
+            )
+
+        if not username_value and user_info.username:
+            username = f"@{user_info.username}"
 
     except Exception:
         pass
@@ -123,15 +206,11 @@ async def user_id_command(update, context):
     # ==================================================
 
     safe_name = escape(
-        user.first_name or "غير معروف"
+        first_name_value or "غير معروف"
     )
 
     safe_username = escape(
         username
-    )
-
-    safe_rank = escape(
-        rank
     )
 
     safe_bio = escape(
@@ -142,18 +221,31 @@ async def user_id_command(update, context):
         str(joined_date)
     )
 
+    safe_rank = escape(
+        rank
+    )
+
     # ==================================================
-    # الرتبة Spoiler
+    # Spoiler للرتبة الخاصة بصاحب البوت فقط
+    #
+    # OWNER_ID = صاحب البوت الأساسي
     # ==================================================
 
+    if user_id == 8453977662:
+        rank_text = (
+            f"<tg-spoiler>{safe_rank}</tg-spoiler>"
+        )
+    else:
+        rank_text = safe_rank
+
     text = f"""
-🌷ᵂᴱᴸᴯᴼᴹᴱ ᵀᴼ ᴳᴿᴼᵁᴾ🌷
+🌷ᵂᴱᴸᶜᴼᴹᴱ ᵀᴼ ᴳᴿᴼᵁᴾ🌷
 - عـيـونـي تـنـظـفـت يـوم شـفـت افـتـارك
 🖱️ Name 𖦹 {safe_name}
 🖥️ USER 𖦹 {safe_username}
 💬 MSG 𖦹 {messages}
-🛡 STA 𖦹 <tg-spoiler>{safe_rank}</tg-spoiler>
-ℹ️ ID 𖦹 {user.id}
+🛡 STA 𖦹 {rank_text}
+ℹ️ ID 𖦹 {user_id}
 🗒 BIO 𖦹 {safe_bio}
 📅 Joined Group 𖦹 {safe_joined_date}
 """
@@ -164,7 +256,7 @@ async def user_id_command(update, context):
 
     try:
         photos = await context.bot.get_user_profile_photos(
-            user.id,
+            user_id,
             limit=1
         )
 
@@ -240,7 +332,6 @@ async def save_join_date(update, context):
 
         conn.commit()
 
-        # نأخذ الرتبة الحقيقية بعد الإدخال
         rank = get_rank(user.id)
 
         _user_cache[user.id] = {
@@ -261,7 +352,7 @@ async def save_join_date(update, context):
 
 
 # ==================================================
-# تجميع الرسائل قبل الحفظ
+# تجميع الرسائل
 # ==================================================
 
 _pending_messages = {}
@@ -343,15 +434,14 @@ async def flush_user_messages():
                     first_name,
                     count,
                     "عضو",
-                    datetime.now().strftime("%Y/%m/%d")
+                    datetime.now().strftime(
+                        "%Y/%m/%d"
+                    )
                 ))
 
         conn.commit()
 
-        # ==================================================
         # تحديث الكاش
-        # ==================================================
-
         for user_id, count in messages.items():
 
             data = user_data.get(user_id)
@@ -372,9 +462,6 @@ async def flush_user_messages():
 
                 cached["username"] = username
                 cached["first_name"] = first_name
-
-                # مهم:
-                # لا نغير rank الموجود في الكاش
 
             else:
 
@@ -402,7 +489,6 @@ async def flush_user_messages():
         except Exception:
             pass
 
-        # إعادة البيانات للطابور
         for user_id, count in messages.items():
 
             _pending_messages[user_id] = (
@@ -437,7 +523,6 @@ async def save_user_message(update, context):
     if not chat:
         return
 
-    # فقط القروبات
     if chat.type not in (
         "group",
         "supergroup"
@@ -473,6 +558,5 @@ async def save_user_message(update, context):
         cached["username"] = user.username
         cached["first_name"] = user.first_name
 
-    # حفظ كل 10 رسائل
     if _pending_messages[user_id] >= MESSAGE_BATCH_SIZE:
         await flush_user_messages()
