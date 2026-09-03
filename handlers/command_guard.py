@@ -1,8 +1,18 @@
-from telegram import Update
-from telegram.ext import ContextTypes, ApplicationHandlerStop
+import asyncio
 
-from handlers.roles import check_command_permission
-from permissions import check_user_permission
+from telegram import Update
+from telegram.ext import (
+    ContextTypes,
+    ApplicationHandlerStop
+)
+
+from handlers.roles import (
+    check_command_permission
+)
+
+from permissions import (
+    check_user_permission
+)
 
 
 # ==================================================
@@ -10,6 +20,7 @@ from permissions import check_user_permission
 # ==================================================
 
 MULTI_WORD_COMMANDS = [
+
     "كشف المجموعة",
 
     "رفع الحظر",
@@ -72,17 +83,13 @@ MULTI_WORD_COMMANDS = [
 # الجلسات التي تنتظر إدخال المستخدم
 # ==================================================
 
-def is_waiting_for_input(context, user_id):
-    """
-    يرجع True إذا كان المستخدم داخل عملية متعددة الخطوات.
-    في هذه الحالة الحارس لا يتدخل في الرسائل التالية.
-    """
-
-    # --------------------------------------------------
-    # جلسات موجودة في user_data
-    # --------------------------------------------------
+def is_waiting_for_input(
+    context,
+    user_id
+):
 
     waiting_keys = (
+
         "add_reply",
         "edit_reply",
         "delete_reply",
@@ -102,20 +109,30 @@ def is_waiting_for_input(context, user_id):
         "button_color",
     )
 
+    # ==================================================
+    # user_data
+    # ==================================================
 
     try:
+
         for key in waiting_keys:
+
             if key in context.user_data:
+
                 return True
+
     except Exception:
+
         pass
 
-    # --------------------------------------------------
+    # ==================================================
     # جلسات الردود
-    # --------------------------------------------------
+    # ==================================================
 
     try:
+
         from handlers.replies import (
+
             add_reply_sessions,
             edit_reply_sessions,
             delete_reply_sessions,
@@ -126,6 +143,7 @@ def is_waiting_for_input(context, user_id):
         )
 
         sessions = (
+
             add_reply_sessions,
             edit_reply_sessions,
             delete_reply_sessions,
@@ -136,18 +154,23 @@ def is_waiting_for_input(context, user_id):
         )
 
         for session in sessions:
+
             if user_id in session:
+
                 return True
 
     except Exception:
+
         pass
 
-    # --------------------------------------------------
+    # ==================================================
     # جلسات الألعاب والأسئلة
-    # --------------------------------------------------
+    # ==================================================
 
     try:
+
         from games.games_manager import (
+
             add_game_sessions,
             add_question_sessions,
         )
@@ -159,20 +182,30 @@ def is_waiting_for_input(context, user_id):
             return True
 
     except Exception:
+
         pass
 
-    # --------------------------------------------------
+    # ==================================================
     # جلسة تعديل لون الزر
-    # --------------------------------------------------
+    # ==================================================
 
     try:
-        from handlers.button_colors import color_sessions
+
+        from handlers.button_colors import (
+            color_sessions
+        )
 
         for session in color_sessions.values():
-            if session.get("user_id") == user_id:
+
+            if (
+                session.get("user_id")
+                == user_id
+            ):
+
                 return True
 
     except Exception:
+
         pass
 
     return False
@@ -184,14 +217,12 @@ def is_waiting_for_input(context, user_id):
 
 def get_command_name(text):
 
-    text = (text or "").strip()
+    text = (
+        text or ""
+    ).strip()
 
     if not text:
         return ""
-
-    # --------------------------------------------------
-    # الأطول أولًا
-    # --------------------------------------------------
 
     matches = []
 
@@ -199,16 +230,19 @@ def get_command_name(text):
 
         if (
             text == command
-            or text.startswith(command + " ")
+            or text.startswith(
+                command + " "
+            )
         ):
+
             matches.append(command)
 
     if matches:
-        return max(matches, key=len)
 
-    # --------------------------------------------------
-    # أمر من كلمة واحدة
-    # --------------------------------------------------
+        return max(
+            matches,
+            key=len
+        )
 
     return text.split()[0]
 
@@ -225,47 +259,43 @@ async def command_guard(
     if not update.message:
         return
 
-    # --------------------------------------------------
-    # الحارس يتعامل مع الرسائل النصية فقط
-    # --------------------------------------------------
+    # ==================================================
+    # النص
+    # ==================================================
 
-    text = (update.message.text or "").strip()
+    text = (
+        update.message.text or ""
+    ).strip()
 
     if not text:
         return
 
-    # --------------------------------------------------
-    # معلومات المستخدم
-    # --------------------------------------------------
+    # ==================================================
+    # المستخدم
+    # ==================================================
 
-    if not update.effective_user:
+    user = update.effective_user
+
+    if not user:
         return
 
-    if not update.effective_chat:
+    chat = update.effective_chat
+
+    if not chat:
         return
 
-    user_id = update.effective_user.id
-    chat_id = update.effective_chat.id
+    user_id = user.id
+    chat_id = chat.id
 
     # ==================================================
-    # مهم جدًا:
-    # إذا كان المستخدم داخل جلسة متعددة الخطوات
-    # نخرج فورًا بدون أي فحص.
-    #
-    # هذا يسمح بـ:
-    # اضف رد
-    # ثم اسم الرد
-    # ثم المحتوى
-    #
-    # وكذلك:
-    # مسح رد
-    # ثم اسم الرد
+    # جلسة متعددة الخطوات
     # ==================================================
 
     if is_waiting_for_input(
         context,
         user_id
     ):
+
         return
 
     # ==================================================
@@ -278,13 +308,16 @@ async def command_guard(
         or text == "سماح"
         or text.startswith("سماح ")
     ):
+
         return
 
     # ==================================================
     # استخراج الأمر
     # ==================================================
 
-    command = get_command_name(text)
+    command = get_command_name(
+        text
+    )
 
     if not command:
         return
@@ -294,32 +327,45 @@ async def command_guard(
     # ==================================================
 
     moderation_commands = (
+
         "حظر",
         "كتم",
+
         "رفع الحظر",
         "رفع الكتم",
+
         "حظر عام",
         "كتم عام",
     )
 
     if command in moderation_commands:
+
         return
 
     # ==================================================
-    # الصلاحيات الخاصة بالمستخدم
+    # مهم:
+    # هنا لا نشغل psycopg2 داخل event loop
+    #
+    # يتم تنفيذ فحص الصلاحية في Thread
     # ==================================================
 
     try:
 
-        special_permission = check_user_permission(
-            chat_id,
-            user_id,
-            command
+        special_permission = (
+            await asyncio.to_thread(
+                check_user_permission,
+                chat_id,
+                user_id,
+                command
+            )
         )
 
-    except Exception:
-        # إذا حصل خطأ في نظام السماح/المنع
-        # لا نخرب باقي البوت
+    except Exception as e:
+
+        print(
+            f"⚠️ خطأ في فحص صلاحية المستخدم: {e}"
+        )
+
         special_permission = None
 
     # ==================================================
@@ -339,25 +385,35 @@ async def command_guard(
     # ==================================================
 
     if special_permission is True:
+
         return
 
     # ==================================================
-    # فحص قفل الأمر حسب الرتبة
+    # فحص قفل الأمر
+    #
+    # أيضًا خارج event loop
     # ==================================================
 
     try:
 
-        allowed, required = check_command_permission(
-            user_id,
-            command
+        allowed, required = (
+            await asyncio.to_thread(
+                check_command_permission,
+                user_id,
+                command
+            )
         )
 
-    except Exception:
-        # لا نوقف البوت إذا حصل خطأ في قاعدة بيانات الأقفال
+    except Exception as e:
+
+        print(
+            f"⚠️ خطأ في فحص قفل الأمر: {e}"
+        )
+
         return
 
     # ==================================================
-    # الأمر مقفول على رتبة أعلى
+    # الأمر مقفول
     # ==================================================
 
     if not allowed:
