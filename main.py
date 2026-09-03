@@ -25,7 +25,7 @@ from games.hide_and_seek import (
     search_number_callback
 )
 
-
+from handlers.games_help import games_help
 
 from games.penalties import (
     start_penalty_game,
@@ -937,91 +937,7 @@ def main():
     )
 
 
-    # =====================================================
-    # لعبة الكذاب
-    # =====================================================
-
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(r"^الكذاب$"),
-            start_liar_game_lobby
-        ),
-        group=0
-    )
-
-    # دخول الكذاب قبل دخول البلنتيات والغميضة
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(r"^دخول$"),
-            join_liar_game
-        ),
-        group=-2
-    )
-
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(r"^\.خروج$"),
-            leave_liar_game
-        ),
-        group=0
-    )
-
-    # نضع .ابدا قبل .ابدا الخاص بالبلنتيات
-    # حتى يتم التعامل معه للعبة الكذاب إذا كانت موجودة
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(r"^\.ابدا$"),
-            begin_liar_game
-        ),
-        group=-2
-    )
-
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(r"^\.التصويت$"),
-            force_voting
-        ),
-        group=0
-    )
-
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(r"^انهاء الكذاب$"),
-            end_liar_game
-        ),
-        group=0
-    )
-
-    app.add_handler(
-        CallbackQueryHandler(
-            liar_lobby_callback,
-            pattern=r"^liar:(join|leave)$"
-        )
-    )
-
-    app.add_handler(
-        CallbackQueryHandler(
-            liar_vote_callback,
-            pattern=r"^liar_vote:"
-        )
-    )
-
-    app.add_handler(
-        CallbackQueryHandler(
-            liar_guess_callback,
-            pattern=r"^liar_guess:"
-        )
-    )
-
-    # مهم: قبل كلمات/أنمي والألعاب العامة
-    app.add_handler(
-        MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
-            check_liar_message
-        ),
-        group=9
-    )
-
+    
     # ==================================================
     # أسرع كلمة
     # ==================================================
@@ -1347,6 +1263,91 @@ def main():
         group=50
     )
 
+
+    # =========================
+    # لعبة الكذاب
+    # =========================
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^الكذاب$"),
+            start_liar_game_lobby
+        ),
+        group=0
+    )
+
+    # دخول الكذاب قبل دخول البلنتيات والغميضة
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^دخول$"),
+            join_liar_game
+        ),
+        group=-2
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^\.خروج$"),
+            leave_liar_game
+        ),
+        group=-2
+    )
+
+    # بدء الكذاب قبل .ابدا الخاص بالألعاب الأخرى
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^\.ابدا$"),
+            begin_liar_game
+        ),
+        group=-2
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^\.التصويت$"),
+            force_voting
+        ),
+        group=-2
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^انهاء الكذاب$"),
+            end_liar_game
+        ),
+        group=0
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            liar_lobby_callback,
+            pattern=r"^liar_lobby:"
+        )
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            liar_vote_callback,
+            pattern=r"^liar_vote:"
+        )
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            liar_guess_callback,
+            pattern=r"^liar_guess:"
+        )
+    )
+
+    # رسائل لعبة الكذاب
+    app.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            check_liar_message
+        ),
+        group=9
+    )
+
     # ==================================================
     # لعبة البلنتيات
     # ==================================================
@@ -1464,6 +1465,14 @@ def main():
         CallbackQueryHandler(
             search_number_callback,
             pattern=r"^search:"
+        )
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^شرح الالعاب$"),
+            games_help
         )
     )
     # ==================================================
