@@ -1509,7 +1509,7 @@ def main():
     # دخول الغميضة
     # --------------------------------------------------
 
-    pp.add_handler(
+    app.add_handler(
         MessageHandler(
             filters.Regex(r"^دخول$"),
             join_hide_game
