@@ -1,3 +1,5 @@
+from html import escape
+
 from telegram import Update
 from telegram.ext import ContextTypes
 
@@ -33,8 +35,9 @@ RANK_LEVELS = {
 DEV_PRIMARY = "primary"
 DEV_SECONDARY = "secondary"
 
+
 # ==================================================
-# Cache لتسريع الصلاحيات والرتب
+# الكاش
 # ==================================================
 
 _developer_cache = {}
@@ -42,21 +45,30 @@ _rank_cache = {}
 _command_permission_cache = {}
 
 
+# ==================================================
+# مسح كاش المستخدم
+# ==================================================
+
 def clear_user_role_cache(user_id):
-    """
-    مسح Cache المستخدم عند تغيير رتبته أو نوع المطور
-    """
+    _developer_cache.pop(
+        user_id,
+        None
+    )
 
-    _developer_cache.pop(user_id, None)
-    _rank_cache.pop(user_id, None)
+    _rank_cache.pop(
+        user_id,
+        None
+    )
 
+
+# ==================================================
+# مسح كاش صلاحيات الأوامر
+# ==================================================
 
 def clear_command_permission_cache():
-    """
-    مسح Cache أقفال الأوامر
-    """
-
     _command_permission_cache.clear()
+
+
 # ==================================================
 # توحيد الرتبة
 # ==================================================
@@ -80,46 +92,35 @@ def normalize_rank(rank):
 
 def is_developer(user_id):
 
-    # المالك الأساسي ثابت دائمًا
+    # المطور الأساسي ثابت
     if user_id == OWNER_ID:
         return DEV_PRIMARY
 
-
-    # =========================
-    # Cache
-    # =========================
-
+    # الكاش
     if user_id in _developer_cache:
         return _developer_cache[user_id]
-
 
     conn = connect()
     cur = conn.cursor()
 
     try:
 
-        cur.execute(
-            """
+        cur.execute("""
             SELECT developer_type
             FROM developers
             WHERE user_id=?
-            """,
-            (user_id,)
-        )
+        """, (user_id,))
 
         result = cur.fetchone()
 
     finally:
-
         conn.close()
-
 
     if not result:
 
         _developer_cache[user_id] = None
 
         return None
-
 
     developer_type = result[0]
 
@@ -128,18 +129,33 @@ def is_developer(user_id):
     return developer_type
 
 
-def is_primary_developer(user_id):
-    return is_developer(user_id) == DEV_PRIMARY
+# ==================================================
+# المطور الأساسي
+# ==================================================
 
+def is_primary_developer(user_id):
+
+    return (
+        is_developer(user_id)
+        == DEV_PRIMARY
+    )
+
+
+# ==================================================
+# المطور المساعد
+# ==================================================
 
 def is_secondary_developer(user_id):
-    return is_developer(user_id) == DEV_SECONDARY
+
+    return (
+        is_developer(user_id)
+        == DEV_SECONDARY
+    )
 
 
 # ==================================================
 # الحصول على الرتبة
 # ==================================================
-
 
 def get_rank(user_id):
 
@@ -147,14 +163,9 @@ def get_rank(user_id):
     if user_id == OWNER_ID:
         return "Dev"
 
-
-    # =========================
-    # Cache
-    # =========================
-
+    # الكاش
     if user_id in _rank_cache:
         return _rank_cache[user_id]
-
 
     conn = connect()
     cur = conn.cursor()
@@ -162,20 +173,16 @@ def get_rank(user_id):
     try:
 
         # ==================================================
-        # أولاً: البحث في users
+        # البحث في users
         # ==================================================
 
-        cur.execute(
-            """
+        cur.execute("""
             SELECT rank
             FROM users
             WHERE user_id=?
-            """,
-            (user_id,)
-        )
+        """, (user_id,))
 
         data = cur.fetchone()
-
 
         if data and data[0]:
 
@@ -187,23 +194,17 @@ def get_rank(user_id):
 
             return rank
 
-
         # ==================================================
-        # إذا لم توجد الرتبة في users
-        # نرجع للنسخة الدائمة في ranks
+        # البحث في ranks
         # ==================================================
 
-        cur.execute(
-            """
+        cur.execute("""
             SELECT rank
             FROM ranks
             WHERE user_id=?
-            """,
-            (user_id,)
-        )
+        """, (user_id,))
 
         rank_data = cur.fetchone()
-
 
         if rank_data and rank_data[0]:
 
@@ -211,10 +212,8 @@ def get_rank(user_id):
                 rank_data[0]
             )
 
-
             # إعادة إنشاء سجل المستخدم
-            cur.execute(
-                """
+            cur.execute("""
                 INSERT INTO users
                 (
                     user_id,
@@ -228,28 +227,22 @@ def get_rank(user_id):
                 ON CONFLICT(user_id)
                 DO UPDATE SET
                     rank=excluded.rank
-                """,
-                (
-                    user_id,
-                    rank
-                )
-            )
+            """, (
+                user_id,
+                rank
+            ))
 
             conn.commit()
-
 
             _rank_cache[user_id] = rank
 
             return rank
 
-
         _rank_cache[user_id] = "عضو"
 
         return "عضو"
 
-
     finally:
-
         conn.close()
 
 
@@ -259,11 +252,9 @@ def get_rank(user_id):
 
 def get_rank_level(user_id):
 
-    # المالك الأساسي
     if user_id == OWNER_ID:
         return 7
 
-    # أي Dev مساعد
     if is_secondary_developer(user_id):
         return 6
 
@@ -276,52 +267,39 @@ def get_rank_level(user_id):
 
 
 # ==================================================
-# فحص صلاحية الأمر المقفول
+# فحص صلاحية الأمر
 # ==================================================
 
-def check_command_permission(user_id, command):
-
-    # =========================
-    # Cache
-    # =========================
+def check_command_permission(
+    user_id,
+    command
+):
 
     cache_key = (
         user_id,
         command
     )
 
-
     if cache_key in _command_permission_cache:
-
         return _command_permission_cache[
             cache_key
         ]
-
 
     conn = connect()
     cur = conn.cursor()
 
     try:
 
-        cur.execute(
-            """
+        cur.execute("""
             SELECT rank
             FROM command_locks
             WHERE command=?
-            """,
-            (command,)
-        )
+        """, (command,))
 
         data = cur.fetchone()
 
     finally:
-
         conn.close()
-
-
-    # ==================================================
-    # الأمر غير مقفول
-    # ==================================================
 
     if not data:
 
@@ -336,26 +314,18 @@ def check_command_permission(user_id, command):
 
         return result
 
-
     required_rank = normalize_rank(
         data[0]
     )
-
 
     user_level = get_rank_level(
         user_id
     )
 
-
     required_level = RANK_LEVELS.get(
         required_rank,
         0
     )
-
-
-    # ==================================================
-    # المطورون يتجاوزون القفل
-    # ==================================================
 
     if is_developer(user_id):
 
@@ -370,7 +340,6 @@ def check_command_permission(user_id, command):
 
         return result
 
-
     if user_level >= required_level:
 
         result = (
@@ -383,7 +352,6 @@ def check_command_permission(user_id, command):
         ] = result
 
         return result
-
 
     result = (
         False,
@@ -412,18 +380,20 @@ async def get_target_user(
     message = update.message
 
     # ==================================================
-    # أول أولوية: الرد على رسالة
+    # أولًا: الرد على رسالة
     # ==================================================
 
     if message.reply_to_message:
 
-        replied_user = message.reply_to_message.from_user
+        replied_user = (
+            message.reply_to_message.from_user
+        )
 
         if replied_user:
             return replied_user
 
     # ==================================================
-    # إذا لم يكن ردًا، نقرأ الآيدي / اليوزر
+    # الآيدي / اليوزر
     # ==================================================
 
     text = (
@@ -486,19 +456,65 @@ def get_rank_from_command(text):
 
     commands = {
 
-        "رفع Dev": ("Dev", True),
-        "رفع المالك": ("المالك", True),
-        "رفع نائب المالك": ("نائب المالك", True),
-        "رفع ادمن اساسي": ("ادمن اساسي", True),
-        "رفع ادمن": ("ادمن", True),
-        "رفع مميز": ("مميز", True),
+        "رفع Dev": (
+            "Dev",
+            True
+        ),
 
-        "تنزيل Dev": ("عضو", False),
-        "تنزيل المالك": ("عضو", False),
-        "تنزيل نائب المالك": ("عضو", False),
-        "تنزيل ادمن اساسي": ("عضو", False),
-        "تنزيل ادمن": ("عضو", False),
-        "تنزيل مميز": ("عضو", False),
+        "رفع المالك": (
+            "المالك",
+            True
+        ),
+
+        "رفع نائب المالك": (
+            "نائب المالك",
+            True
+        ),
+
+        "رفع ادمن اساسي": (
+            "ادمن اساسي",
+            True
+        ),
+
+        "رفع ادمن": (
+            "ادمن",
+            True
+        ),
+
+        "رفع مميز": (
+            "مميز",
+            True
+        ),
+
+        "تنزيل Dev": (
+            "عضو",
+            False
+        ),
+
+        "تنزيل المالك": (
+            "عضو",
+            False
+        ),
+
+        "تنزيل نائب المالك": (
+            "عضو",
+            False
+        ),
+
+        "تنزيل ادمن اساسي": (
+            "عضو",
+            False
+        ),
+
+        "تنزيل ادمن": (
+            "عضو",
+            False
+        ),
+
+        "تنزيل مميز": (
+            "عضو",
+            False
+        ),
     }
 
     for command in sorted(
@@ -509,10 +525,14 @@ def get_rank_from_command(text):
 
         if (
             text == command
-            or text.startswith(command + " ")
+            or text.startswith(
+                command + " "
+            )
         ):
 
-            rank, promoting = commands[command]
+            rank, promoting = commands[
+                command
+            ]
 
             return (
                 command,
@@ -520,7 +540,11 @@ def get_rank_from_command(text):
                 promoting
             )
 
-    return None, None, None
+    return (
+        None,
+        None,
+        None
+    )
 
 
 # ==================================================
@@ -534,11 +558,21 @@ def can_change_rank(
     promoting
 ):
 
-    actor_dev = is_developer(actor_id)
-    target_dev = is_developer(target_id)
+    actor_dev = is_developer(
+        actor_id
+    )
 
-    actor_level = get_rank_level(actor_id)
-    target_level = get_rank_level(target_id)
+    target_dev = is_developer(
+        target_id
+    )
+
+    actor_level = get_rank_level(
+        actor_id
+    )
+
+    target_level = get_rank_level(
+        target_id
+    )
 
     # ==================================================
     # حماية المالك الأساسي
@@ -556,6 +590,7 @@ def can_change_rank(
     # ==================================================
 
     if actor_dev == DEV_PRIMARY:
+
         return True, None
 
     # ==================================================
@@ -638,116 +673,112 @@ def update_user_rank(
     rank
 ):
 
-    rank = normalize_rank(rank)
+    rank = normalize_rank(
+        rank
+    )
 
     conn = connect()
     cur = conn.cursor()
 
-    # ==================================================
-    # Dev مساعد
-    # ==================================================
+    try:
 
-    if rank == "Dev":
+        # ==================================================
+        # Dev مساعد
+        # ==================================================
 
-        cur.execute(
-            """
-            INSERT INTO developers
-            (
-                user_id,
-                developer_type,
-                added_by
-            )
-            VALUES (?, ?, ?)
+        if rank == "Dev":
 
-            ON CONFLICT(user_id)
-            DO UPDATE SET
-                developer_type='secondary',
-                added_by=excluded.added_by
-            """,
-            (
+            cur.execute("""
+                INSERT INTO developers
+                (
+                    user_id,
+                    developer_type,
+                    added_by
+                )
+                VALUES (?, ?, ?)
+
+                ON CONFLICT(user_id)
+                DO UPDATE SET
+                    developer_type='secondary',
+                    added_by=excluded.added_by
+            """, (
                 user_id,
                 DEV_SECONDARY,
                 OWNER_ID
+            ))
+
+        else:
+
+            cur.execute("""
+                DELETE FROM developers
+                WHERE user_id=?
+                AND developer_type='secondary'
+            """, (
+                user_id,
+            ))
+
+        # ==================================================
+        # users
+        # ==================================================
+
+        cur.execute("""
+            INSERT INTO users
+            (
+                user_id,
+                username,
+                first_name,
+                messages,
+                rank
             )
-        )
+            VALUES (?, '', '', 0, ?)
 
-    else:
-
-        cur.execute(
-            """
-            DELETE FROM developers
-            WHERE user_id=?
-            AND developer_type='secondary'
-            """,
-            (user_id,)
-        )
-
-    # ==================================================
-    # users
-    # ==================================================
-
-    cur.execute(
-        """
-        INSERT INTO users
-        (
-            user_id,
-            username,
-            first_name,
-            messages,
-            rank
-        )
-        VALUES (?, '', '', 0, ?)
-
-        ON CONFLICT(user_id)
-        DO UPDATE SET
-            rank=excluded.rank
-        """,
-        (
+            ON CONFLICT(user_id)
+            DO UPDATE SET
+                rank=excluded.rank
+        """, (
             user_id,
             rank
-        )
-    )
+        ))
 
-    # ==================================================
-    # ranks
-    # ==================================================
+        # ==================================================
+        # ranks
+        # ==================================================
 
-    cur.execute(
-        """
-        INSERT INTO ranks
-        (
+        cur.execute("""
+            INSERT INTO ranks
+            (
+                user_id,
+                rank
+            )
+            VALUES (?, ?)
+
+            ON CONFLICT(user_id)
+            DO UPDATE SET
+                rank=excluded.rank
+        """, (
             user_id,
             rank
-        )
-        VALUES (?, ?)
+        ))
 
-        ON CONFLICT(user_id)
-        DO UPDATE SET
-            rank=excluded.rank
-        """,
-        (
-            user_id,
-            rank
-        )
-    )
+        conn.commit()
 
-    conn.commit()
-    conn.close()
+    except Exception:
 
+        conn.rollback()
+
+        raise
+
+    finally:
+        conn.close()
 
     # ==================================================
-    # تحديث Cache المستخدم
+    # مهم جدًا:
+    # مسح الكاش بعد تغيير الرتبة
     # ==================================================
 
     clear_user_role_cache(
         user_id
     )
-
-
-    # ==================================================
-    # الصلاحيات تعتمد على الرتبة
-    # لذلك نمسح Cache الأوامر
-    # ==================================================
 
     clear_command_permission_cache()
 
@@ -780,8 +811,15 @@ async def roles_command(
             user.id
         )
 
+        safe_rank = escape(
+            rank
+        )
+
+        # الرتبة Spoiler
         await update.message.reply_text(
-            f"• رتبتك هي ↤︎ {rank}"
+            f"• رتبتك هي ↤︎ "
+            f"<tg-spoiler>{safe_rank}</tg-spoiler>",
+            parse_mode="HTML"
         )
 
         return
@@ -812,9 +850,32 @@ async def roles_command(
             target.id
         )
 
-        await update.message.reply_text(
-            f"• رتبته هي ↤︎ {rank}"
+        safe_rank = escape(
+            rank
         )
+
+        # ==================================================
+        # إذا الشخص المستهدف هو نفس الشخص الذي كتب الأمر
+        # الرتبة تكون Spoiler
+        #
+        # إذا شخص ثاني:
+        # الرتبة تظهر عادي
+        # ==================================================
+
+        if target.id == update.effective_user.id:
+
+            await update.message.reply_text(
+                f"• رتبته هي ↤︎ "
+                f"<tg-spoiler>{safe_rank}</tg-spoiler>",
+                parse_mode="HTML"
+            )
+
+        else:
+
+            await update.message.reply_text(
+                f"• رتبته هي ↤︎ {safe_rank}",
+                parse_mode="HTML"
+            )
 
         return
 
@@ -840,16 +901,17 @@ async def roles_command(
         conn = connect()
         cur = conn.cursor()
 
-        cur.execute(
-            """
-            SELECT user_id
-            FROM users
-            """
-        )
+        try:
 
-        user_rows = cur.fetchall()
+            cur.execute("""
+                SELECT user_id
+                FROM users
+            """)
 
-        conn.close()
+            user_rows = cur.fetchall()
+
+        finally:
+            conn.close()
 
         owner = []
         deputy = []
@@ -926,7 +988,9 @@ async def roles_command(
                 owner,
                 1
             ):
-                msg += f"{i} - {name}\n"
+                msg += (
+                    f"{i} - {name}\n"
+                )
 
         else:
 
@@ -943,7 +1007,9 @@ async def roles_command(
                 deputy,
                 1
             ):
-                msg += f"{i} - {name}\n"
+                msg += (
+                    f"{i} - {name}\n"
+                )
 
         else:
 
@@ -960,7 +1026,9 @@ async def roles_command(
                 basic,
                 1
             ):
-                msg += f"{i} - {name}\n"
+                msg += (
+                    f"{i} - {name}\n"
+                )
 
         else:
 
@@ -977,7 +1045,9 @@ async def roles_command(
                 admins,
                 1
             ):
-                msg += f"{i} - {name}\n"
+                msg += (
+                    f"{i} - {name}\n"
+                )
 
         else:
 
@@ -994,7 +1064,9 @@ async def roles_command(
                 vip,
                 1
             ):
-                msg += f"{i} - {name}\n"
+                msg += (
+                    f"{i} - {name}\n"
+                )
 
         else:
 
@@ -1025,8 +1097,8 @@ async def change_rank(
         update.message.text or ""
     ).strip()
 
-    command, new_rank, promoting = get_rank_from_command(
-        text
+    command, new_rank, promoting = (
+        get_rank_from_command(text)
     )
 
     if not command:
@@ -1122,8 +1194,8 @@ async def change_rank(
         )
 
         await update.message.reply_text(
-            f"✅ تم تنزيل {target.first_name} من "
-            f"{old_rank} إلى عضو."
+            f"✅ تم تنزيل {target.first_name} "
+            f"من {old_rank} إلى عضو."
         )
 
         return
