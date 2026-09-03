@@ -751,7 +751,7 @@ async def roles_command(
             rank
         )
 
-        # رتبتي = مغبشة للجميع
+        # رتبتي = Spoiler دائمًا
         await update.message.reply_text(
             f"• رتبتك هي ↤︎ "
             f"<tg-spoiler>{safe_rank}</tg-spoiler>",
@@ -774,12 +774,8 @@ async def roles_command(
             context
         )
 
+        # بدون تحديد شخص = تجاهل الأمر تمامًا
         if not target:
-
-            await update.message.reply_text(
-                "❌ حدد الشخص بالرد أو اليوزر أو الآيدي."
-            )
-
             return
 
         rank = get_rank(
@@ -792,7 +788,7 @@ async def roles_command(
 
         # ==================================================
         # إذا الشخص المستهدف هو صاحب البوت
-        # رتبة Dev تكون Spoiler للجميع
+        # الرتبة تكون Spoiler
         # ==================================================
 
         if target.id == OWNER_ID:
