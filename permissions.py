@@ -21,21 +21,27 @@ OWNER_ID = 8453977662
 _user_permission_cache = {}
 
 
+# ==================================================
+# مسح Cache
+# ==================================================
+
 def clear_user_permission_cache(
     chat_id=None,
     user_id=None,
     command=None
 ):
 
-    # مسح Cache كامل
-    if chat_id is None and user_id is None and command is None:
+    # مسح كامل
+    if (
+        chat_id is None
+        and user_id is None
+        and command is None
+    ):
 
         _user_permission_cache.clear()
 
         return
 
-
-    # مسح صلاحية محددة
     key = (
         chat_id,
         user_id,
@@ -48,6 +54,8 @@ def clear_user_permission_cache(
         key,
         None
     )
+
+
 # ==================================================
 # توحيد اسم الأمر
 # ==================================================
@@ -57,11 +65,9 @@ def normalize_command(command):
     if not command:
         return ""
 
-    command = " ".join(
+    return " ".join(
         command.strip().split()
     )
-
-    return command
 
 
 # ==================================================
@@ -88,20 +94,31 @@ def get_permission_level(user_id):
 
 def can_manage_permissions(user_id):
 
-    return get_permission_level(user_id) > 0
+    return (
+        get_permission_level(user_id)
+        > 0
+    )
 
 
 # ==================================================
 # هل يستطيع تعديل صلاحيات شخص؟
 # ==================================================
 
-def can_manage_target(actor_id, target_id):
+def can_manage_target(
+    actor_id,
+    target_id
+):
 
     if actor_id == target_id:
         return False
 
-    actor_level = get_permission_level(actor_id)
-    target_level = get_permission_level(target_id)
+    actor_level = get_permission_level(
+        actor_id
+    )
+
+    target_level = get_permission_level(
+        target_id
+    )
 
     if actor_level == 0:
         return False
@@ -140,7 +157,9 @@ def set_user_permission(
     allowed
 ):
 
-    command = normalize_command(command)
+    command = normalize_command(
+        command
+    )
 
     if not command:
         return
@@ -148,36 +167,51 @@ def set_user_permission(
     conn = connect()
     cur = conn.cursor()
 
-    cur.execute(
-        """
-        INSERT INTO group_user_permissions
-        (
-            chat_id,
-            user_id,
-            permission,
-            allowed
+    try:
+
+        cur.execute(
+            """
+            INSERT INTO group_user_permissions
+            (
+                chat_id,
+                user_id,
+                permission,
+                allowed
+            )
+            VALUES (?, ?, ?, ?)
+
+            ON CONFLICT(
+                chat_id,
+                user_id,
+                permission
+            )
+            DO UPDATE SET
+                allowed=excluded.allowed
+            """,
+            (
+                chat_id,
+                user_id,
+                command,
+                int(allowed)
+            )
         )
-        VALUES (?, ?, ?, ?)
 
-        ON CONFLICT(chat_id, user_id, permission)
-        DO UPDATE SET
-            allowed=excluded.allowed
-        """,
-        (
-            chat_id,
-            user_id,
-            command,
-            int(allowed)
-        )
-    )
+        conn.commit()
 
-    conn.commit()
-    conn.close()
+    except Exception:
 
+        conn.rollback()
 
-    # ==================================================
-    # تحديث Cache
-    # ==================================================
+        raise
+
+    finally:
+
+        try:
+            cur.close()
+        except Exception:
+            pass
+
+        conn.close()
 
     clear_user_permission_cache(
         chat_id=chat_id,
@@ -200,20 +234,19 @@ def check_user_permission(
     command
 ):
 
-    command = normalize_command(command)
+    command = normalize_command(
+        command
+    )
 
-    # لا يوجد أمر
     if not command:
         return None
 
-
     # ==================================================
-    # Dev الأساسي فوق النظام
+    # Dev الأساسي
     # ==================================================
 
     if is_primary_developer(user_id):
         return True
-
 
     # ==================================================
     # Cache
@@ -225,22 +258,21 @@ def check_user_permission(
         command
     )
 
-
     if cache_key in _user_permission_cache:
 
         return _user_permission_cache[
             cache_key
         ]
 
-
     # ==================================================
-    # قاعدة البيانات
+    # DB
     # ==================================================
 
     conn = connect()
-    cur = conn.cursor()
 
     try:
+
+        cur = conn.cursor()
 
         cur.execute(
             """
@@ -259,10 +291,14 @@ def check_user_permission(
 
         result = cur.fetchone()
 
+        try:
+            cur.close()
+        except Exception:
+            pass
+
     finally:
 
         conn.close()
-
 
     # ==================================================
     # لا يوجد تخصيص
@@ -276,20 +312,13 @@ def check_user_permission(
 
         return None
 
-
-    # ==================================================
-    # حفظ النتيجة في Cache
-    # ==================================================
-
     permission = bool(
         result[0]
     )
 
-
     _user_permission_cache[
         cache_key
     ] = permission
-
 
     return permission
 
@@ -307,19 +336,17 @@ async def get_permission_target(
         return None
 
     message = update.message
-    text = (message.text or "").strip()
 
-    # ==============================================
     # بالرد
-    # ==============================================
-
     if message.reply_to_message:
 
-        return message.reply_to_message.from_user
+        return (
+            message.reply_to_message.from_user
+        )
 
-    # ==============================================
-    # باليوزر أو الآيدي
-    # ==============================================
+    text = (
+        message.text or ""
+    ).strip()
 
     parts = text.split()
 
@@ -328,10 +355,7 @@ async def get_permission_target(
 
     target_text = parts[-1].strip()
 
-    # ==============================================
     # آيدي
-    # ==============================================
-
     if target_text.isdigit():
 
         try:
@@ -344,10 +368,7 @@ async def get_permission_target(
 
             return None
 
-    # ==============================================
     # يوزر
-    # ==============================================
-
     if target_text.startswith("@"):
 
         try:
@@ -389,16 +410,24 @@ async def permission_command(
 
     action = parts[0]
 
-    if action not in ("منع", "سماح"):
+    if action not in (
+        "منع",
+        "سماح"
+    ):
         return
 
     actor = update.effective_user
 
-    # ==============================================
-    # صلاحية الإدارة
-    # ==============================================
+    if not actor:
+        return
 
-    if not can_manage_permissions(actor.id):
+    # ==================================================
+    # صلاحية الإدارة
+    # ==================================================
+
+    if not can_manage_permissions(
+        actor.id
+    ):
 
         await update.message.reply_text(
             "❌ هذا الأمر للمطور والمالك فقط."
@@ -406,12 +435,9 @@ async def permission_command(
 
         return
 
-    # ==============================================
+    # ==================================================
     # بالرد
-    #
-    # منع حظر
-    # سماح حظر
-    # ==============================================
+    # ==================================================
 
     if update.message.reply_to_message:
 
@@ -435,12 +461,9 @@ async def permission_command(
             parts[1:]
         )
 
-    # ==============================================
+    # ==================================================
     # باليوزر / الآيدي
-    #
-    # منع حظر @username
-    # منع حظر 123456789
-    # ==============================================
+    # ==================================================
 
     else:
 
@@ -473,11 +496,9 @@ async def permission_command(
 
             return
 
-    command = normalize_command(command)
-
-    # ==============================================
-    # التأكد من وجود الأمر
-    # ==============================================
+    command = normalize_command(
+        command
+    )
 
     if not command:
 
@@ -487,9 +508,9 @@ async def permission_command(
 
         return
 
-    # ==============================================
+    # ==================================================
     # منع تعديل النفس
-    # ==============================================
+    # ==================================================
 
     if target.id == actor.id:
 
@@ -499,9 +520,9 @@ async def permission_command(
 
         return
 
-    # ==============================================
+    # ==================================================
     # حماية المطور الأساسي
-    # ==============================================
+    # ==================================================
 
     if target.id == OWNER_ID:
 
@@ -511,9 +532,9 @@ async def permission_command(
 
         return
 
-    # ==============================================
+    # ==================================================
     # فحص صلاحية تعديل الهدف
-    # ==============================================
+    # ==================================================
 
     if not can_manage_target(
         actor.id,
@@ -526,11 +547,15 @@ async def permission_command(
 
         return
 
-    # ==============================================
+    # ==================================================
     # الحفظ
-    # ==============================================
+    # ==================================================
 
-    allowed = 1 if action == "سماح" else 0
+    allowed = (
+        1
+        if action == "سماح"
+        else 0
+    )
 
     set_user_permission(
         update.effective_chat.id,
@@ -539,9 +564,9 @@ async def permission_command(
         allowed
     )
 
-    # ==============================================
+    # ==================================================
     # الرد
-    # ==============================================
+    # ==================================================
 
     if action == "منع":
 
@@ -573,6 +598,13 @@ def is_admin(user_id):
     rank = get_rank(user_id)
 
     return (
-        RANK_LEVELS.get(rank, 0)
-        >= RANK_LEVELS.get("ادمن", 0)
+        RANK_LEVELS.get(
+            rank,
+            0
+        )
+        >=
+        RANK_LEVELS.get(
+            "ادمن",
+            0
+        )
     )
