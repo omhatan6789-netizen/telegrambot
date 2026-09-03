@@ -1,5 +1,6 @@
 from datetime import datetime
 from html import escape
+import asyncio
 
 from telegram import Update
 from telegram.ext import ContextTypes
@@ -7,7 +8,23 @@ from telegram.ext import ContextTypes
 from database import connect
 from handlers.roles import get_rank
 
+
 _user_cache = {}
+
+# ==================================================
+# قفل عملية حفظ الرسائل
+# ==================================================
+
+_flush_lock = None
+
+
+def _get_flush_lock():
+    global _flush_lock
+
+    if _flush_lock is None:
+        _flush_lock = asyncio.Lock()
+
+    return _flush_lock
 
 
 # ==================================================
@@ -15,6 +32,7 @@ _user_cache = {}
 # ==================================================
 
 async def get_id_target_user(update, context):
+
     if not update.message:
         return None
 
@@ -22,11 +40,18 @@ async def get_id_target_user(update, context):
 
     # الرد على شخص
     if message.reply_to_message:
-        replied_user = message.reply_to_message.from_user
+
+        replied_user = (
+            message.reply_to_message.from_user
+        )
+
         if replied_user:
             return replied_user
 
-    text = (message.text or "").strip()
+    text = (
+        message.text or ""
+    ).strip()
+
     parts = text.split()
 
     # ايدي فقط = صاحب الرسالة
@@ -37,16 +62,28 @@ async def get_id_target_user(update, context):
 
     # آيدي
     if target.isdigit():
+
         try:
-            return await context.bot.get_chat(int(target))
+
+            return await context.bot.get_chat(
+                int(target)
+            )
+
         except Exception:
+
             return None
 
     # يوزر
     if target.startswith("@"):
+
         try:
-            return await context.bot.get_chat(target)
+
+            return await context.bot.get_chat(
+                target
+            )
+
         except Exception:
+
             return None
 
     return None
@@ -57,7 +94,11 @@ async def get_id_target_user(update, context):
 # ==================================================
 
 async def user_id_command(update, context):
-    if not update.message or not update.effective_user:
+
+    if not update.message:
+        return
+
+    if not update.effective_user:
         return
 
     target = await get_id_target_user(
@@ -66,9 +107,11 @@ async def user_id_command(update, context):
     )
 
     if not target:
+
         await update.message.reply_text(
             "❌ حدد الشخص بالرد أو اليوزر أو الآيدي."
         )
+
         return
 
     user_id = target.id
@@ -76,35 +119,54 @@ async def user_id_command(update, context):
     cached = _user_cache.get(user_id)
 
     if cached:
-        messages = cached.get("messages", 0)
+
+        messages = cached.get(
+            "messages",
+            0
+        )
+
         joined_date = cached.get(
             "joined_date",
             "غير معروف"
         )
+
     else:
+
         conn = connect()
 
         try:
+
             cur = conn.cursor()
 
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT messages, rank, joined_date
                 FROM users
                 WHERE user_id=?
-            """, (user_id,))
+                """,
+                (user_id,)
+            )
 
             data = cur.fetchone()
 
             if data:
-                messages = data[0] or 0
-                joined_date = data[2] or "غير معروف"
 
-            else:
-                joined_date = datetime.now().strftime(
-                    "%Y/%m/%d"
+                messages = data[0] or 0
+                joined_date = (
+                    data[2]
+                    or "غير معروف"
                 )
 
-                cur.execute("""
+            else:
+
+                joined_date = (
+                    datetime.now().strftime(
+                        "%Y/%m/%d"
+                    )
+                )
+
+                cur.execute(
+                    """
                     INSERT INTO users
                     (
                         user_id,
@@ -115,16 +177,27 @@ async def user_id_command(update, context):
                         joined_date
                     )
                     VALUES (?, ?, ?, ?, ?, ?)
+
                     ON CONFLICT (user_id)
                     DO NOTHING
-                """, (
-                    user_id,
-                    getattr(target, "username", None),
-                    getattr(target, "first_name", ""),
-                    0,
-                    "عضو",
-                    joined_date
-                ))
+                    """,
+                    (
+                        user_id,
+                        getattr(
+                            target,
+                            "username",
+                            None
+                        ),
+                        getattr(
+                            target,
+                            "first_name",
+                            ""
+                        ),
+                        0,
+                        "عضو",
+                        joined_date
+                    )
+                )
 
                 conn.commit()
 
@@ -136,6 +209,7 @@ async def user_id_command(update, context):
                 pass
 
         finally:
+
             conn.close()
 
     # ==================================================
@@ -144,16 +218,21 @@ async def user_id_command(update, context):
 
     rank = get_rank(user_id)
 
-    # تحديث الكاش بدون فقدان الرتبة
+    # تحديث الكاش
     _user_cache[user_id] = {
+
         "messages": messages,
+
         "rank": rank,
+
         "joined_date": joined_date,
+
         "username": getattr(
             target,
             "username",
             None
         ),
+
         "first_name": getattr(
             target,
             "first_name",
@@ -181,32 +260,47 @@ async def user_id_command(update, context):
 
     bio = "لا يوجد"
 
+    # ==================================================
+    # معلومات Telegram
+    # ==================================================
+
     try:
+
         user_info = await context.bot.get_chat(
             user_id
         )
 
         if user_info.bio:
+
             bio = user_info.bio
 
         if not first_name_value:
+
             first_name_value = (
                 user_info.first_name
                 or "غير معروف"
             )
 
-        if not username_value and user_info.username:
-            username = f"@{user_info.username}"
+        if (
+            not username_value
+            and user_info.username
+        ):
+
+            username = (
+                f"@{user_info.username}"
+            )
 
     except Exception:
+
         pass
 
     # ==================================================
-    # حماية النصوص من HTML
+    # حماية HTML
     # ==================================================
 
     safe_name = escape(
-        first_name_value or "غير معروف"
+        first_name_value
+        or "غير معروف"
     )
 
     safe_username = escape(
@@ -226,21 +320,22 @@ async def user_id_command(update, context):
     )
 
     # ==================================================
-    # Spoiler للرتبة الخاصة بصاحب البوت فقط
-    #
-    # OWNER_ID = صاحب البوت الأساسي
+    # رتبة صاحب البوت Spoiler
     # ==================================================
 
     if user_id == 8453977662:
+
         rank_text = (
             f"<tg-spoiler>{safe_rank}</tg-spoiler>"
         )
+
     else:
+
         rank_text = safe_rank
 
     text = f"""
 🌷ᵂᴱᴸᶜᴼᴹᴱ ᵀᴼ ᴳᴿᴼᵁᴾ🌷
-- عـيـونـي تـنـظـفـت يـوم شـفـت افـتـارك
+- عـيـونـي تـنـظـفـت يـوم شـفـت افـتارك
 🖱️ Name 𖦹 {safe_name}
 🖥️ USER 𖦹 {safe_username}
 💬 MSG 𖦹 {messages}
@@ -255,13 +350,17 @@ async def user_id_command(update, context):
     # ==================================================
 
     try:
+
         photos = await context.bot.get_user_profile_photos(
             user_id,
             limit=1
         )
 
         if photos.total_count > 0:
-            photo = photos.photos[0][-1].file_id
+
+            photo = (
+                photos.photos[0][-1].file_id
+            )
 
             await update.message.reply_photo(
                 photo=photo,
@@ -272,6 +371,7 @@ async def user_id_command(update, context):
             return
 
     except Exception:
+
         pass
 
     await update.message.reply_text(
@@ -285,6 +385,7 @@ async def user_id_command(update, context):
 # ==================================================
 
 async def save_join_date(update, context):
+
     if not update.chat_member:
         return
 
@@ -299,16 +400,20 @@ async def save_join_date(update, context):
 
     user = new_member.user
 
-    joined_date = datetime.now().strftime(
-        "%Y/%m/%d"
+    joined_date = (
+        datetime.now().strftime(
+            "%Y/%m/%d"
+        )
     )
 
     conn = connect()
 
     try:
+
         cur = conn.cursor()
 
-        cur.execute("""
+        cur.execute(
+            """
             INSERT INTO users
             (
                 user_id,
@@ -319,26 +424,35 @@ async def save_join_date(update, context):
                 joined_date
             )
             VALUES (?, ?, ?, ?, ?, ?)
+
             ON CONFLICT (user_id)
             DO NOTHING
-        """, (
-            user.id,
-            user.username,
-            user.first_name,
-            0,
-            "عضو",
-            joined_date
-        ))
+            """,
+            (
+                user.id,
+                user.username,
+                user.first_name,
+                0,
+                "عضو",
+                joined_date
+            )
+        )
 
         conn.commit()
 
+        # نستخدم الرتبة الموجودة فعليًا
         rank = get_rank(user.id)
 
         _user_cache[user.id] = {
+
             "messages": 0,
+
             "rank": rank,
+
             "joined_date": joined_date,
+
             "username": user.username,
+
             "first_name": user.first_name,
         }
 
@@ -348,6 +462,7 @@ async def save_join_date(update, context):
             pass
 
     finally:
+
         conn.close()
 
 
@@ -362,25 +477,18 @@ MESSAGE_BATCH_SIZE = 10
 
 
 # ==================================================
-# حفظ الرسائل المعلقة
+# تنفيذ الحفظ في Thread
 # ==================================================
 
-async def flush_user_messages():
-    global _pending_messages
-    global _pending_user_data
-
-    if not _pending_messages:
-        return
-
-    messages = _pending_messages
-    user_data = _pending_user_data
-
-    _pending_messages = {}
-    _pending_user_data = {}
+def _flush_user_messages_sync(
+    messages,
+    user_data
+):
 
     conn = connect()
 
     try:
+
         cur = conn.cursor()
 
         for user_id, count in messages.items():
@@ -392,23 +500,30 @@ async def flush_user_messages():
 
             username, first_name = data
 
-            cur.execute("""
+            # محاولة تحديث المستخدم الموجود
+            cur.execute(
+                """
                 UPDATE users
                 SET
-                    messages = COALESCE(messages, 0) + ?,
+                    messages =
+                        COALESCE(messages, 0) + ?,
                     username = ?,
                     first_name = ?
                 WHERE user_id=?
-            """, (
-                count,
-                username,
-                first_name,
-                user_id
-            ))
+                """,
+                (
+                    count,
+                    username,
+                    first_name,
+                    user_id
+                )
+            )
 
+            # المستخدم غير موجود
             if cur.rowcount == 0:
 
-                cur.execute("""
+                cur.execute(
+                    """
                     INSERT INTO users
                     (
                         user_id,
@@ -419,101 +534,182 @@ async def flush_user_messages():
                         joined_date
                     )
                     VALUES (?, ?, ?, ?, ?, ?)
+
                     ON CONFLICT (user_id)
                     DO UPDATE SET
+
                         messages =
-                            COALESCE(users.messages, 0)
+                            COALESCE(
+                                users.messages,
+                                0
+                            )
                             + EXCLUDED.messages,
+
                         username =
                             EXCLUDED.username,
+
                         first_name =
                             EXCLUDED.first_name
-                """, (
-                    user_id,
-                    username,
-                    first_name,
-                    count,
-                    "عضو",
-                    datetime.now().strftime(
-                        "%Y/%m/%d"
+                    """,
+                    (
+                        user_id,
+                        username,
+                        first_name,
+                        count,
+                        "عضو",
+                        datetime.now().strftime(
+                            "%Y/%m/%d"
+                        )
                     )
-                ))
+                )
 
         conn.commit()
 
-        # تحديث الكاش
-        for user_id, count in messages.items():
-
-            data = user_data.get(user_id)
-
-            if not data:
-                continue
-
-            username, first_name = data
-
-            cached = _user_cache.get(user_id)
-
-            if cached:
-
-                cached["messages"] = (
-                    cached.get("messages", 0)
-                    + count
-                )
-
-                cached["username"] = username
-                cached["first_name"] = first_name
-
-            else:
-
-                rank = get_rank(user_id)
-
-                _user_cache[user_id] = {
-                    "messages": count,
-                    "rank": rank,
-                    "joined_date": datetime.now().strftime(
-                        "%Y/%m/%d"
-                    ),
-                    "username": username,
-                    "first_name": first_name,
-                }
-
-        try:
-            cur.close()
-        except Exception:
-            pass
-
-    except Exception as e:
+    except Exception:
 
         try:
             conn.rollback()
         except Exception:
             pass
 
-        for user_id, count in messages.items():
-
-            _pending_messages[user_id] = (
-                _pending_messages.get(user_id, 0)
-                + count
-            )
-
-            if user_id in user_data:
-                _pending_user_data[user_id] = (
-                    user_data[user_id]
-                )
-
-        print(
-            f"⚠️ خطأ أثناء حفظ رسائل المستخدمين: {e}"
-        )
+        raise
 
     finally:
+
+        try:
+            cur.close()
+        except Exception:
+            pass
+
         conn.close()
+
+
+# ==================================================
+# حفظ الرسائل المعلقة
+# ==================================================
+
+async def flush_user_messages():
+
+    global _pending_messages
+    global _pending_user_data
+
+    lock = _get_flush_lock()
+
+    async with lock:
+
+        if not _pending_messages:
+            return
+
+        # نسخ البيانات بسرعة داخل event loop
+        messages = _pending_messages
+        user_data = _pending_user_data
+
+        _pending_messages = {}
+        _pending_user_data = {}
+
+        try:
+
+            # ==================================================
+            # PostgreSQL خارج event loop
+            # ==================================================
+
+            await asyncio.to_thread(
+                _flush_user_messages_sync,
+                messages,
+                user_data
+            )
+
+            # ==================================================
+            # تحديث الكاش
+            # ==================================================
+
+            for user_id, count in messages.items():
+
+                data = user_data.get(
+                    user_id
+                )
+
+                if not data:
+                    continue
+
+                username, first_name = data
+
+                cached = _user_cache.get(
+                    user_id
+                )
+
+                if cached:
+
+                    cached["messages"] = (
+                        cached.get(
+                            "messages",
+                            0
+                        )
+                        + count
+                    )
+
+                    cached["username"] = (
+                        username
+                    )
+
+                    cached["first_name"] = (
+                        first_name
+                    )
+
+                else:
+
+                    _user_cache[user_id] = {
+
+                        "messages": count,
+
+                        "rank": "عضو",
+
+                        "joined_date": (
+                            datetime.now().strftime(
+                                "%Y/%m/%d"
+                            )
+                        ),
+
+                        "username": username,
+
+                        "first_name": first_name,
+                    }
+
+        except Exception as e:
+
+            # ==================================================
+            # إعادة الرسائل في حال فشل الحفظ
+            # ==================================================
+
+            for user_id, count in messages.items():
+
+                _pending_messages[user_id] = (
+                    _pending_messages.get(
+                        user_id,
+                        0
+                    )
+                    + count
+                )
+
+                if user_id in user_data:
+
+                    _pending_user_data[user_id] = (
+                        user_data[user_id]
+                    )
+
+            print(
+                f"⚠️ خطأ أثناء حفظ رسائل المستخدمين: {e}"
+            )
 
 
 # ==================================================
 # حفظ رسالة المستخدم
 # ==================================================
 
-async def save_user_message(update, context):
+async def save_user_message(
+    update,
+    context
+):
 
     if not update.message:
         return
@@ -536,8 +732,15 @@ async def save_user_message(update, context):
 
     user_id = user.id
 
+    # ==================================================
+    # زيادة العداد في الذاكرة فقط
+    # ==================================================
+
     _pending_messages[user_id] = (
-        _pending_messages.get(user_id, 0)
+        _pending_messages.get(
+            user_id,
+            0
+        )
         + 1
     )
 
@@ -546,17 +749,39 @@ async def save_user_message(update, context):
         user.first_name
     )
 
-    cached = _user_cache.get(user_id)
+    # ==================================================
+    # تحديث الكاش مباشرة
+    # ==================================================
+
+    cached = _user_cache.get(
+        user_id
+    )
 
     if cached:
 
         cached["messages"] = (
-            cached.get("messages", 0)
+            cached.get(
+                "messages",
+                0
+            )
             + 1
         )
 
-        cached["username"] = user.username
-        cached["first_name"] = user.first_name
+        cached["username"] = (
+            user.username
+        )
 
-    if _pending_messages[user_id] >= MESSAGE_BATCH_SIZE:
+        cached["first_name"] = (
+            user.first_name
+        )
+
+    # ==================================================
+    # الحفظ فقط عند الوصول للدفعة
+    # ==================================================
+
+    if (
+        _pending_messages[user_id]
+        >= MESSAGE_BATCH_SIZE
+    ):
+
         await flush_user_messages()
