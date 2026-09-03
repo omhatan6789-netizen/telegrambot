@@ -608,4 +608,3 @@ def is_admin(user_id):
             0
         )
     )
-    
