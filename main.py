@@ -38,8 +38,8 @@ from games.penalties import (
     continue_penalties,
     end_penalty_game,
 )
-<<<<<<< HEAD
-=======
+
+
 
 
 
