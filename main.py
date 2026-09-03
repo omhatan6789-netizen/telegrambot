@@ -38,6 +38,24 @@ from games.penalties import (
     continue_penalties,
     end_penalty_game,
 )
+<<<<<<< HEAD
+=======
+
+
+
+from games.liar import (
+    start_liar_game_lobby,
+    join_liar_game,
+    leave_liar_game,
+    begin_liar_game,
+    force_voting,
+    end_liar_game,
+    liar_lobby_callback,
+    liar_vote_callback,
+    liar_guess_callback,
+    check_liar_message,
+)
+>>>>>>> 1c37e33 (حفظ)
 # ==================================================
 # الأنمي
 # ==================================================
@@ -918,6 +936,91 @@ def main():
         )
     )
 
+
+    # =====================================================
+    # لعبة الكذاب
+    # =====================================================
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^الكذاب$"),
+            start_liar_game_lobby
+        ),
+        group=0
+    )
+
+    # دخول الكذاب قبل دخول البلنتيات والغميضة
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^دخول$"),
+            join_liar_game
+        ),
+        group=-2
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^\.خروج$"),
+            leave_liar_game
+        ),
+        group=0
+    )
+
+    # نضع .ابدا قبل .ابدا الخاص بالبلنتيات
+    # حتى يتم التعامل معه للعبة الكذاب إذا كانت موجودة
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^\.ابدا$"),
+            begin_liar_game
+        ),
+        group=-2
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^\.التصويت$"),
+            force_voting
+        ),
+        group=0
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^انهاء الكذاب$"),
+            end_liar_game
+        ),
+        group=0
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            liar_lobby_callback,
+            pattern=r"^liar:(join|leave)$"
+        )
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            liar_vote_callback,
+            pattern=r"^liar_vote:"
+        )
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            liar_guess_callback,
+            pattern=r"^liar_guess:"
+        )
+    )
+
+    # مهم: قبل كلمات/أنمي والألعاب العامة
+        app.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            check_liar_message
+        ),
+        group=9
+    )
 
     # ==================================================
     # أسرع كلمة

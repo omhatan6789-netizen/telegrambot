@@ -50,6 +50,10 @@ _command_permission_cache = {}
 # ==================================================
 
 def clear_user_role_cache(user_id):
+<<<<<<< HEAD
+=======
+
+>>>>>>> 1c37e33 (حفظ)
     _developer_cache.pop(
         user_id,
         None
@@ -62,10 +66,18 @@ def clear_user_role_cache(user_id):
 
 
 # ==================================================
+<<<<<<< HEAD
 # مسح كاش الصلاحيات
 # ==================================================
 
 def clear_command_permission_cache():
+=======
+# مسح كاش صلاحيات الأوامر
+# ==================================================
+
+def clear_command_permission_cache():
+
+>>>>>>> 1c37e33 (حفظ)
     _command_permission_cache.clear()
 
 
@@ -96,13 +108,20 @@ def is_developer(user_id):
         return DEV_PRIMARY
 
     if user_id in _developer_cache:
+<<<<<<< HEAD
         return _developer_cache[user_id]
+=======
+
+        return _developer_cache[
+            user_id
+        ]
+>>>>>>> 1c37e33 (حفظ)
 
     conn = connect()
-    cur = conn.cursor()
 
     try:
 
+<<<<<<< HEAD
         cur.execute("""
             SELECT developer_type
             FROM developers
@@ -112,6 +131,28 @@ def is_developer(user_id):
         result = cur.fetchone()
 
     finally:
+=======
+        cur = conn.cursor()
+
+        cur.execute(
+            """
+            SELECT developer_type
+            FROM developers
+            WHERE user_id=?
+            """,
+            (user_id,)
+        )
+
+        result = cur.fetchone()
+
+        try:
+            cur.close()
+        except Exception:
+            pass
+
+    finally:
+
+>>>>>>> 1c37e33 (حفظ)
         conn.close()
 
     if not result:
@@ -122,7 +163,13 @@ def is_developer(user_id):
 
     developer_type = result[0]
 
+<<<<<<< HEAD
     _developer_cache[user_id] = developer_type
+=======
+    _developer_cache[user_id] = (
+        developer_type
+    )
+>>>>>>> 1c37e33 (حفظ)
 
     return developer_type
 
@@ -161,13 +208,20 @@ def get_rank(user_id):
         return "Dev"
 
     if user_id in _rank_cache:
+<<<<<<< HEAD
         return _rank_cache[user_id]
+=======
+
+        return _rank_cache[
+            user_id
+        ]
+>>>>>>> 1c37e33 (حفظ)
 
     conn = connect()
-    cur = conn.cursor()
 
     try:
 
+<<<<<<< HEAD
         cur.execute("""
             SELECT rank
             FROM users
@@ -219,6 +273,74 @@ def get_rank(user_id):
                 rank
             ))
 
+=======
+        cur = conn.cursor()
+
+        cur.execute(
+            """
+            SELECT rank
+            FROM users
+            WHERE user_id=?
+            """,
+            (user_id,)
+        )
+
+        data = cur.fetchone()
+
+        if data and data[0]:
+
+            rank = normalize_rank(
+                data[0]
+            )
+
+            _rank_cache[user_id] = rank
+
+            return rank
+
+        # ==================================================
+        # fallback إلى ranks
+        # ==================================================
+
+        cur.execute(
+            """
+            SELECT rank
+            FROM ranks
+            WHERE user_id=?
+            """,
+            (user_id,)
+        )
+
+        rank_data = cur.fetchone()
+
+        if rank_data and rank_data[0]:
+
+            rank = normalize_rank(
+                rank_data[0]
+            )
+
+            cur.execute(
+                """
+                INSERT INTO users
+                (
+                    user_id,
+                    username,
+                    first_name,
+                    messages,
+                    rank
+                )
+                VALUES (?, '', '', 0, ?)
+
+                ON CONFLICT(user_id)
+                DO UPDATE SET
+                    rank=excluded.rank
+                """,
+                (
+                    user_id,
+                    rank
+                )
+            )
+
+>>>>>>> 1c37e33 (حفظ)
             conn.commit()
 
             _rank_cache[user_id] = rank
@@ -230,6 +352,15 @@ def get_rank(user_id):
         return "عضو"
 
     finally:
+<<<<<<< HEAD
+=======
+
+        try:
+            cur.close()
+        except Exception:
+            pass
+
+>>>>>>> 1c37e33 (حفظ)
         conn.close()
 
 
@@ -261,6 +392,7 @@ def check_command_permission(
     user_id,
     command
 ):
+<<<<<<< HEAD
 
     cache_key = (
         user_id,
@@ -305,6 +437,67 @@ def check_command_permission(
         data[0]
     )
 
+=======
+
+    cache_key = (
+        user_id,
+        command
+    )
+
+    if cache_key in _command_permission_cache:
+
+        return _command_permission_cache[
+            cache_key
+        ]
+
+    conn = connect()
+
+    try:
+
+        cur = conn.cursor()
+
+        cur.execute(
+            """
+            SELECT rank
+            FROM command_locks
+            WHERE command=?
+            """,
+            (command,)
+        )
+
+        data = cur.fetchone()
+
+        try:
+            cur.close()
+        except Exception:
+            pass
+
+    finally:
+
+        conn.close()
+
+    # ==================================================
+    # الأمر غير مقفول
+    # ==================================================
+
+    if not data:
+
+        result = (
+            True,
+            None
+        )
+
+        _command_permission_cache[
+            cache_key
+        ] = result
+
+        return result
+
+    required_rank = normalize_rank(
+        data[0]
+    )
+
+>>>>>>> 1c37e33 (حفظ)
     user_level = get_rank_level(
         user_id
     )
@@ -363,7 +556,11 @@ async def get_target_user(update, context):
 
     message = update.message
 
+<<<<<<< HEAD
     # الرد على شخص
+=======
+    # بالرد
+>>>>>>> 1c37e33 (حفظ)
     if message.reply_to_message:
 
         replied_user = (
@@ -389,13 +586,12 @@ async def get_target_user(update, context):
 
         try:
 
-            chat = await context.bot.get_chat(
+            return await context.bot.get_chat(
                 int(target)
             )
 
-            return chat
-
         except Exception:
+
             return None
 
     # يوزر
@@ -403,13 +599,12 @@ async def get_target_user(update, context):
 
         try:
 
-            chat = await context.bot.get_chat(
+            return await context.bot.get_chat(
                 target
             )
 
-            return chat
-
         except Exception:
+
             return None
 
     return None
@@ -501,9 +696,15 @@ def get_rank_from_command(text):
             )
         ):
 
+<<<<<<< HEAD
             rank, promoting = commands[
                 command
             ]
+=======
+            rank, promoting = (
+                commands[command]
+            )
+>>>>>>> 1c37e33 (حفظ)
 
             return (
                 command,
@@ -632,10 +833,10 @@ def update_user_rank(
     )
 
     conn = connect()
-    cur = conn.cursor()
 
     try:
 
+<<<<<<< HEAD
         if rank == "Dev":
 
             cur.execute("""
@@ -674,10 +875,78 @@ def update_user_rank(
                 username,
                 first_name,
                 messages,
+=======
+        cur = conn.cursor()
+
+        # ==================================================
+        # Dev
+        # ==================================================
+
+        if rank == "Dev":
+
+            cur.execute(
+                """
+                INSERT INTO developers
+                (
+                    user_id,
+                    developer_type,
+                    added_by
+                )
+                VALUES (?, ?, ?)
+
+                ON CONFLICT(user_id)
+                DO UPDATE SET
+                    developer_type='secondary',
+                    added_by=excluded.added_by
+                """,
+                (
+                    user_id,
+                    DEV_SECONDARY,
+                    OWNER_ID
+                )
+            )
+
+        else:
+
+            cur.execute(
+                """
+                DELETE FROM developers
+                WHERE user_id=?
+                AND developer_type='secondary'
+                """,
+                (
+                    user_id,
+                )
+            )
+
+        # ==================================================
+        # users
+        # ==================================================
+
+        cur.execute(
+            """
+            INSERT INTO users
+            (
+                user_id,
+                username,
+                first_name,
+                messages,
                 rank
             )
             VALUES (?, '', '', 0, ?)
 
+            ON CONFLICT(user_id)
+            DO UPDATE SET
+                rank=excluded.rank
+            """,
+            (
+                user_id,
+>>>>>>> 1c37e33 (حفظ)
+                rank
+            )
+            VALUES (?, '', '', 0, ?)
+
+<<<<<<< HEAD
             ON CONFLICT(user_id)
             DO UPDATE SET
                 rank=excluded.rank
@@ -687,6 +956,14 @@ def update_user_rank(
         ))
 
         cur.execute("""
+=======
+        # ==================================================
+        # ranks
+        # ==================================================
+
+        cur.execute(
+            """
+>>>>>>> 1c37e33 (حفظ)
             INSERT INTO ranks
             (
                 user_id,
@@ -697,14 +974,24 @@ def update_user_rank(
             ON CONFLICT(user_id)
             DO UPDATE SET
                 rank=excluded.rank
+<<<<<<< HEAD
         """, (
             user_id,
             rank
         ))
+=======
+            """,
+            (
+                user_id,
+                rank
+            )
+        )
+>>>>>>> 1c37e33 (حفظ)
 
         conn.commit()
 
     except Exception:
+<<<<<<< HEAD
         conn.rollback()
         raise
 
@@ -712,11 +999,47 @@ def update_user_rank(
         conn.close()
 
     # مهم جدًا بعد تغيير الرتبة
+=======
+
+        conn.rollback()
+
+        raise
+
+    finally:
+
+        try:
+            cur.close()
+        except Exception:
+            pass
+
+        conn.close()
+
+    # ==================================================
+    # تحديث الكاش
+    # ==================================================
+
+>>>>>>> 1c37e33 (حفظ)
     clear_user_role_cache(
         user_id
     )
 
     clear_command_permission_cache()
+<<<<<<< HEAD
+=======
+
+    # إذا كانت permissions موجودة
+    try:
+
+        from permissions import (
+            clear_user_permission_cache
+        )
+
+        clear_user_permission_cache()
+
+    except Exception:
+
+        pass
+>>>>>>> 1c37e33 (حفظ)
 
 
 # ==================================================
@@ -743,6 +1066,9 @@ async def roles_command(
 
         user = update.effective_user
 
+        if not user:
+            return
+
         rank = get_rank(
             user.id
         )
@@ -751,7 +1077,10 @@ async def roles_command(
             rank
         )
 
+<<<<<<< HEAD
         # رتبتي = Spoiler دائمًا
+=======
+>>>>>>> 1c37e33 (حفظ)
         await update.message.reply_text(
             f"• رتبتك هي ↤︎ "
             f"<tg-spoiler>{safe_rank}</tg-spoiler>",
@@ -786,11 +1115,14 @@ async def roles_command(
             rank
         )
 
+<<<<<<< HEAD
         # ==================================================
         # إذا الشخص المستهدف هو صاحب البوت
         # الرتبة تكون Spoiler
         # ==================================================
 
+=======
+>>>>>>> 1c37e33 (حفظ)
         if target.id == OWNER_ID:
 
             await update.message.reply_text(
@@ -814,9 +1146,11 @@ async def roles_command(
 
     if text == "كشف المجموعة":
 
-        allowed, required = check_command_permission(
-            update.effective_user.id,
-            "كشف المجموعة"
+        allowed, required = (
+            check_command_permission(
+                update.effective_user.id,
+                "كشف المجموعة"
+            )
         )
 
         if not allowed:
@@ -828,10 +1162,10 @@ async def roles_command(
             return
 
         conn = connect()
-        cur = conn.cursor()
 
         try:
 
+<<<<<<< HEAD
             cur.execute("""
                 SELECT user_id
                 FROM users
@@ -840,6 +1174,26 @@ async def roles_command(
             user_rows = cur.fetchall()
 
         finally:
+=======
+            cur = conn.cursor()
+
+            cur.execute(
+                """
+                SELECT user_id
+                FROM users
+                """
+            )
+
+            user_rows = cur.fetchall()
+
+            try:
+                cur.close()
+            except Exception:
+                pass
+
+        finally:
+
+>>>>>>> 1c37e33 (حفظ)
             conn.close()
 
         owner = []
@@ -917,7 +1271,10 @@ async def roles_command(
                 owner,
                 1
             ):
-                msg += f"{i} - {name}\n"
+
+                msg += (
+                    f"{i} - {name}\n"
+                )
 
         else:
 
@@ -934,7 +1291,10 @@ async def roles_command(
                 deputy,
                 1
             ):
-                msg += f"{i} - {name}\n"
+
+                msg += (
+                    f"{i} - {name}\n"
+                )
 
         else:
 
@@ -951,7 +1311,10 @@ async def roles_command(
                 basic,
                 1
             ):
-                msg += f"{i} - {name}\n"
+
+                msg += (
+                    f"{i} - {name}\n"
+                )
 
         else:
 
@@ -968,7 +1331,10 @@ async def roles_command(
                 admins,
                 1
             ):
-                msg += f"{i} - {name}\n"
+
+                msg += (
+                    f"{i} - {name}\n"
+                )
 
         else:
 
@@ -985,7 +1351,10 @@ async def roles_command(
                 vip,
                 1
             ):
-                msg += f"{i} - {name}\n"
+
+                msg += (
+                    f"{i} - {name}\n"
+                )
 
         else:
 
@@ -1011,6 +1380,9 @@ async def change_rank(
         return
 
     actor = update.effective_user
+
+    if not actor:
+        return
 
     text = (
         update.message.text or ""
@@ -1131,7 +1503,11 @@ async def change_rank(
         return
 
     # ==================================================
+<<<<<<< HEAD
     # تعديل رتبة عادية
+=======
+    # رتبة عادية
+>>>>>>> 1c37e33 (حفظ)
     # ==================================================
 
     old_rank = get_rank(
