@@ -1665,4 +1665,4 @@ async def liar_lobby_callback(
             game
         )
 
-           return
+        return
