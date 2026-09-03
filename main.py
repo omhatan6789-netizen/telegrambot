@@ -1014,7 +1014,7 @@ def main():
     )
 
     # مهم: قبل كلمات/أنمي والألعاب العامة
-        app.add_handler(
+    app.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND,
             check_liar_message
