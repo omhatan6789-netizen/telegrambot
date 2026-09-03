@@ -198,6 +198,9 @@ async def get_target(update: Update, context=None):
 # كشف
 # =====================
 
+from html import escape
+
+
 async def check_user(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
@@ -210,21 +213,46 @@ async def check_user(
     # تحديد الشخص
     # ==========================================
 
-    target = await get_target(update)
+    target = await get_target(
+        update,
+        context
+    )
 
+    # بدون تحديد شخص = تجاهل الأمر تمامًا
     if not target:
-
-        await update.message.reply_text(
-            "❌ استخدم الأمر بالرد أو الآيدي أو اليوزر."
-        )
-
         return
 
     # ==========================================
     # جلب الرتبة الحالية
     # ==========================================
 
-    rank = get_rank(target.id)
+    rank = get_rank(
+        target.id
+    )
+
+    # حماية النصوص من HTML
+    safe_name = escape(
+        getattr(
+            target,
+            "first_name",
+            "غير معروف"
+        ) or "غير معروف"
+    )
+
+    safe_rank = escape(
+        rank
+    )
+
+    # صاحب البوت = Spoiler
+    if target.id == OWNER_ID:
+
+        rank_text = (
+            f"<tg-spoiler>{safe_rank}</tg-spoiler>"
+        )
+
+    else:
+
+        rank_text = safe_rank
 
     # ==========================================
     # قاعدة البيانات
@@ -233,31 +261,35 @@ async def check_user(
     conn = connect()
     cur = conn.cursor()
 
-    # الحظر
-    cur.execute(
-        """
-        SELECT ban_type, until_time, reason, by_user
-        FROM bans
-        WHERE user_id=?
-        """,
-        (target.id,)
-    )
+    try:
 
-    ban = cur.fetchone()
+        # الحظر
+        cur.execute(
+            """
+            SELECT ban_type, until_time, reason, by_user
+            FROM bans
+            WHERE user_id=?
+            """,
+            (target.id,)
+        )
 
-    # الكتم
-    cur.execute(
-        """
-        SELECT mute_type, until_time, reason, by_user
-        FROM mutes
-        WHERE user_id=?
-        """,
-        (target.id,)
-    )
+        ban = cur.fetchone()
 
-    mute = cur.fetchone()
+        # الكتم
+        cur.execute(
+            """
+            SELECT mute_type, until_time, reason, by_user
+            FROM mutes
+            WHERE user_id=?
+            """,
+            (target.id,)
+        )
 
-    conn.close()
+        mute = cur.fetchone()
+
+    finally:
+
+        conn.close()
 
     # ==========================================
     # معلومات الشخص
@@ -265,15 +297,22 @@ async def check_user(
 
     username = ""
 
-    if getattr(target, "username", None):
-        username = f"\n🔗 @{target.username}"
+    if getattr(
+        target,
+        "username",
+        None
+    ):
+
+        username = (
+            f"\n🔗 @{escape(target.username)}"
+        )
 
     text = f"""
-👤 {target.first_name}{username}
+👤 {safe_name}{username}
 
 🆔 {target.id}
 
-🛡 الرتبة: {rank}
+🛡 الرتبة: {rank_text}
 """
 
     # ==========================================
@@ -293,13 +332,13 @@ async def check_user(
 🚫 الحظر: ✅ {ban_type}
 
 ⏱ المدة:
-{ban[1] if ban[1] else "دائم"}
+{escape(str(ban[1])) if ban[1] else "دائم"}
 
 📝 السبب:
-{ban[2] if ban[2] else "بدون سبب"}
+{escape(str(ban[2])) if ban[2] else "بدون سبب"}
 
 👮 بواسطة:
-{ban[3] if ban[3] else "غير معروف"}
+{escape(str(ban[3])) if ban[3] else "غير معروف"}
 """
 
     else:
@@ -326,13 +365,13 @@ async def check_user(
 🔇 الكتم: ✅ {mute_type}
 
 ⏱ المدة:
-{mute[1] if mute[1] else "دائم"}
+{escape(str(mute[1])) if mute[1] else "دائم"}
 
 📝 السبب:
-{mute[2] if mute[2] else "بدون سبب"}
+{escape(str(mute[2])) if mute[2] else "بدون سبب"}
 
 👮 بواسطة:
-{mute[3] if mute[3] else "غير معروف"}
+{escape(str(mute[3])) if mute[3] else "غير معروف"}
 """
 
     else:
@@ -346,10 +385,10 @@ async def check_user(
     # إرسال الكشف
     # ==========================================
 
-    await update.message.reply_text(text)
-
-
-import datetime
+    await update.message.reply_text(
+        text,
+        parse_mode="HTML"
+    )
 
 
 def parse_time(text):
