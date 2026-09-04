@@ -265,18 +265,6 @@ async def add_reply_handler(
         return
 
 
-        if update.message.text:
-            content = update.message.text
-            reply_type = "text"
-            if update.message.entities:
-                entities_json = json.dumps([e.to_dict() for e in update.message.entities])
-                print("✅ تم حفظ الـ Entities بنجاح:", entities_json) # <-- ضع هذا السطر
-            else:
-                print("❌ لم يتم العثور على entities في الرسالة الم المرسلة!") # <-- أو هذا
-
-
-
-
 
 # =====================
 # دالة مساعدة لتجهيز الكيان وإرساله بصيغة UTF-16
@@ -285,23 +273,18 @@ def prepare_entities(text, entities_data):
     if not entities_data or not text:
         return None
     try:
-        print("1. Entities Data قادمة من القاعدة:", entities_data)
-        
         entities_list = []
         for e in entities_data:
-            # التأكد من تمرير البيانات بالشكل الصحيح
             if isinstance(e, dict):
                 entities_list.append(MessageEntity.de_json(e, None))
-            else:
-                # لو كانت مخزنة بطريقة أخرى
-                pass
+            elif isinstance(e, MessageEntity):
+                entities_list.append(e)
                 
-        print("2. Entities بعد التحويل:", entities_list)
+        # ضبط المسافات ونظام الـ UTF-16 لتوافق تام مع تيليجرام والإيموجي المميز
         final_entities = MessageEntity.adjust_message_entities_to_utf_16(text, entities_list)
-        print("3. Entities النهائية بعد التعديل:", final_entities)
         return final_entities
     except Exception as err:
-        print("⚠️ خطأ حدث في prepare_entities:", err)
+        print(f"⚠️ خطأ حدث في prepare_entities: {err}")
         return None
 
 
@@ -412,13 +395,14 @@ async def check_replies(
                 finally:
                     conn.close()
 
+            # 1. استبدال النصوص أولاً قبل تجهيز الـ entities
             content = replace_data(content, messages, rank, points)
             caption = replace_data(caption, messages, rank, points)
 
             if reply_type == "text":
                 formatted_entities = prepare_entities(content, entities)
                 await update.message.reply_text(
-                    content,
+                    text=content,
                     entities=formatted_entities
                 )
 
@@ -535,13 +519,14 @@ async def check_replies(
         finally:
             conn.close()
 
+    # 1. استبدال النصوص أولاً قبل تجهيز الـ entities للرد العادي أيضاً
     content = replace_data(content, messages, rank, points)
     caption = replace_data(caption, messages, rank, points)
 
     if reply_type == "text":
         formatted_entities = prepare_entities(content, entities)
         await update.message.reply_text(
-            content,
+            text=content,
             entities=formatted_entities
         )
 
