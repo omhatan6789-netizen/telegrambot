@@ -4,7 +4,7 @@ import re
 from telegram import Update, MessageEntity
 from telegram.ext import ContextTypes
 
-from handlers.permissions import is_admin
+from permissions import is_admin
 from database import connect
 
 
