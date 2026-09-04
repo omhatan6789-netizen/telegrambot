@@ -264,6 +264,20 @@ async def add_reply_handler(
         )
         return
 
+
+        if update.message.text:
+            content = update.message.text
+            reply_type = "text"
+            if update.message.entities:
+                entities_json = json.dumps([e.to_dict() for e in update.message.entities])
+                print("✅ تم حفظ الـ Entities بنجاح:", entities_json) # <-- ضع هذا السطر
+            else:
+                print("❌ لم يتم العثور على entities في الرسالة الم المرسلة!") # <-- أو هذا
+
+
+
+
+
 # =====================
 # دالة مساعدة لتجهيز الكيان وإرساله بصيغة UTF-16
 # =====================
