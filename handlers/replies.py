@@ -1,4 +1,6 @@
-from telegram import Update
+import json
+
+from telegram import Update, MessageEntity
 from telegram.ext import ContextTypes
 from permissions import is_admin
 from database import connect
@@ -10,6 +12,48 @@ delete_special_reply_sessions = {}
 edit_special_reply_sessions = {}
 edit_reply_sessions = {}
 delete_reply_sessions = {}
+
+
+def serialize_entities(entities):
+    """
+    حفظ تنسيقات الرسالة، وبالأخص custom_emoji_id الخاص بالملصقات
+    المميزة الصغيرة داخل النص.
+    """
+    if not entities:
+        return None
+
+    return json.dumps(
+        [
+            entity.to_dict()
+            for entity in entities
+        ],
+        ensure_ascii=False
+    )
+
+
+def deserialize_entities(entities):
+    """
+    تحويل التنسيقات المحفوظة في قاعدة البيانات إلى MessageEntity
+    حتى يقبلها python-telegram-bot عند إعادة إرسال النص أو الوصف.
+    """
+    if not entities:
+        return None
+
+    try:
+        data = (
+            json.loads(entities)
+            if isinstance(entities, str)
+            else entities
+        )
+
+        return [
+            MessageEntity.de_json(item, None)
+            for item in data
+        ]
+
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+
 
 # =========================
 # Cache للردود
@@ -26,6 +70,7 @@ def load_replies_cache():
         cur.execute(
             """
             SELECT name, text, type, caption
+                   , entities
             FROM replies
             """
         )
@@ -34,14 +79,15 @@ def load_replies_cache():
             row[0]: (
                 row[1],
                 row[2],
-                row[3]
+                row[3],
+                row[4]
             )
             for row in rows
         }
         # الردود المميزة
         cur.execute(
             """
-            SELECT name, text, type, caption
+            SELECT name, text, type, caption, entities
             FROM special_replies
             """
         )
@@ -190,11 +236,15 @@ async def add_reply_handler(
         content = None
         reply_type = None
         caption = None
+        entities = None
 
         if update.message.text:
 
             content = update.message.text
             reply_type = "text"
+            entities = serialize_entities(
+                update.message.entities
+            )
 
         elif update.message.photo:
 
@@ -228,11 +278,13 @@ async def add_reply_handler(
 
             content = update.message.audio.file_id
             reply_type = "audio"
+            caption = update.message.caption
 
         elif update.message.document:
 
             content = update.message.document.file_id
             reply_type = "document"
+            caption = update.message.caption
 
         else:
 
@@ -252,20 +304,23 @@ async def add_reply_handler(
                 name,
                 text,
                 type,
-                caption
+                caption,
+                entities
             )
-            VALUES (?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?)
             ON CONFLICT (name)
             DO UPDATE SET
                 text = EXCLUDED.text,
                 type = EXCLUDED.type,
-                caption = EXCLUDED.caption
+                caption = EXCLUDED.caption,
+                entities = EXCLUDED.entities
             """,
             (
                 name,
                 content,
                 reply_type,
-                caption
+                caption,
+                entities
             )
         )
 
@@ -381,6 +436,7 @@ async def check_replies(
         content = reply[1]
         reply_type = reply[2]
         caption = reply[3]
+        entities = deserialize_entities(reply[4])
 
         if name.lower() in message_text:
 
@@ -474,7 +530,8 @@ async def check_replies(
             if reply_type == "text":
 
                 await update.message.reply_text(
-                    content
+                    content,
+                    entities=entities
                 )
 
             elif reply_type == "photo":
@@ -539,6 +596,7 @@ async def check_replies(
     content = reply[0]
     reply_type = reply[1]
     caption = reply[2]
+    entities = deserialize_entities(reply[3])
 
     # =====================
     # بيانات المستخدم
@@ -633,7 +691,8 @@ async def check_replies(
     if reply_type == "text":
 
         await update.message.reply_text(
-            content
+            content,
+            entities=entities
         )
 
     elif reply_type == "photo":
@@ -847,11 +906,15 @@ async def add_special_reply_handler(
         content = None
         reply_type = None
         caption = None
+        entities = None
 
         if update.message.text:
 
             content = update.message.text
             reply_type = "text"
+            entities = serialize_entities(
+                update.message.entities
+            )
 
         elif update.message.photo:
 
@@ -909,20 +972,23 @@ async def add_special_reply_handler(
                 name,
                 text,
                 type,
-                caption
+                caption,
+                entities
             )
-            VALUES (?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?)
             ON CONFLICT (name)
             DO UPDATE SET
                 text = EXCLUDED.text,
                 type = EXCLUDED.type,
-                caption = EXCLUDED.caption
+                caption = EXCLUDED.caption,
+                entities = EXCLUDED.entities
             """,
             (
                 name,
                 content,
                 reply_type,
-                caption
+                caption,
+                entities
             )
         )
 
@@ -1140,11 +1206,15 @@ async def edit_special_reply_handler(
         content = None
         reply_type = None
         caption = None
+        entities = None
 
         if update.message.text:
 
             content = update.message.text
             reply_type = "text"
+            entities = serialize_entities(
+                update.message.entities
+            )
 
         elif update.message.photo:
 
@@ -1200,13 +1270,14 @@ async def edit_special_reply_handler(
         cur.execute(
             """
             UPDATE special_replies
-            SET text = ?, type = ?, caption = ?
+            SET text = ?, type = ?, caption = ?, entities = ?
             WHERE name = ?
             """,
             (
                 content,
                 reply_type,
                 caption,
+                entities,
                 name
             )
         )
@@ -1319,11 +1390,15 @@ async def edit_reply_handler(
         content = None
         reply_type = None
         caption = None
+        entities = None
 
         if update.message.text:
 
             content = update.message.text
             reply_type = "text"
+            entities = serialize_entities(
+                update.message.entities
+            )
 
         elif update.message.photo:
 
@@ -1379,13 +1454,14 @@ async def edit_reply_handler(
         cur.execute(
             """
             UPDATE replies
-            SET text = ?, type = ?, caption = ?
+            SET text = ?, type = ?, caption = ?, entities = ?
             WHERE name = ?
             """,
             (
                 content,
                 reply_type,
                 caption,
+                entities,
                 name
             )
         )
