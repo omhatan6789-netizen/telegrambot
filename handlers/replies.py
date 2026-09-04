@@ -81,7 +81,7 @@ def entities_to_json(entities):
 
             item = entity.to_dict()
 
-            # نتأكد من حفظ custom_emoji_id
+            # حفظ custom_emoji_id بشكل صريح
             if entity.custom_emoji_id:
                 item["custom_emoji_id"] = (
                     entity.custom_emoji_id
@@ -307,9 +307,6 @@ def replace_text_and_entities(
 
     # --------------------------------------------------
     # خريطة UTF-16
-    #
-    # Telegram يستخدم UTF-16 offsets
-    # وليس Python character indexes.
     # --------------------------------------------------
 
     boundaries = {}
@@ -326,7 +323,7 @@ def replace_text_and_entities(
     for match in matches:
 
         # ----------------------------------------------
-        # الجزء الذي قبل المتغير
+        # الجزء قبل المتغير
         # ----------------------------------------------
 
         before = text[
@@ -337,23 +334,21 @@ def replace_text_and_entities(
 
         for char in before:
 
-            old_utf16 += utf16_len(char)
-            new_utf16 += utf16_len(char)
+            step = utf16_len(char)
 
-            boundaries[old_utf16] = new_utf16
+            boundaries[
+                old_utf16
+            ] = new_utf16
+
+            old_utf16 += step
+            new_utf16 += step
 
         # ----------------------------------------------
         # بداية المتغير
         # ----------------------------------------------
 
-        placeholder_start_utf16 = (
-            utf16_len(
-                text[:match.start()]
-            )
-        )
-
         boundaries[
-            placeholder_start_utf16
+            old_utf16
         ] = new_utf16
 
         # ----------------------------------------------
@@ -372,17 +367,22 @@ def replace_text_and_entities(
             replacement
         )
 
-        placeholder_end_utf16 = (
-            utf16_len(
-                text[:match.end()]
-            )
+        # ----------------------------------------------
+        # تخطي المتغير الأصلي
+        # ----------------------------------------------
+
+        placeholder = text[
+            match.start():match.end()
+        ]
+
+        old_utf16 += utf16_len(
+            placeholder
         )
 
+        # نهاية المتغير
         boundaries[
-            placeholder_end_utf16
+            old_utf16
         ] = new_utf16
-
-        old_utf16 = placeholder_end_utf16
 
         old_python_pos = match.end()
 
@@ -398,10 +398,18 @@ def replace_text_and_entities(
 
     for char in after:
 
-        old_utf16 += utf16_len(char)
-        new_utf16 += utf16_len(char)
+        boundaries[
+            old_utf16
+        ] = new_utf16
 
-        boundaries[old_utf16] = new_utf16
+        step = utf16_len(char)
+
+        old_utf16 += step
+        new_utf16 += step
+
+    boundaries[
+        old_utf16
+    ] = new_utf16
 
     new_text = "".join(
         result_parts
@@ -430,54 +438,51 @@ def replace_text_and_entities(
             old_end
         )
 
-        # --------------------------------------------------
-        # إذا لم نجد الحدود
-        # --------------------------------------------------
-
+        # إذا لم نستطع تحديد مكان الـ Entity
         if (
             new_start is None
             or new_end is None
         ):
 
-            # لا نرسل Entity غير صحيحة
-            # حتى لا يرفض Telegram الرسالة.
-
             print(
                 "⚠️ تعذر إعادة حساب Entity:",
-                entity
+                entity.type,
+                entity.offset,
+                entity.length
             )
 
             continue
 
-        # --------------------------------------------------
+        # ----------------------------------------------
         # إنشاء Entity جديدة
-        # --------------------------------------------------
+        # ----------------------------------------------
 
-        new_entity = MessageEntity(
+        entity_data = entity.to_dict()
 
-            type=entity.type,
+        entity_data["offset"] = new_start
 
-            offset=new_start,
+        entity_data["length"] = (
+            new_end
+            - new_start
+        )
 
-            length=(
-                new_end
-                - new_start
-            ),
+        try:
 
-            url=entity.url,
-
-            user=entity.user,
-
-            language=entity.language,
-
-            custom_emoji_id=(
-                entity.custom_emoji_id
+            new_entity = MessageEntity.de_json(
+                entity_data,
+                None
             )
-        )
 
-        new_entities.append(
-            new_entity
-        )
+            if new_entity:
+                new_entities.append(
+                    new_entity
+                )
+
+        except Exception as e:
+
+            print(
+                f"⚠️ خطأ في إنشاء Entity جديدة: {e}"
+            )
 
     return (
         new_text,
@@ -992,7 +997,7 @@ async def send_reply_content(
 
         await message.reply_text(
             text=content,
-            entities=entities
+            entities=entities or []
         )
 
     # --------------------------------------------------
@@ -1004,7 +1009,7 @@ async def send_reply_content(
         await message.reply_photo(
             photo=content,
             caption=caption,
-            caption_entities=entities
+            caption_entities=entities or []
         )
 
     # --------------------------------------------------
@@ -1016,7 +1021,7 @@ async def send_reply_content(
         await message.reply_video(
             video=content,
             caption=caption,
-            caption_entities=entities
+            caption_entities=entities or []
         )
 
     # --------------------------------------------------
@@ -1028,7 +1033,7 @@ async def send_reply_content(
         await message.reply_animation(
             animation=content,
             caption=caption,
-            caption_entities=entities
+            caption_entities=entities or []
         )
 
     # --------------------------------------------------
@@ -1060,7 +1065,7 @@ async def send_reply_content(
         await message.reply_audio(
             audio=content,
             caption=caption,
-            caption_entities=entities
+            caption_entities=entities or []
         )
 
     # --------------------------------------------------
@@ -1072,7 +1077,7 @@ async def send_reply_content(
         await message.reply_document(
             document=content,
             caption=caption,
-            caption_entities=entities
+            caption_entities=entities or []
         )
 
 
@@ -1377,11 +1382,17 @@ async def check_replies(
 
     caption = reply[2]
 
-    entities_json = (
-        reply[3]
-        if len(reply) > 3
-        else None
-    )
+    # ==================================================
+    # مهم جدًا:
+    # الكاش للرد العادي يحتوي:
+    #
+    # 0 = content
+    # 1 = type
+    # 2 = caption
+    # 3 = entities
+    # ==================================================
+
+    entities_json = reply[3]
 
     (
         content,
@@ -1877,7 +1888,7 @@ async def edit_special_reply_handler(
         if not update.message.text:
 
             await update.message.reply_text(
-                "❌ أرسل اسم الرد كنص"
+                "❌ أرسل الاسم كنص"
             )
 
             return
@@ -2054,7 +2065,7 @@ async def edit_reply_handler(
         if not update.message.text:
 
             await update.message.reply_text(
-                "❌ أرسل اسم الرد كنص"
+                "❌ أرسل الاسم كنص"
             )
 
             return
