@@ -2232,17 +2232,3 @@ async def liars_table_private_start(
     # مهم جدًا:
     # يمنع /start العادي من العمل بعدها
     raise ApplicationHandlerStop
-
-from games.liars_table import (
-    active_liars_tables,
-    join_liars_table
-)
-
-if chat_id in active_liars_tables:
-
-    await join_liars_table(
-        update,
-        context
-    )
-
-    return
