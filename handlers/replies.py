@@ -19,14 +19,23 @@ def serialize_entities(entities):
     حفظ تنسيقات الرسالة، وبالأخص custom_emoji_id الخاص بالملصقات
     المميزة الصغيرة داخل النص.
     """
-    if not entities:
+    custom_entities = [
+        {
+            "type": entity.type,
+            "offset": entity.offset,
+            "length": entity.length,
+            "custom_emoji_id": entity.custom_emoji_id
+        }
+        for entity in (entities or [])
+        if entity.type == "custom_emoji"
+        and entity.custom_emoji_id
+    ]
+
+    if not custom_entities:
         return None
 
     return json.dumps(
-        [
-            entity.to_dict()
-            for entity in entities
-        ],
+        custom_entities,
         ensure_ascii=False
     )
 
@@ -47,11 +56,18 @@ def deserialize_entities(entities):
         )
 
         return [
-            MessageEntity.de_json(item, None)
+            MessageEntity(
+                type=item["type"],
+                offset=int(item["offset"]),
+                length=int(item["length"]),
+                custom_emoji_id=item["custom_emoji_id"]
+            )
             for item in data
+            if item.get("type") == "custom_emoji"
+            and item.get("custom_emoji_id")
         ]
 
-    except (TypeError, ValueError, json.JSONDecodeError):
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
         return None
 
 
