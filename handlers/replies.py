@@ -1,6 +1,6 @@
 import json
 
-from telegram import Update, MessageEntity
+from telegram import ReplyParameters, Update, MessageEntity
 from telegram.ext import ContextTypes
 from permissions import is_admin
 from database import connect
@@ -14,7 +14,7 @@ edit_reply_sessions = {}
 delete_reply_sessions = {}
 
 
-def serialize_entities(entities):
+def serialize_entities(entities, message=None):
     """
     حفظ تنسيقات الرسالة، وبالأخص custom_emoji_id الخاص بالملصقات
     المميزة الصغيرة داخل النص.
@@ -31,11 +31,36 @@ def serialize_entities(entities):
         and entity.custom_emoji_id
     ]
 
-    if not custom_entities:
+    if not custom_entities and not message:
         return None
 
+    data = {
+        "entities": custom_entities
+    }
+
+    if message:
+        data.update(
+            {
+                "source_chat_id": message.chat.id,
+                "source_message_id": message.message_id,
+                "copyable": not any(
+                    placeholder in (message.text or "")
+                    for placeholder in (
+                        "#الاسم",
+                        "#يوزره",
+                        "#اليوزر",
+                        "#الرسائل",
+                        "#الايدي",
+                        "#الرتبه",
+                        "#التعديل",
+                        "#النقاط"
+                    )
+                )
+            }
+        )
+
     return json.dumps(
-        custom_entities,
+        data,
         ensure_ascii=False
     )
 
@@ -51,9 +76,12 @@ def deserialize_entities(entities):
     try:
         data = (
             json.loads(entities)
-            if isinstance(entities, str)
+        if isinstance(entities, str)
             else entities
         )
+
+        if isinstance(data, dict):
+            data = data.get("entities") or []
 
         return [
             MessageEntity(
@@ -69,6 +97,35 @@ def deserialize_entities(entities):
 
     except (KeyError, TypeError, ValueError, json.JSONDecodeError):
         return None
+
+
+def deserialize_reply_metadata(value):
+    """
+    قراءة بيانات الرد الجديدة، مع دعم الردود القديمة التي كانت
+    تحفظ قائمة MessageEntity مباشرة.
+    """
+    if not value:
+        return None, None, None, False
+
+    try:
+        data = (
+            json.loads(value)
+            if isinstance(value, str)
+            else value
+        )
+
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None, None, None, False
+
+    if not isinstance(data, dict):
+        return deserialize_entities(data), None, None, False
+
+    return (
+        deserialize_entities(data.get("entities")),
+        data.get("source_chat_id"),
+        data.get("source_message_id"),
+        bool(data.get("copyable"))
+    )
 
 
 # =========================
@@ -259,7 +316,8 @@ async def add_reply_handler(
             content = update.message.text
             reply_type = "text"
             entities = serialize_entities(
-                update.message.entities
+                update.message.entities,
+                update.message
             )
 
         elif update.message.photo:
@@ -452,7 +510,12 @@ async def check_replies(
         content = reply[1]
         reply_type = reply[2]
         caption = reply[3]
-        entities = deserialize_entities(reply[4])
+        (
+            entities,
+            source_chat_id,
+            source_message_id,
+            copyable
+        ) = deserialize_reply_metadata(reply[4])
 
         if name.lower() in message_text:
 
@@ -545,10 +608,30 @@ async def check_replies(
 
             if reply_type == "text":
 
-                await update.message.reply_text(
-                    content,
-                    entities=entities
-                )
+                if (
+                    copyable
+                    and source_chat_id
+                    and source_message_id
+                ):
+                    try:
+                        await context.bot.copy_message(
+                            chat_id=update.effective_chat.id,
+                            from_chat_id=source_chat_id,
+                            message_id=source_message_id,
+                            reply_parameters=ReplyParameters(
+                                message_id=update.message.message_id
+                            )
+                        )
+                    except Exception:
+                        await update.message.reply_text(
+                            content,
+                            entities=entities
+                        )
+                else:
+                    await update.message.reply_text(
+                        content,
+                        entities=entities
+                    )
 
             elif reply_type == "photo":
 
@@ -612,7 +695,12 @@ async def check_replies(
     content = reply[0]
     reply_type = reply[1]
     caption = reply[2]
-    entities = deserialize_entities(reply[3])
+    (
+        entities,
+        source_chat_id,
+        source_message_id,
+        copyable
+    ) = deserialize_reply_metadata(reply[3])
 
     # =====================
     # بيانات المستخدم
@@ -706,10 +794,30 @@ async def check_replies(
 
     if reply_type == "text":
 
-        await update.message.reply_text(
-            content,
-            entities=entities
-        )
+        if (
+            copyable
+            and source_chat_id
+            and source_message_id
+        ):
+            try:
+                await context.bot.copy_message(
+                    chat_id=update.effective_chat.id,
+                    from_chat_id=source_chat_id,
+                    message_id=source_message_id,
+                    reply_parameters=ReplyParameters(
+                        message_id=update.message.message_id
+                    )
+                )
+            except Exception:
+                await update.message.reply_text(
+                    content,
+                    entities=entities
+                )
+        else:
+            await update.message.reply_text(
+                content,
+                entities=entities
+            )
 
     elif reply_type == "photo":
 
@@ -929,7 +1037,8 @@ async def add_special_reply_handler(
             content = update.message.text
             reply_type = "text"
             entities = serialize_entities(
-                update.message.entities
+                update.message.entities,
+                update.message
             )
 
         elif update.message.photo:
@@ -1229,7 +1338,8 @@ async def edit_special_reply_handler(
             content = update.message.text
             reply_type = "text"
             entities = serialize_entities(
-                update.message.entities
+                update.message.entities,
+                update.message
             )
 
         elif update.message.photo:
@@ -1413,7 +1523,8 @@ async def edit_reply_handler(
             content = update.message.text
             reply_type = "text"
             entities = serialize_entities(
-                update.message.entities
+                update.message.entities,
+                update.message
             )
 
         elif update.message.photo:
