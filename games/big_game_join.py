@@ -13,6 +13,11 @@ from games.hide_and_seek import (
     join_hide_game
 )
 
+from games.liars_table import (
+    active_liars_tables,
+    join_liars_table
+)
+
 
 async def join_big_game_router(update, context):
 
@@ -22,6 +27,19 @@ async def join_big_game_router(update, context):
         return
 
     chat_id = chat.id
+
+    # ==================================================
+    # طاولة الكذب 🍻
+    # ==================================================
+
+    if chat_id in active_liars_tables:
+
+        await join_liars_table(
+            update,
+            context
+        )
+
+        return
 
     # ==================================================
     # الكذاب

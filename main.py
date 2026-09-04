@@ -44,6 +44,15 @@ from handlers.delete_messages import delete_messages
 from games.big_game_join import join_big_game_router
 
 
+from games.liars_table import (
+    start_liars_table,
+    join_liars_table,
+    leave_liars_table,
+    begin_liars_table,
+    liars_table_callback,
+    liars_table_private_start,
+)
+
 from games.liar import (
     start_liar_game_lobby,
     join_liar_game,
@@ -1264,6 +1273,60 @@ def main():
         group=50
     )
 
+
+
+
+    # ==================================================
+    # 🍻 طاولة الكذب
+    # ==================================================
+
+    # بدء طاولة الكذب
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(r"^طاولة الكذب$"),
+            start_liars_table
+        ),
+        group=-4
+    )
+
+    # خروج من التسجيل
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(r"^\.خروج$"),
+            leave_liars_table
+        ),
+        group=-4
+    )
+
+    # بدء اللعبة - للأدمن
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(r"^\.ابدا$"),
+            begin_liars_table
+        ),
+        group=-4
+    )
+
+    # أزرار اللعبة
+    app.add_handler(
+        CallbackQueryHandler(
+            liars_table_callback,
+            pattern=r"^lt:"
+        ),
+        group=-4
+    )
+
+    # /start الخاص بفتح لعبة طاولة الكذب
+    app.add_handler(
+        CommandHandler(
+            "start",
+            liars_table_private_start
+        ),
+        group=-4
+    )
 
    
     # --------------------------------------------------
