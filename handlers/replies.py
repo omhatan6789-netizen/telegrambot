@@ -1,4 +1,4 @@
-from telegram import Update
+from telegram import Update, MessageEntity
 from telegram.ext import ContextTypes
 import json
 from permissions import is_admin
@@ -48,7 +48,6 @@ def load_replies_cache():
             """
         )
         special_rows = cur.fetchall()
-        # تحويل entities من JSON string إلى python object في القائمة إذا لزم
         special_replies_cache = [
             (row[0], row[1], row[2], row[3], json.loads(row[4]) if row[4] else None)
             for row in special_rows
@@ -56,12 +55,14 @@ def load_replies_cache():
         cur.close()
     finally:
         conn.close()
+
 def invalidate_replies_cache():
     """
     تحديث كاش الردود مباشرة بعد الإضافة
     أو التعديل أو الحذف.
     """
     load_replies_cache()
+
 def get_replies_cache():
     global replies_cache
     global special_replies_cache
@@ -264,6 +265,20 @@ async def add_reply_handler(
         return
 
 # =====================
+# دالة مساعدة لتجهيز الكيان وإرساله بصيغة UTF-16
+# =====================
+def prepare_entities(text, entities_data):
+    if not entities_data or not text:
+        return None
+    try:
+        # تحويل القاموس إلى كائنات MessageEntity
+        entities_list = [MessageEntity.de_json(e, None) for e in entities_data]
+        # ضبط الحسابات ل تتوافق مع نظام UTF-16 الخاص بتيليجرام
+        return MessageEntity.adjust_message_entities_to_utf_16(text, entities_list)
+    except Exception:
+        return None
+
+# =====================
 # تشغيل الردود
 # =====================
 
@@ -374,30 +389,34 @@ async def check_replies(
             caption = replace_data(caption, messages, rank, points)
 
             if reply_type == "text":
+                formatted_entities = prepare_entities(content, entities)
                 await update.message.reply_text(
                     content,
-                    entities=entities
+                    entities=formatted_entities
                 )
 
             elif reply_type == "photo":
+                formatted_entities = prepare_entities(caption, entities)
                 await update.message.reply_photo(
                     photo=content,
                     caption=caption,
-                    caption_entities=entities
+                    caption_entities=formatted_entities
                 )
 
             elif reply_type == "video":
+                formatted_entities = prepare_entities(caption, entities)
                 await update.message.reply_video(
                     video=content,
                     caption=caption,
-                    caption_entities=entities
+                    caption_entities=formatted_entities
                 )
 
             elif reply_type == "animation":
+                formatted_entities = prepare_entities(caption, entities)
                 await update.message.reply_animation(
                     animation=content,
                     caption=caption,
-                    caption_entities=entities
+                    caption_entities=formatted_entities
                 )
 
             elif reply_type == "sticker":
@@ -411,17 +430,19 @@ async def check_replies(
                 )
 
             elif reply_type == "audio":
+                formatted_entities = prepare_entities(caption, entities)
                 await update.message.reply_audio(
                     audio=content,
                     caption=caption,
-                    caption_entities=entities
+                    caption_entities=formatted_entities
                 )
 
             elif reply_type == "document":
+                formatted_entities = prepare_entities(caption, entities)
                 await update.message.reply_document(
                     document=content,
                     caption=caption,
-                    caption_entities=entities
+                    caption_entities=formatted_entities
                 )
 
             return
@@ -491,30 +512,34 @@ async def check_replies(
     caption = replace_data(caption, messages, rank, points)
 
     if reply_type == "text":
+        formatted_entities = prepare_entities(content, entities)
         await update.message.reply_text(
             content,
-            entities=entities
+            entities=formatted_entities
         )
 
     elif reply_type == "photo":
+        formatted_entities = prepare_entities(caption, entities)
         await update.message.reply_photo(
             photo=content,
             caption=caption,
-            caption_entities=entities
+            caption_entities=formatted_entities
         )
 
     elif reply_type == "video":
+        formatted_entities = prepare_entities(caption, entities)
         await update.message.reply_video(
             video=content,
             caption=caption,
-            caption_entities=entities
+            caption_entities=formatted_entities
         )
 
     elif reply_type == "animation":
+        formatted_entities = prepare_entities(caption, entities)
         await update.message.reply_animation(
             animation=content,
             caption=caption,
-            caption_entities=entities
+            caption_entities=formatted_entities
         )
 
     elif reply_type == "sticker":
@@ -528,17 +553,19 @@ async def check_replies(
         )
 
     elif reply_type == "audio":
+        formatted_entities = prepare_entities(caption, entities)
         await update.message.reply_audio(
             audio=content,
             caption=caption,
-            caption_entities=entities
+            caption_entities=formatted_entities
         )
 
     elif reply_type == "document":
+        formatted_entities = prepare_entities(caption, entities)
         await update.message.reply_document(
             document=content,
             caption=caption,
-            caption_entities=entities
+            caption_entities=formatted_entities
         )
 
 # =====================
