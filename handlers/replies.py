@@ -271,12 +271,25 @@ def prepare_entities(text, entities_data):
     if not entities_data or not text:
         return None
     try:
-        # تحويل القاموس إلى كائنات MessageEntity
-        entities_list = [MessageEntity.de_json(e, None) for e in entities_data]
-        # ضبط الحسابات ل تتوافق مع نظام UTF-16 الخاص بتيليجرام
-        return MessageEntity.adjust_message_entities_to_utf_16(text, entities_list)
-    except Exception:
+        print("1. Entities Data قادمة من القاعدة:", entities_data)
+        
+        entities_list = []
+        for e in entities_data:
+            # التأكد من تمرير البيانات بالشكل الصحيح
+            if isinstance(e, dict):
+                entities_list.append(MessageEntity.de_json(e, None))
+            else:
+                # لو كانت مخزنة بطريقة أخرى
+                pass
+                
+        print("2. Entities بعد التحويل:", entities_list)
+        final_entities = MessageEntity.adjust_message_entities_to_utf_16(text, entities_list)
+        print("3. Entities النهائية بعد التعديل:", final_entities)
+        return final_entities
+    except Exception as err:
+        print("⚠️ خطأ حدث في prepare_entities:", err)
         return None
+
 
 # =====================
 # تشغيل الردود
