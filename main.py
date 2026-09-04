@@ -39,6 +39,7 @@ from games.penalties import (
     end_penalty_game,
 )
 
+from handlers.delete_messages import delete_messages
 
 from games.big_game_join import join_big_game_router
 
@@ -1590,6 +1591,13 @@ def main():
         group=0
     )
 
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^مسح(?:\s*\d+)?$"),
+            delete_messages
+        ),
+        group=-3
+    )
 
     # ==================================================
     # إيقاف المعالجات بعد الفوز في الألعاب

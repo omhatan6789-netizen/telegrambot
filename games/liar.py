@@ -1390,9 +1390,8 @@ async def end_liar_game(
 
     await update.message.reply_text(
         "🛑 تم إنهاء لعبة الكذاب.\n\n"
-        "✅ تم إلغاء اللعبة الحالية.\n"
-        "🎮 يمكن الآن بدء لعبة كبيرة أخرى."
     )
+    
 
 
 
