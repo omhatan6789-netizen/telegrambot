@@ -217,7 +217,8 @@ def create_tables():
             name TEXT PRIMARY KEY,
             text TEXT,
             type TEXT,
-            caption TEXT
+            caption TEXT,
+            entities TEXT
         )
         """)
 
@@ -231,9 +232,11 @@ def create_tables():
             name TEXT PRIMARY KEY,
             text TEXT,
             type TEXT,
-            caption TEXT
+            caption TEXT,
+            entities TEXT
         )
         """)
+
 
         # =====================
         # النقاط
