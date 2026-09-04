@@ -39,7 +39,10 @@ from games.penalties import (
     end_penalty_game,
 )
 
-from handlers.delete_messages import delete_messages
+from handlers.delete_messages import (
+    delete_messages,
+    track_messages
+)
 
 from games.big_game_join import join_big_game_router
 
@@ -1597,6 +1600,15 @@ def main():
             delete_messages
         ),
         group=-3
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.ALL,
+            track_messages
+        ),
+        group=50
     )
 
     # ==================================================
