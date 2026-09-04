@@ -1,6 +1,5 @@
-from telegram import Update, MessageEntity
+from telegram import Update
 from telegram.ext import ContextTypes
-import json
 from permissions import is_admin
 from database import connect
 
@@ -26,7 +25,7 @@ def load_replies_cache():
         # الردود العادية
         cur.execute(
             """
-            SELECT name, text, type, caption, entities
+            SELECT name, text, type, caption
             FROM replies
             """
         )
@@ -35,34 +34,30 @@ def load_replies_cache():
             row[0]: (
                 row[1],
                 row[2],
-                row[3],
-                json.loads(row[4]) if row[4] else None
+                row[3]
             )
             for row in rows
         }
         # الردود المميزة
         cur.execute(
             """
-            SELECT name, text, type, caption, entities
+            SELECT name, text, type, caption
             FROM special_replies
             """
         )
         special_rows = cur.fetchall()
-        special_replies_cache = [
-            (row[0], row[1], row[2], row[3], json.loads(row[4]) if row[4] else None)
-            for row in special_rows
-        ]
+        special_replies_cache = special_rows
         cur.close()
     finally:
         conn.close()
-
 def invalidate_replies_cache():
     """
     تحديث كاش الردود مباشرة بعد الإضافة
     أو التعديل أو الحذف.
     """
+    # نعيد تحميل الكاش فورًا
+    # حتى الرد الجديد يشتغل بدون إعادة تشغيل البوت
     load_replies_cache()
-
 def get_replies_cache():
     global replies_cache
     global special_replies_cache
@@ -90,7 +85,12 @@ async def add_reply_start(
         )
         return
 
+    # =====================
+    # إلغاء جلسات الألعاب
+    # =====================
+
     try:
+
         from games.games_manager import (
             add_game_sessions,
             add_question_sessions
@@ -98,13 +98,24 @@ async def add_reply_start(
 
         add_game_sessions.pop(user_id, None)
         add_question_sessions.pop(user_id, None)
+
     except:
         pass
 
+    # =====================
+    # إلغاء أي جلسة رد قديمة
+    # =====================
+
     add_reply_sessions.pop(user_id, None)
 
+    # =====================
+    # بدء جلسة جديدة
+    # =====================
+
     add_reply_sessions[user_id] = {
+
         "step": "name"
+
     }
 
     await update.message.reply_text(
@@ -130,18 +141,26 @@ async def add_reply_handler(
 
     session = add_reply_sessions[user_id]
 
+    # منع تكرار أمر الإضافة
     if update.message.text == "اضف رد":
         return
+
+    # =====================
+    # اسم الرد
+    # =====================
 
     if session["step"] == "name":
 
         if not update.message.text:
+
             await update.message.reply_text(
                 "❌ أرسل الاسم كنص"
             )
+
             return
 
         session["name"] = update.message.text.strip()
+
         session["step"] = "content"
 
         await update.message.reply_text(
@@ -157,7 +176,12 @@ async def add_reply_handler(
             "▹ #التعديل - عدد تعديلات .\n"
             "▹ #النقاط - نقاط المستخدم ."
         )
+
         return
+
+    # =====================
+    # محتوى الرد
+    # =====================
 
     if session["step"] == "content":
 
@@ -166,61 +190,56 @@ async def add_reply_handler(
         content = None
         reply_type = None
         caption = None
-        entities_json = None
 
         if update.message.text:
+
             content = update.message.text
             reply_type = "text"
-            if update.message.entities:
-                entities_json = json.dumps([e.to_dict() for e in update.message.entities])
 
         elif update.message.photo:
+
             content = update.message.photo[-1].file_id
             reply_type = "photo"
             caption = update.message.caption
-            if update.message.caption_entities:
-                entities_json = json.dumps([e.to_dict() for e in update.message.caption_entities])
 
         elif update.message.video:
+
             content = update.message.video.file_id
             reply_type = "video"
             caption = update.message.caption
-            if update.message.caption_entities:
-                entities_json = json.dumps([e.to_dict() for e in update.message.caption_entities])
 
         elif update.message.animation:
+
             content = update.message.animation.file_id
             reply_type = "animation"
             caption = update.message.caption
-            if update.message.caption_entities:
-                entities_json = json.dumps([e.to_dict() for e in update.message.caption_entities])
 
         elif update.message.sticker:
+
             content = update.message.sticker.file_id
             reply_type = "sticker"
 
         elif update.message.voice:
+
             content = update.message.voice.file_id
             reply_type = "voice"
 
         elif update.message.audio:
+
             content = update.message.audio.file_id
             reply_type = "audio"
-            caption = update.message.caption
-            if update.message.caption_entities:
-                entities_json = json.dumps([e.to_dict() for e in update.message.caption_entities])
 
         elif update.message.document:
+
             content = update.message.document.file_id
             reply_type = "document"
-            caption = update.message.caption
-            if update.message.caption_entities:
-                entities_json = json.dumps([e.to_dict() for e in update.message.caption_entities])
 
         else:
+
             await update.message.reply_text(
                 "❌ هذا النوع غير مدعوم"
             )
+
             return
 
         conn = connect()
@@ -233,23 +252,20 @@ async def add_reply_handler(
                 name,
                 text,
                 type,
-                caption,
-                entities
+                caption
             )
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?)
             ON CONFLICT (name)
             DO UPDATE SET
                 text = EXCLUDED.text,
                 type = EXCLUDED.type,
-                caption = EXCLUDED.caption,
-                entities = EXCLUDED.entities
+                caption = EXCLUDED.caption
             """,
             (
                 name,
                 content,
                 reply_type,
-                caption,
-                entities_json
+                caption
             )
         )
 
@@ -257,36 +273,14 @@ async def add_reply_handler(
         conn.close()
 
         invalidate_replies_cache()
+
         del add_reply_sessions[user_id]
 
         await update.message.reply_text(
             f"✅ تم إضافة الرد: {name}"
         )
+
         return
-
-
-
-# =====================
-# دالة مساعدة لتجهيز الكيان وإرساله بصيغة UTF-16
-# =====================
-def prepare_entities(text, entities_data):
-    if not entities_data or not text:
-        return None
-    try:
-        entities_list = []
-        for e in entities_data:
-            if isinstance(e, dict):
-                entities_list.append(MessageEntity.de_json(e, None))
-            elif isinstance(e, MessageEntity):
-                entities_list.append(e)
-                
-        # ضبط المسافات ونظام الـ UTF-16 لتوافق تام مع تيليجرام والإيموجي المميز
-        final_entities = MessageEntity.adjust_message_entities_to_utf_16(text, entities_list)
-        return final_entities
-    except Exception as err:
-        print(f"⚠️ خطأ حدث في prepare_entities: {err}")
-        return None
-
 
 # =====================
 # تشغيل الردود
@@ -304,16 +298,26 @@ async def check_replies(
         return
 
     message_text = update.message.text.lower()
+
     user = update.effective_user
 
     user_name = user.first_name or "مستخدم"
+
     user_username = (
         f"@{user.username}"
         if user.username
         else "لا يوجد"
     )
 
+    # =====================
+    # Cache الردود
+    # =====================
+
     replies_cache, special_replies = get_replies_cache()
+
+    # =====================
+    # استبدال البيانات
+    # =====================
 
     def replace_data(
         text,
@@ -325,14 +329,45 @@ async def check_replies(
         if not text:
             return text
 
-        text = text.replace("#الاسم", user_name)
-        text = text.replace("#يوزره", user_username)
-        text = text.replace("#اليوزر", user_username)
-        text = text.replace("#الرسائل", str(messages))
-        text = text.replace("#الايدي", str(user.id))
-        text = text.replace("#الرتبه", rank)
-        text = text.replace("#التعديل", "0")
-        text = text.replace("#النقاط", str(points))
+        text = text.replace(
+            "#الاسم",
+            user_name
+        )
+
+        text = text.replace(
+            "#يوزره",
+            user_username
+        )
+
+        text = text.replace(
+            "#اليوزر",
+            user_username
+        )
+
+        text = text.replace(
+            "#الرسائل",
+            str(messages)
+        )
+
+        text = text.replace(
+            "#الايدي",
+            str(user.id)
+        )
+
+        text = text.replace(
+            "#الرتبه",
+            rank
+        )
+
+        text = text.replace(
+            "#التعديل",
+            "0"
+        )
+
+        text = text.replace(
+            "#النقاط",
+            str(points)
+        )
 
         return text
 
@@ -346,9 +381,13 @@ async def check_replies(
         content = reply[1]
         reply_type = reply[2]
         caption = reply[3]
-        entities = reply[4]
 
         if name.lower() in message_text:
+
+            # =====================
+            # بيانات المستخدم
+            # يتم جلبها فقط عند الحاجة
+            # =====================
 
             messages = 0
             rank = "عضو"
@@ -365,9 +404,13 @@ async def check_replies(
             )
 
             if needs_user_data:
+
                 conn = connect()
+
                 try:
+
                     cur = conn.cursor()
+
                     cur.execute(
                         """
                         SELECT messages, rank
@@ -376,10 +419,17 @@ async def check_replies(
                         """,
                         (user.id,)
                     )
+
                     user_data = cur.fetchone()
+
                     if user_data:
+
                         messages = user_data[0] or 0
-                        rank = user_data[1] or "عضو"
+
+                        rank = (
+                            user_data[1]
+                            or "عضو"
+                        )
 
                     cur.execute(
                         """
@@ -389,71 +439,87 @@ async def check_replies(
                         """,
                         (user.id,)
                     )
+
                     points_data = cur.fetchone()
+
                     if points_data:
-                        points = points_data[0] or 0
+
+                        points = (
+                            points_data[0]
+                            or 0
+                        )
+
                 finally:
+
                     conn.close()
 
-            # 1. استبدال النصوص أولاً قبل تجهيز الـ entities
-            content = replace_data(content, messages, rank, points)
-            caption = replace_data(caption, messages, rank, points)
+            content = replace_data(
+                content,
+                messages,
+                rank,
+                points
+            )
+
+            caption = replace_data(
+                caption,
+                messages,
+                rank,
+                points
+            )
+
+            # =====================
+            # إرسال الرد
+            # =====================
 
             if reply_type == "text":
-                formatted_entities = prepare_entities(content, entities)
+
                 await update.message.reply_text(
-                    text=content,
-                    entities=formatted_entities
+                    content
                 )
 
             elif reply_type == "photo":
-                formatted_entities = prepare_entities(caption, entities)
+
                 await update.message.reply_photo(
                     photo=content,
-                    caption=caption,
-                    caption_entities=formatted_entities
+                    caption=caption
                 )
 
             elif reply_type == "video":
-                formatted_entities = prepare_entities(caption, entities)
+
                 await update.message.reply_video(
                     video=content,
-                    caption=caption,
-                    caption_entities=formatted_entities
+                    caption=caption
                 )
 
             elif reply_type == "animation":
-                formatted_entities = prepare_entities(caption, entities)
+
                 await update.message.reply_animation(
                     animation=content,
-                    caption=caption,
-                    caption_entities=formatted_entities
+                    caption=caption
                 )
 
             elif reply_type == "sticker":
+
                 await update.message.reply_sticker(
                     sticker=content
                 )
 
             elif reply_type == "voice":
+
                 await update.message.reply_voice(
                     voice=content
                 )
 
             elif reply_type == "audio":
-                formatted_entities = prepare_entities(caption, entities)
+
                 await update.message.reply_audio(
-                    audio=content,
-                    caption=caption,
-                    caption_entities=formatted_entities
+                    audio=content
                 )
 
             elif reply_type == "document":
-                formatted_entities = prepare_entities(caption, entities)
+
                 await update.message.reply_document(
-                    document=content,
-                    caption=caption,
-                    caption_entities=formatted_entities
+                    document=content
                 )
 
             return
@@ -467,12 +533,17 @@ async def check_replies(
     )
 
     if not reply:
+
         return
 
     content = reply[0]
     reply_type = reply[1]
     caption = reply[2]
-    entities = reply[3]
+
+    # =====================
+    # بيانات المستخدم
+    # يتم جلبها فقط عند الحاجة
+    # =====================
 
     messages = 0
     rank = "عضو"
@@ -489,9 +560,13 @@ async def check_replies(
     )
 
     if needs_user_data:
+
         conn = connect()
+
         try:
+
             cur = conn.cursor()
+
             cur.execute(
                 """
                 SELECT messages, rank
@@ -500,10 +575,20 @@ async def check_replies(
                 """,
                 (user.id,)
             )
+
             user_data = cur.fetchone()
+
             if user_data:
-                messages = user_data[0] or 0
-                rank = user_data[1] or "عضو"
+
+                messages = (
+                    user_data[0]
+                    or 0
+                )
+
+                rank = (
+                    user_data[1]
+                    or "عضو"
+                )
 
             cur.execute(
                 """
@@ -513,71 +598,89 @@ async def check_replies(
                 """,
                 (user.id,)
             )
+
             points_data = cur.fetchone()
+
             if points_data:
-                points = points_data[0] or 0
+
+                points = (
+                    points_data[0]
+                    or 0
+                )
+
         finally:
+
             conn.close()
 
-    # 1. استبدال النصوص أولاً قبل تجهيز الـ entities للرد العادي أيضاً
-    content = replace_data(content, messages, rank, points)
-    caption = replace_data(caption, messages, rank, points)
+    content = replace_data(
+        content,
+        messages,
+        rank,
+        points
+    )
+
+    caption = replace_data(
+        caption,
+        messages,
+        rank,
+        points
+    )
+
+    # =====================
+    # إرسال الرد
+    # =====================
 
     if reply_type == "text":
-        formatted_entities = prepare_entities(content, entities)
+
         await update.message.reply_text(
-            text=content,
-            entities=formatted_entities
+            content
         )
 
     elif reply_type == "photo":
-        formatted_entities = prepare_entities(caption, entities)
+
         await update.message.reply_photo(
             photo=content,
-            caption=caption,
-            caption_entities=formatted_entities
+            caption=caption
         )
 
     elif reply_type == "video":
-        formatted_entities = prepare_entities(caption, entities)
+
         await update.message.reply_video(
             video=content,
-            caption=caption,
-            caption_entities=formatted_entities
+            caption=caption
         )
 
     elif reply_type == "animation":
-        formatted_entities = prepare_entities(caption, entities)
+
         await update.message.reply_animation(
             animation=content,
-            caption=caption,
-            caption_entities=formatted_entities
+            caption=caption
         )
 
     elif reply_type == "sticker":
+
         await update.message.reply_sticker(
             sticker=content
         )
 
     elif reply_type == "voice":
+
         await update.message.reply_voice(
             voice=content
         )
 
     elif reply_type == "audio":
-        formatted_entities = prepare_entities(caption, entities)
+
         await update.message.reply_audio(
             audio=content,
-            caption=caption,
-            caption_entities=formatted_entities
+            caption=caption
         )
 
     elif reply_type == "document":
-        formatted_entities = prepare_entities(caption, entities)
+
         await update.message.reply_document(
             document=content,
-            caption=caption,
-            caption_entities=formatted_entities
+            caption=caption
         )
 
 # =====================
@@ -597,23 +700,30 @@ async def replies_list(
 
     conn = connect()
     cur = conn.cursor()
+
     cur.execute(
         """
         SELECT name
         FROM replies
         """
     )
+
     data = cur.fetchall()
+
     conn.close()
 
     if not data:
+
         await update.message.reply_text(
             "📭 لا يوجد ردود"
         )
+
         return
 
     msg = "📋 الردود:\n\n"
+
     for item in data:
+
         msg += f"• {item[0]}\n"
 
     await update.message.reply_text(msg)
@@ -627,6 +737,7 @@ async def add_special_reply_start(
         return
 
     if not is_admin(update.effective_user.id):
+
         await update.message.reply_text(
             "❌ هذا الأمر للإدارة فقط"
         )
@@ -634,7 +745,12 @@ async def add_special_reply_start(
 
     user_id = update.effective_user.id
 
+    # =====================
+    # إلغاء جلسات الألعاب
+    # =====================
+
     try:
+
         from games.games_manager import (
             add_game_sessions,
             add_question_sessions
@@ -642,10 +758,22 @@ async def add_special_reply_start(
 
         add_game_sessions.pop(user_id, None)
         add_question_sessions.pop(user_id, None)
+
     except:
         pass
 
-    add_special_reply_sessions.pop(user_id, None)
+    # =====================
+    # إلغاء أي جلسة قديمة
+    # =====================
+
+    add_special_reply_sessions.pop(
+        user_id,
+        None
+    )
+
+    # =====================
+    # بدء جلسة جديدة
+    # =====================
 
     add_special_reply_sessions[user_id] = {
         "step": "name"
@@ -663,6 +791,7 @@ async def add_special_reply_handler(
     if not update.message:
         return
 
+    # تجاهل أمر البداية
     if update.message.text == "اضف رد مميز":
         return
 
@@ -673,15 +802,22 @@ async def add_special_reply_handler(
 
     session = add_special_reply_sessions[user_id]
 
+    # =====================
+    # اسم الرد
+    # =====================
+
     if session.get("step") == "name":
 
         if not update.message.text:
+
             await update.message.reply_text(
                 "❌ أرسل اسم الرد كنص"
             )
+
             return
 
         session["name"] = update.message.text.strip()
+
         session["step"] = "content"
 
         await update.message.reply_text(
@@ -697,7 +833,12 @@ async def add_special_reply_handler(
             "▹ #التعديل - عدد تعديلات .\n"
             "▹ #النقاط - نقاط المستخدم ."
         )
+
         return
+
+    # =====================
+    # محتوى الرد
+    # =====================
 
     if session.get("step") == "content":
 
@@ -706,61 +847,56 @@ async def add_special_reply_handler(
         content = None
         reply_type = None
         caption = None
-        entities_json = None
 
         if update.message.text:
+
             content = update.message.text
             reply_type = "text"
-            if update.message.entities:
-                entities_json = json.dumps([e.to_dict() for e in update.message.entities])
 
         elif update.message.photo:
+
             content = update.message.photo[-1].file_id
             reply_type = "photo"
             caption = update.message.caption
-            if update.message.caption_entities:
-                entities_json = json.dumps([e.to_dict() for e in update.message.caption_entities])
 
         elif update.message.video:
+
             content = update.message.video.file_id
             reply_type = "video"
             caption = update.message.caption
-            if update.message.caption_entities:
-                entities_json = json.dumps([e.to_dict() for e in update.message.caption_entities])
 
         elif update.message.animation:
+
             content = update.message.animation.file_id
             reply_type = "animation"
             caption = update.message.caption
-            if update.message.caption_entities:
-                entities_json = json.dumps([e.to_dict() for e in update.message.caption_entities])
 
         elif update.message.sticker:
+
             content = update.message.sticker.file_id
             reply_type = "sticker"
 
         elif update.message.voice:
+
             content = update.message.voice.file_id
             reply_type = "voice"
 
         elif update.message.audio:
+
             content = update.message.audio.file_id
             reply_type = "audio"
-            caption = update.message.caption
-            if update.message.caption_entities:
-                entities_json = json.dumps([e.to_dict() for e in update.message.caption_entities])
 
         elif update.message.document:
+
             content = update.message.document.file_id
             reply_type = "document"
-            caption = update.message.caption
-            if update.message.caption_entities:
-                entities_json = json.dumps([e.to_dict() for e in update.message.caption_entities])
 
         else:
+
             await update.message.reply_text(
                 "❌ هذا النوع غير مدعوم"
             )
+
             return
 
         conn = connect()
@@ -773,23 +909,20 @@ async def add_special_reply_handler(
                 name,
                 text,
                 type,
-                caption,
-                entities
+                caption
             )
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?)
             ON CONFLICT (name)
             DO UPDATE SET
                 text = EXCLUDED.text,
                 type = EXCLUDED.type,
-                caption = EXCLUDED.caption,
-                entities = EXCLUDED.entities
+                caption = EXCLUDED.caption
             """,
             (
                 name,
                 content,
                 reply_type,
-                caption,
-                entities_json
+                caption
             )
         )
 
@@ -797,11 +930,13 @@ async def add_special_reply_handler(
         conn.close()
 
         invalidate_replies_cache()
+
         del add_special_reply_sessions[user_id]
 
         await update.message.reply_text(
             f"⭐ تم حفظ الرد المميز: {name}"
         )
+
         return
 
 async def special_replies_list(
@@ -817,18 +952,27 @@ async def special_replies_list(
 
     conn = connect()
     cur = conn.cursor()
-    cur.execute("SELECT name FROM special_replies")
+
+    cur.execute(
+        "SELECT name FROM special_replies"
+    )
+
     replies = cur.fetchall()
+
     conn.close()
 
     if not replies:
+
         await update.message.reply_text(
             "📭 لا توجد ردود مميزة"
         )
+
         return
 
     text = "⭐ قائمة الردود المميزة:\n\n"
+
     for reply in replies:
+
         text += f"• {reply[0]}\n"
 
     await update.message.reply_text(text)
@@ -845,6 +989,7 @@ async def delete_special_reply_start(
         return
 
     user_id = update.effective_user.id
+
     delete_special_reply_sessions[user_id] = True
 
     await update.message.reply_text(
@@ -855,6 +1000,8 @@ async def delete_special_reply_handler(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
+ 
+               
     if not update.message:
         return
 
@@ -862,10 +1009,12 @@ async def delete_special_reply_handler(
         return
 
     user_id = update.effective_user.id
+
     if user_id not in delete_special_reply_sessions:
         return
 
     name = update.message.text.strip()
+
     conn = connect()
     cur = conn.cursor()
 
@@ -878,17 +1027,22 @@ async def delete_special_reply_handler(
     )
 
     deleted = cur.rowcount
+
     conn.commit()
     conn.close()
 
     invalidate_replies_cache()
+
     del delete_special_reply_sessions[user_id]
 
     if deleted:
+
         await update.message.reply_text(
             f"✅ تم حذف الرد المميز: {name}"
         )
+
     else:
+
         await update.message.reply_text(
             "❌ لم أجد رد مميز بهذا الاسم"
         )
@@ -905,6 +1059,7 @@ async def edit_special_reply_start(
         return
 
     user_id = update.effective_user.id
+
     edit_special_reply_sessions[user_id] = {
         "step": "name"
     }
@@ -917,22 +1072,34 @@ async def edit_special_reply_handler(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
+    
+     
+
     if not update.message:
         return
 
+    # تجاهل رسالة بدء الأمر
     if update.message.text == "تعديل رد مميز":
         return
 
     user_id = update.effective_user.id
+
     if user_id not in edit_special_reply_sessions:
         return
 
     session = edit_special_reply_sessions[user_id]
 
+    # =====================
+    # اسم الرد القديم
+    # =====================
+
     if session["step"] == "name":
+
         name = update.message.text.strip()
+
         conn = connect()
         cur = conn.cursor()
+
         cur.execute(
             """
             SELECT name
@@ -941,14 +1108,19 @@ async def edit_special_reply_handler(
             """,
             (name,)
         )
+
         reply = cur.fetchone()
+
         conn.close()
 
         if not reply:
+
             await update.message.reply_text(
                 "❌ لا يوجد رد مميز بهذا الاسم"
             )
+
             del edit_special_reply_sessions[user_id]
+
             return
 
         session["name"] = name
@@ -958,69 +1130,68 @@ async def edit_special_reply_handler(
             "✅ تم العثور على الرد\n\n"
             "أرسل المحتوى الجديد للرد المميز"
         )
+
         return
 
     if session["step"] == "content":
+
         name = session["name"]
 
         content = None
         reply_type = None
         caption = None
-        entities_json = None
 
         if update.message.text:
+
             content = update.message.text
             reply_type = "text"
-            if update.message.entities:
-                entities_json = json.dumps([e.to_dict() for e in update.message.entities])
 
         elif update.message.photo:
+
             content = update.message.photo[-1].file_id
             reply_type = "photo"
             caption = update.message.caption
-            if update.message.caption_entities:
-                entities_json = json.dumps([e.to_dict() for e in update.message.caption_entities])
 
         elif update.message.video:
+
             content = update.message.video.file_id
             reply_type = "video"
             caption = update.message.caption
-            if update.message.caption_entities:
-                entities_json = json.dumps([e.to_dict() for e in update.message.caption_entities])
 
         elif update.message.animation:
+
             content = update.message.animation.file_id
             reply_type = "animation"
             caption = update.message.caption
-            if update.message.caption_entities:
-                entities_json = json.dumps([e.to_dict() for e in update.message.caption_entities])
 
         elif update.message.sticker:
+
             content = update.message.sticker.file_id
             reply_type = "sticker"
 
         elif update.message.voice:
+
             content = update.message.voice.file_id
             reply_type = "voice"
 
         elif update.message.audio:
+
             content = update.message.audio.file_id
             reply_type = "audio"
             caption = update.message.caption
-            if update.message.caption_entities:
-                entities_json = json.dumps([e.to_dict() for e in update.message.caption_entities])
 
         elif update.message.document:
+
             content = update.message.document.file_id
             reply_type = "document"
             caption = update.message.caption
-            if update.message.caption_entities:
-                entities_json = json.dumps([e.to_dict() for e in update.message.caption_entities])
 
         else:
+
             await update.message.reply_text(
                 "❌ هذا النوع غير مدعوم"
             )
+
             return
 
         conn = connect()
@@ -1029,14 +1200,13 @@ async def edit_special_reply_handler(
         cur.execute(
             """
             UPDATE special_replies
-            SET text = ?, type = ?, caption = ?, entities = ?
+            SET text = ?, type = ?, caption = ?
             WHERE name = ?
             """,
             (
                 content,
                 reply_type,
                 caption,
-                entities_json,
                 name
             )
         )
@@ -1045,11 +1215,13 @@ async def edit_special_reply_handler(
         conn.close()
 
         invalidate_replies_cache()
+
         del edit_special_reply_sessions[user_id]
 
         await update.message.reply_text(
             f"⭐ تم تعديل الرد المميز: {name}"
         )
+
         return
 
 async def edit_reply_start(
@@ -1064,6 +1236,7 @@ async def edit_reply_start(
         return
 
     user_id = update.effective_user.id
+
     edit_reply_sessions[user_id] = {
         "step": "name"
     }
@@ -1076,22 +1249,32 @@ async def edit_reply_handler(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
+    
     if not update.message:
         return
 
+    # تجاهل أمر البداية
     if update.message.text == "تعديل رد":
         return
 
     user_id = update.effective_user.id
+
     if user_id not in edit_reply_sessions:
         return
 
     session = edit_reply_sessions[user_id]
 
+    # =====================
+    # اسم الرد
+    # =====================
+
     if session["step"] == "name":
+
         name = update.message.text.strip()
+
         conn = connect()
         cur = conn.cursor()
+
         cur.execute(
             """
             SELECT name
@@ -1100,14 +1283,19 @@ async def edit_reply_handler(
             """,
             (name,)
         )
+
         reply = cur.fetchone()
+
         conn.close()
 
         if not reply:
+
             await update.message.reply_text(
                 "❌ لا يوجد رد بهذا الاسم"
             )
+
             del edit_reply_sessions[user_id]
+
             return
 
         session["name"] = name
@@ -1117,69 +1305,72 @@ async def edit_reply_handler(
             "✅ تم العثور على الرد\n\n"
             "أرسل المحتوى الجديد"
         )
+
         return
 
+    # =====================
+    # المحتوى الجديد
+    # =====================
+
     if session["step"] == "content":
+
         name = session["name"]
 
         content = None
         reply_type = None
         caption = None
-        entities_json = None
 
         if update.message.text:
+
             content = update.message.text
             reply_type = "text"
-            if update.message.entities:
-                entities_json = json.dumps([e.to_dict() for e in update.message.entities])
 
         elif update.message.photo:
+
             content = update.message.photo[-1].file_id
             reply_type = "photo"
             caption = update.message.caption
-            if update.message.caption_entities:
-                entities_json = json.dumps([e.to_dict() for e in update.message.caption_entities])
 
         elif update.message.video:
+
             content = update.message.video.file_id
             reply_type = "video"
             caption = update.message.caption
-            if update.message.caption_entities:
-                entities_json = json.dumps([e.to_dict() for e in update.message.caption_entities])
 
         elif update.message.animation:
+
             content = update.message.animation.file_id
             reply_type = "animation"
             caption = update.message.caption
-            if update.message.caption_entities:
-                entities_json = json.dumps([e.to_dict() for e in update.message.caption_entities])
 
         elif update.message.sticker:
+
             content = update.message.sticker.file_id
             reply_type = "sticker"
 
         elif update.message.voice:
+
             content = update.message.voice.file_id
             reply_type = "voice"
 
         elif update.message.audio:
+
             content = update.message.audio.file_id
             reply_type = "audio"
             caption = update.message.caption
-            if update.message.caption_entities:
-                entities_json = json.dumps([e.to_dict() for e in update.message.caption_entities])
 
         elif update.message.document:
+
             content = update.message.document.file_id
             reply_type = "document"
             caption = update.message.caption
-            if update.message.caption_entities:
-                entities_json = json.dumps([e.to_dict() for e in update.message.caption_entities])
 
         else:
+
             await update.message.reply_text(
                 "❌ هذا النوع غير مدعوم"
             )
+
             return
 
         conn = connect()
@@ -1188,14 +1379,13 @@ async def edit_reply_handler(
         cur.execute(
             """
             UPDATE replies
-            SET text = ?, type = ?, caption = ?, entities = ?
+            SET text = ?, type = ?, caption = ?
             WHERE name = ?
             """,
             (
                 content,
                 reply_type,
                 caption,
-                entities_json,
                 name
             )
         )
@@ -1204,11 +1394,13 @@ async def edit_reply_handler(
         conn.close()
 
         invalidate_replies_cache()
+
         del edit_reply_sessions[user_id]
 
         await update.message.reply_text(
             f"✅ تم تعديل الرد: {name}"
         )
+
         return
 
 async def delete_reply_start(
@@ -1223,6 +1415,7 @@ async def delete_reply_start(
         return
 
     user_id = update.effective_user.id
+
     delete_reply_sessions[user_id] = True
 
     await update.message.reply_text(
@@ -1233,17 +1426,21 @@ async def delete_reply_handler(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
+    
     if not update.message:
         return
 
+    # تجاهل أمر البداية
     if update.message.text == "مسح رد":
         return
 
     user_id = update.effective_user.id
+
     if user_id not in delete_reply_sessions:
         return
 
     name = update.message.text.strip()
+
     conn = connect()
     cur = conn.cursor()
 
@@ -1255,14 +1452,19 @@ async def delete_reply_handler(
         """,
         (name,)
     )
+
     reply = cur.fetchone()
 
     if not reply:
+
         conn.close()
+
         await update.message.reply_text(
             "❌ لا يوجد رد بهذا الاسم"
         )
+
         del delete_reply_sessions[user_id]
+
         return
 
     cur.execute(
@@ -1277,6 +1479,7 @@ async def delete_reply_handler(
     conn.close()
 
     invalidate_replies_cache()
+
     del delete_reply_sessions[user_id]
 
     await update.message.reply_text(
@@ -1296,11 +1499,18 @@ async def delete_all_replies(
 
     conn = connect()
     cur = conn.cursor()
-    cur.execute("DELETE FROM replies")
+
+    cur.execute(
+        """
+        DELETE FROM replies
+        """
+    )
+
     conn.commit()
     conn.close()
 
     invalidate_replies_cache()
+
     await update.message.reply_text(
         "✅ تم حذف جميع الردود العادية"
     )
@@ -1318,11 +1528,18 @@ async def delete_all_special_replies(
 
     conn = connect()
     cur = conn.cursor()
-    cur.execute("DELETE FROM special_replies")
+
+    cur.execute(
+        """
+        DELETE FROM special_replies
+        """
+    )
+
     conn.commit()
     conn.close()
 
     invalidate_replies_cache()
+
     await update.message.reply_text(
         "⭐ تم حذف جميع الردود المميزة"
-    )
+    ) 
