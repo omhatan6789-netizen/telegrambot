@@ -1,4 +1,3 @@
-```python
 from telegram import Update
 from telegram.ext import ContextTypes
 from handlers.roles import get_rank_level
