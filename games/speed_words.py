@@ -3,6 +3,7 @@ import random
 from telegram import Update
 from telegram.ext import ContextTypes
 
+
 from handlers.points import add_points
 
 
