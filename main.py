@@ -43,6 +43,20 @@ from handlers.delete_messages import delete_messages
 
 from games.big_game_join import join_big_game_router
 
+from games.word_race import (
+    start_word_race,
+    join_word_race,
+    leave_word_race,
+    word_race_mode,
+    word_race_distribution,
+    word_race_manual_team,
+    begin_word_race,
+    continue_word_race,
+    end_word_race,
+    word_race_callback,
+    check_word_race_message,
+    WordRaceActiveFilter,
+)
 
 from games.liars_table import (
     start_liars_table,
@@ -208,7 +222,7 @@ from handlers.replies import (
     delete_all_special_replies
 )
 
-
+  
 # ==================================================
 # أسرع كلمة
 # ==================================================
@@ -949,6 +963,121 @@ def main():
 
 
     
+    # ==================================================
+    # 🐎 سباق الكلمات
+    # ==================================================
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(r"^سباق الكلمات$"),
+            start_word_race
+        ),
+        group=-3
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & WordRaceActiveFilter([r"^دخول$"]),
+            join_word_race
+        ),
+        group=-2
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & WordRaceActiveFilter([r"^خروج$"]),
+            leave_word_race
+        ),
+        group=-2
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & WordRaceActiveFilter([r"^\.الطور$"]),
+            word_race_mode
+        ),
+        group=-2
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & WordRaceActiveFilter([r"^\.توزيع$"]),
+            word_race_distribution
+        ),
+        group=-2
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & WordRaceActiveFilter(
+                [r"^\.اضافة (احمر|ازرق|اخضر|اصفر)$"]
+            ),
+            word_race_manual_team
+        ),
+        group=-2
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & WordRaceActiveFilter([r"^\.ابدا$"]),
+            begin_word_race
+        ),
+        group=-2
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & WordRaceActiveFilter([r"^\.كمل$"]),
+            continue_word_race
+        ),
+        group=-2
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & WordRaceActiveFilter([r"^انهاء سباق الكلمات$"]),
+            end_word_race
+        ),
+        group=-2
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            word_race_callback,
+            pattern=r"^wr:"
+        ),
+        group=-4
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.TEXT
+            & ~filters.COMMAND,
+            check_word_race_message
+        ),
+        group=9
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.PRIVATE
+            & filters.TEXT
+            & ~filters.COMMAND,
+            check_word_race_message
+        ),
+        group=9
+    )
+
     # ==================================================
     # أسرع كلمة
     # ==================================================
