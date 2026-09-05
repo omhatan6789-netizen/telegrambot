@@ -39,9 +39,9 @@ START_DELAY = 15
 
 TRIGGER_TIME = 30
 
-WIN_POINTS = 60
+WIN_POINTS = 70
 
-# فرص سحب الزناد لكل لاعب
+# محاولات سحب الزناد لكل لاعب
 TRIGGER_ATTEMPTS = 2
 
 
@@ -69,6 +69,7 @@ CARD_NAMES = {
 # ============================================================
 
 def get_player_name(user):
+
     if not user:
         return "لاعب"
 
@@ -81,6 +82,7 @@ def get_player_name(user):
 
 
 def get_account_name(user):
+
     if not user:
         return "لاعب"
 
@@ -106,6 +108,7 @@ async def is_group_admin(update, context):
         return True
 
     try:
+
         member = await context.bot.get_chat_member(
             chat.id,
             user.id
@@ -117,20 +120,16 @@ async def is_group_admin(update, context):
         )
 
     except Exception:
+
         return False
 
 
 # ============================================================
-# إنشاء أوراق
+# إنشاء الأوراق
 # ============================================================
 
 def create_deck(player_count):
 
-    # الأساس:
-    # 6 ملك
-    # 6 ملكة
-    # 6 آس
-    # 2 جوكر
     base_deck = (
         ["K"] * 6
         + ["Q"] * 6
@@ -220,7 +219,7 @@ def attempts_text(attempts):
 
 
 # ============================================================
-# إنشاء زر التوجه للخاص
+# إنشاء رابط الخاص
 # ============================================================
 
 async def build_private_url(
@@ -250,7 +249,9 @@ async def send_turn_message(
     chat_id
 ):
 
-    game = active_liars_tables.get(chat_id)
+    game = active_liars_tables.get(
+        chat_id
+    )
 
     if not game:
         return
@@ -261,21 +262,29 @@ async def send_turn_message(
     current_index = game["current_index"]
 
     if current_index >= len(game["players"]):
+
         current_index = 0
+
         game["current_index"] = 0
 
     player_id = game["players"][current_index]
 
-    user = game["users"].get(player_id)
+    user = game["users"].get(
+        player_id
+    )
 
     if not user:
         return
 
-    player_name = get_player_name(user)
+    player_name = get_player_name(
+        user
+    )
 
     target = game["target"]
 
-    previous = game.get("previous_play")
+    previous = game.get(
+        "previous_play"
+    )
 
     text = (
         f"⬇️ دور: {player_name}\n\n"
@@ -346,10 +355,12 @@ async def send_turn_message(
         )
     )
 
-    # مؤقت الدور
-    old_task = game.get("turn_task")
+    old_task = game.get(
+        "turn_task"
+    )
 
     if old_task:
+
         old_task.cancel()
 
     game["turn_task"] = asyncio.create_task(
@@ -372,12 +383,18 @@ async def turn_timeout(
 ):
 
     try:
-        await asyncio.sleep(TURN_TIME)
+
+        await asyncio.sleep(
+            TURN_TIME
+        )
 
     except asyncio.CancelledError:
+
         return
 
-    game = active_liars_tables.get(chat_id)
+    game = active_liars_tables.get(
+        chat_id
+    )
 
     if not game:
         return
@@ -388,8 +405,6 @@ async def turn_timeout(
     if game["current_player"] != player_id:
         return
 
-    # إذا انتهى الوقت ولم يلعب:
-    # نختار من 1 إلى 3 كروت تلقائيًا
     hand = game["hands"].get(
         player_id,
         []
@@ -438,7 +453,6 @@ async def start_liars_table(
 
     chat_id = chat.id
 
-    # إذا فيه طاولة بالفعل
     if chat_id in active_liars_tables:
 
         await update.message.reply_text(
@@ -448,7 +462,6 @@ async def start_liars_table(
 
         return
 
-    # قفل الألعاب الكبيرة
     locked = lock_big_game(
         chat_id,
         LIARS_TABLE_KEY,
@@ -457,7 +470,9 @@ async def start_liars_table(
 
     if not locked:
 
-        current = get_big_game(chat_id)
+        current = get_big_game(
+            chat_id
+        )
 
         name = (
             current["name"]
@@ -544,7 +559,9 @@ async def join_liars_table(
 
     chat_id = chat.id
 
-    game = active_liars_tables.get(chat_id)
+    game = active_liars_tables.get(
+        chat_id
+    )
 
     if not game:
         return
@@ -597,7 +614,9 @@ async def leave_liars_table(
 
     chat_id = chat.id
 
-    game = active_liars_tables.get(chat_id)
+    game = active_liars_tables.get(
+        chat_id
+    )
 
     if not game:
         return
@@ -665,7 +684,9 @@ async def begin_liars_table(
 
     chat_id = chat.id
 
-    game = active_liars_tables.get(chat_id)
+    game = active_liars_tables.get(
+        chat_id
+    )
 
     if not game:
         return
@@ -716,7 +737,10 @@ async def begin_liars_table(
         "سيتم توزيع الأوراق وبدء الجولة الأولى."
     )
 
-    # إرسال الكروت للخاص
+    # ========================================================
+    # إرسال الكروت للخاص بدون أزرار
+    # ========================================================
+
     failed = []
 
     for player_id in game["players"]:
@@ -773,8 +797,9 @@ async def begin_liars_table(
         )
     )
 
-    # إلغاء أي مؤقت قديم
-    old_task = game.get("start_task")
+    old_task = game.get(
+        "start_task"
+    )
 
     if old_task:
         old_task.cancel()
@@ -797,11 +822,13 @@ async def start_first_turn(
 ):
 
     try:
+
         await asyncio.sleep(
             START_DELAY
         )
 
     except asyncio.CancelledError:
+
         return
 
     game = active_liars_tables.get(
@@ -844,12 +871,12 @@ async def start_turn(
     if not game["players"]:
         return
 
-    # تجاوز أي لاعب خرج
     while (
         game["players"]
         and game["current_index"]
         >= len(game["players"])
     ):
+
         game["current_index"] = 0
 
     if not game["players"]:
@@ -909,21 +936,32 @@ async def send_private_hand(
 
     text += (
         f"\n🎯 الكرت المطلوب: "
-        f"{card_text(target)}\n\n"
+        f"{card_text(target)}\n"
     )
+
+    # ========================================================
+    # بداية اللعبة:
+    # عرض فقط بدون أزرار
+    # ========================================================
 
     if delay_message:
 
         text += (
-            f"⏳ اللعب سيبدأ بعد "
+            f"\n⏳ اللعب سيبدأ بعد "
             f"{START_DELAY} ثانية... استعد!"
         )
 
-    else:
-
-        text += (
-            "\n🎯 اختر الكروت التي تريد لعبها."
+        await context.bot.send_message(
+            chat_id=player_id,
+            text=text
         )
+
+        return
+
+    # ========================================================
+    # عند وصول دور اللاعب:
+    # عرض أزرار الاختيار
+    # ========================================================
 
     keyboard = build_card_keyboard(
         chat_id,
@@ -953,6 +991,7 @@ def build_card_keyboard(
     selected = []
 
     if game:
+
         selected = game[
             "selected_cards"
         ].get(
@@ -963,6 +1002,7 @@ def build_card_keyboard(
     hand = []
 
     if game:
+
         hand = game[
             "hands"
         ].get(
@@ -971,6 +1011,10 @@ def build_card_keyboard(
         )
 
     keyboard = []
+
+    # ========================================================
+    # الكروت
+    # ========================================================
 
     for index, card in enumerate(
         hand
@@ -994,9 +1038,13 @@ def build_card_keyboard(
             )
         ])
 
+    # ========================================================
+    # إرسال الكروت
+    # ========================================================
+
     keyboard.append([
         InlineKeyboardButton(
-            "📨 إرسال الكروت!",
+            "إرسال الكروت 🃏",
             callback_data=(
                 f"lt:play:"
                 f"{chat_id}:"
@@ -1004,6 +1052,32 @@ def build_card_keyboard(
             )
         )
     ])
+
+    # ========================================================
+    # تكذيب اللاعب
+    # ========================================================
+
+    previous = None
+
+    if game:
+
+        previous = game.get(
+            "previous_play"
+        )
+
+    if previous:
+
+        keyboard.append([
+            InlineKeyboardButton(
+                "تكذيب اللاعب 🤥",
+                callback_data=(
+                    f"lt:private_challenge:"
+                    f"{chat_id}:"
+                    f"{player_id}:"
+                    f"{previous['player_id']}"
+                )
+            )
+        ])
 
     return InlineKeyboardMarkup(
         keyboard
@@ -1048,7 +1122,6 @@ async def play_cards(
         []
     )
 
-    # التأكد أن الكروت موجودة فعلًا
     for card in cards:
 
         if card not in hand:
@@ -1056,13 +1129,17 @@ async def play_cards(
 
     game["resolving"] = True
 
-    # إلغاء مؤقت الدور
-    task = game.get("turn_task")
+    task = game.get(
+        "turn_task"
+    )
 
     if task:
-        task.cancel()
 
-    # حذف الكروت من اليد
+        current_task = asyncio.current_task()
+
+        if task is not current_task:
+            task.cancel()
+
     remaining = hand.copy()
 
     for card in cards:
@@ -1082,7 +1159,6 @@ async def play_cards(
 
     target = game["target"]
 
-    # حفظ اللعب السابق
     game["previous_play"] = {
         "player_id": player_id,
         "cards": cards.copy(),
@@ -1103,7 +1179,6 @@ async def play_cards(
 
     game["resolving"] = False
 
-    # اللاعب التالي
     if player_id in game["players"]:
 
         current_position = game[
@@ -1139,7 +1214,6 @@ def is_truthful(
 
     for card in cards:
 
-        # الجوكر يطابق أي كرت
         if card == "J":
             continue
 
@@ -1252,7 +1326,6 @@ async def challenge_player(
 
     game["resolving"] = False
 
-    # اللاعب الخاسر يسحب الزناد
     await start_trigger(
         context,
         chat_id,
@@ -1282,7 +1355,6 @@ async def start_trigger(
 
     game["trigger_player"] = player_id
 
-    # إذا لم يكن له سجل
     if player_id not in game[
         "trigger_attempts"
     ]:
@@ -1330,6 +1402,7 @@ async def start_trigger(
     )
 
     if old_task:
+
         old_task.cancel()
 
     game["trigger_task"] = asyncio.create_task(
@@ -1352,11 +1425,13 @@ async def trigger_timeout(
 ):
 
     try:
+
         await asyncio.sleep(
             TRIGGER_TIME
         )
 
     except asyncio.CancelledError:
+
         return
 
     game = active_liars_tables.get(
@@ -1371,6 +1446,11 @@ async def trigger_timeout(
 
     if game["trigger_player"] != player_id:
         return
+
+    # ========================================================
+    # انتهى الوقت:
+    # سحب تلقائي مباشرة
+    # ========================================================
 
     await pull_trigger(
         context,
@@ -1417,15 +1497,20 @@ async def pull_trigger(
 
     game["resolving"] = True
 
-    # إلغاء المؤقت
+    # ========================================================
+    # إلغاء مؤقت الزناد إذا كان مختلفًا عن المهمة الحالية
+    # ========================================================
+
     task = game.get(
         "trigger_task"
     )
 
-    if task:
+    current_task = asyncio.current_task()
+
+    if task and task is not current_task:
+
         task.cancel()
 
-    # هذه المحاولة انحسبت
     attempts -= 1
 
     game["trigger_attempts"][
@@ -1439,7 +1524,6 @@ async def pull_trigger(
 
     await asyncio.sleep(2)
 
-    # الرصاصة قاتلة
     bullet = random.choice(
         [True, False]
     )
@@ -1488,13 +1572,12 @@ async def pull_trigger(
 
     game["resolving"] = False
 
-    # إذا بقيت محاولة
     if attempts > 0:
 
         await context.bot.send_message(
             chat_id=chat_id,
             text=(
-                f"🟢 بقيت لك محاولة واحدة "
+                "🟢 بقيت لك محاولة واحدة "
                 f"{attempts_text(attempts)}."
             )
         )
@@ -1509,7 +1592,6 @@ async def pull_trigger(
             )
         )
 
-    # الجولة الجديدة
     await new_round(
         context,
         chat_id
@@ -1549,7 +1631,6 @@ async def eliminate_player(
         None
     )
 
-    # هل بقي لاعب واحد؟
     if len(game["players"]) <= 1:
 
         await finish_liars_table(
@@ -1559,7 +1640,6 @@ async def eliminate_player(
 
         return
 
-    # التأكد من current_index
     if game["current_index"] >= len(
         game["players"]
     ):
@@ -1624,7 +1704,11 @@ async def new_round(
 
     game["resolving"] = False
 
-    # إرسال الكروت من جديد
+    # ========================================================
+    # الجولة الجديدة:
+    # إرسال الكروت للخاص بدون أزرار
+    # ========================================================
+
     for player_id in game["players"]:
 
         try:
@@ -1633,10 +1717,11 @@ async def new_round(
                 context,
                 chat_id,
                 player_id,
-                delay_message=False
+                delay_message=True
             )
 
         except Exception:
+
             pass
 
     await context.bot.send_message(
@@ -1649,7 +1734,6 @@ async def new_round(
         )
     )
 
-    # إضافة قائمة اللاعبين
     players_text = ""
 
     for player_id in game["players"]:
@@ -1704,7 +1788,6 @@ async def finish_liars_table(
 
     game["finished"] = True
 
-    # إلغاء المؤقتات
     for key in (
         "turn_task",
         "trigger_task",
@@ -1714,6 +1797,7 @@ async def finish_liars_table(
         task = game.get(key)
 
         if task:
+
             try:
                 task.cancel()
             except Exception:
@@ -1735,7 +1819,6 @@ async def finish_liars_table(
             winner_user
         )
 
-        # إضافة النقاط
         add_points(
             winner_id,
             WIN_POINTS
@@ -1791,7 +1874,9 @@ async def liars_table_callback(
     parts = data.split(":")
 
     if len(parts) < 3:
+
         await query.answer()
+
         return
 
     action = parts[1]
@@ -1803,7 +1888,9 @@ async def liars_table_callback(
     if action == "card":
 
         if len(parts) != 5:
+
             await query.answer()
+
             return
 
         try:
@@ -1815,6 +1902,7 @@ async def liars_table_callback(
         except ValueError:
 
             await query.answer()
+
             return
 
         game = active_liars_tables.get(
@@ -1822,29 +1910,37 @@ async def liars_table_callback(
         )
 
         if not game:
+
             await query.answer(
                 "انتهت اللعبة."
             )
+
             return
 
         if game["finished"]:
+
             await query.answer(
                 "انتهت اللعبة."
             )
+
             return
 
         if query.from_user.id != player_id:
+
             await query.answer(
                 "هذه ليست كروتك.",
                 show_alert=True
             )
+
             return
 
         if game["current_player"] != player_id:
+
             await query.answer(
                 "ليس دورك الآن.",
                 show_alert=True
             )
+
             return
 
         hand = game["hands"].get(
@@ -1860,6 +1956,7 @@ async def liars_table_callback(
             await query.answer(
                 "هذا الكرت غير موجود."
             )
+
             return
 
         selected = game[
@@ -1869,7 +1966,6 @@ async def liars_table_callback(
             []
         )
 
-        # إزالة الاختيار
         if card_index in selected:
 
             selected.remove(
@@ -1888,6 +1984,7 @@ async def liars_table_callback(
                     "تقدر تختار 3 كروت كحد أقصى.",
                     show_alert=True
                 )
+
                 return
 
             selected.append(
@@ -1910,6 +2007,7 @@ async def liars_table_callback(
             )
 
         except Exception:
+
             pass
 
         return
@@ -1921,7 +2019,9 @@ async def liars_table_callback(
     if action == "play":
 
         if len(parts) != 4:
+
             await query.answer()
+
             return
 
         try:
@@ -1932,6 +2032,7 @@ async def liars_table_callback(
         except ValueError:
 
             await query.answer()
+
             return
 
         game = active_liars_tables.get(
@@ -1939,16 +2040,20 @@ async def liars_table_callback(
         )
 
         if not game:
+
             await query.answer(
                 "انتهت اللعبة."
             )
+
             return
 
         if query.from_user.id != player_id:
+
             await query.answer(
                 "هذا ليس دورك.",
                 show_alert=True
             )
+
             return
 
         if game["current_player"] != player_id:
@@ -1957,6 +2062,7 @@ async def liars_table_callback(
                 "ليس دورك الآن.",
                 show_alert=True
             )
+
             return
 
         selected = game[
@@ -1972,6 +2078,7 @@ async def liars_table_callback(
                 "اختر كرتًا واحدًا على الأقل.",
                 show_alert=True
             )
+
             return
 
         if len(selected) > 3:
@@ -1980,6 +2087,7 @@ async def liars_table_callback(
                 "الحد الأقصى 3 كروت.",
                 show_alert=True
             )
+
             return
 
         hand = game["hands"].get(
@@ -1998,10 +2106,13 @@ async def liars_table_callback(
         )
 
         try:
+
             await query.edit_message_reply_markup(
                 reply_markup=None
             )
+
         except Exception:
+
             pass
 
         await play_cards(
@@ -2014,7 +2125,114 @@ async def liars_table_callback(
         return
 
     # ========================================================
-    # تحدي
+    # تكذيب اللاعب من الخاص
+    # ========================================================
+
+    if action == "private_challenge":
+
+        if len(parts) != 5:
+
+            await query.answer()
+
+            return
+
+        try:
+
+            chat_id = int(parts[2])
+            challenger_id = int(parts[3])
+            accused_id = int(parts[4])
+
+        except ValueError:
+
+            await query.answer()
+
+            return
+
+        game = active_liars_tables.get(
+            chat_id
+        )
+
+        if not game:
+
+            await query.answer(
+                "انتهت اللعبة."
+            )
+
+            return
+
+        if game["finished"]:
+
+            await query.answer(
+                "انتهت اللعبة."
+            )
+
+            return
+
+        if query.from_user.id != challenger_id:
+
+            await query.answer(
+                "هذا الزر ليس لك.",
+                show_alert=True
+            )
+
+            return
+
+        if game["current_player"] != challenger_id:
+
+            await query.answer(
+                "ليس دورك الآن.",
+                show_alert=True
+            )
+
+            return
+
+        previous = game.get(
+            "previous_play"
+        )
+
+        if not previous:
+
+            await query.answer(
+                "لا يوجد لاعب يمكنك تكذيبه الآن.",
+                show_alert=True
+            )
+
+            return
+
+        if previous["player_id"] != accused_id:
+
+            await query.answer(
+                "لا يمكنك تكذيب هذا اللاعب الآن.",
+                show_alert=True
+            )
+
+            return
+
+        await query.answer(
+            "🚨 تم تكذيب اللاعب!"
+        )
+
+        try:
+
+            await query.edit_message_reply_markup(
+                reply_markup=None
+            )
+
+        except Exception:
+
+            pass
+
+        await challenge_player(
+            context,
+            chat_id,
+            challenger_id,
+            accused_id
+        )
+
+        return
+
+    # ========================================================
+    # تحدي من القروب
     # ========================================================
 
     if action == "challenge":
@@ -2022,6 +2240,7 @@ async def liars_table_callback(
         if len(parts) != 5:
 
             await query.answer()
+
             return
 
         try:
@@ -2033,6 +2252,7 @@ async def liars_table_callback(
         except ValueError:
 
             await query.answer()
+
             return
 
         game = active_liars_tables.get(
@@ -2040,9 +2260,11 @@ async def liars_table_callback(
         )
 
         if not game:
+
             await query.answer(
                 "انتهت اللعبة."
             )
+
             return
 
         if query.from_user.id != challenger_id:
@@ -2051,6 +2273,7 @@ async def liars_table_callback(
                 "هذا التحدي ليس لك.",
                 show_alert=True
             )
+
             return
 
         await query.answer(
@@ -2058,10 +2281,13 @@ async def liars_table_callback(
         )
 
         try:
+
             await query.edit_message_reply_markup(
                 reply_markup=None
             )
+
         except Exception:
+
             pass
 
         await challenge_player(
@@ -2082,6 +2308,7 @@ async def liars_table_callback(
         if len(parts) != 4:
 
             await query.answer()
+
             return
 
         try:
@@ -2092,6 +2319,7 @@ async def liars_table_callback(
         except ValueError:
 
             await query.answer()
+
             return
 
         game = active_liars_tables.get(
@@ -2099,9 +2327,11 @@ async def liars_table_callback(
         )
 
         if not game:
+
             await query.answer(
                 "انتهت اللعبة."
             )
+
             return
 
         if query.from_user.id != player_id:
@@ -2110,6 +2340,7 @@ async def liars_table_callback(
                 "هذا الزناد ليس لك.",
                 show_alert=True
             )
+
             return
 
         if game["trigger_player"] != player_id:
@@ -2118,6 +2349,7 @@ async def liars_table_callback(
                 "ليس دورك لسحب الزناد.",
                 show_alert=True
             )
+
             return
 
         await query.answer(
@@ -2125,10 +2357,13 @@ async def liars_table_callback(
         )
 
         try:
+
             await query.edit_message_reply_markup(
                 reply_markup=None
             )
+
         except Exception:
+
             pass
 
         await pull_trigger(
@@ -2175,6 +2410,7 @@ async def liars_table_private_start(
         )
 
     except ValueError:
+
         return
 
     game = active_liars_tables.get(
@@ -2199,7 +2435,6 @@ async def liars_table_private_start(
 
         raise ApplicationHandlerStop
 
-    # إذا لم تبدأ اللعبة
     if not game["started"]:
 
         await update.message.reply_text(
@@ -2208,7 +2443,10 @@ async def liars_table_private_start(
 
         raise ApplicationHandlerStop
 
-    # إذا كان الدور للاعب
+    # ========================================================
+    # إذا كان دور اللاعب
+    # ========================================================
+
     if game["current_player"] == player_id:
 
         game["selected_cards"][
@@ -2229,6 +2467,4 @@ async def liars_table_private_start(
             "انتظر حتى ينتقل الدور إليك."
         )
 
-    # مهم جدًا:
-    # يمنع /start العادي من العمل بعدها
     raise ApplicationHandlerStop
