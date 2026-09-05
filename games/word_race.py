@@ -10,6 +10,14 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
+from games.big_game_lock import (
+    get_big_game,
+    lock_big_game,
+    unlock_big_game,
+)
+
+WORD_RACE_LOCK_KEY = "word_race"
+
 from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -472,6 +480,23 @@ async def start_word_race(
 
     user = update.effective_user
     chat_id = update.effective_chat.id
+
+    # منع تشغيل أكثر من لعبة كبيرة في نفس القروب
+    big_game = get_big_game(chat_id)
+
+    if big_game:
+        await update.message.reply_text(
+            f"❌ فيه لعبة شغالة حاليًا!: {big_game['name']}\n\n"
+            "🛑 أنهِ اللعبة الحالية أولًا قبل بدء لعبة أخرى."
+        )
+        return
+
+    if not lock_big_game(
+        chat_id,
+        WORD_RACE_LOCK_KEY,
+        "سباق الكلمات 🐎"
+    ):
+        return
 
     if not user or not _is_admin_plus(user.id):
         return
@@ -1463,6 +1488,11 @@ async def end_word_race(
     # إلغاء كل الحالة فورًا: الجولة، الكلمة، الانتظار، .كمل، إلخ.
     RACES.pop(state.chat_id, None)
     PRIVATE_HOST_CHAT.pop(state.host_id, None)
+
+    unlock_big_game(
+        state.chat_id,
+        WORD_RACE_LOCK_KEY
+    )
 
     await update.message.reply_text(
         "🛑 تم إنهاء لعبة سباق الكلمات ."

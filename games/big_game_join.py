@@ -18,6 +18,10 @@ from games.liars_table import (
     join_liars_table
 )
 
+from games.word_race import (
+    RACES,
+    join_word_race,
+)
 
 async def join_big_game_router(update, context):
 
@@ -80,5 +84,10 @@ async def join_big_game_router(update, context):
 
         return
 
-    # لا توجد لعبة تحتاج دخول
+
+    # سباق الكلمات
+    if chat_id in RACES:
+        await join_word_race(update, context)
+        return
+
     return

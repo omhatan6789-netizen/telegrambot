@@ -976,15 +976,7 @@ def main():
         group=-3
     )
 
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & WordRaceActiveFilter([r"^دخول$"]),
-            join_word_race
-        ),
-        group=-2
-    )
-
+    
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
