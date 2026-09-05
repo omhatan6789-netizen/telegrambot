@@ -6,6 +6,7 @@ from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
 )
+
 from telegram.ext import (
     ContextTypes,
     ApplicationHandlerStop,
@@ -41,7 +42,6 @@ TRIGGER_TIME = 30
 
 WIN_POINTS = 70
 
-# محاولات سحب الزناد لكل لاعب
 TRIGGER_ATTEMPTS = 2
 
 
@@ -361,7 +361,10 @@ async def send_turn_message(
 
     if old_task:
 
-        old_task.cancel()
+        try:
+            old_task.cancel()
+        except Exception:
+            pass
 
     game["turn_task"] = asyncio.create_task(
         turn_timeout(
@@ -460,7 +463,7 @@ async def start_liars_table(
             "اكتب دخول للانضمام."
         )
 
-        return
+        raise ApplicationHandlerStop
 
     locked = lock_big_game(
         chat_id,
@@ -485,9 +488,18 @@ async def start_liars_table(
             f"🎮 توجد لعبة كبيرة شغالة بالفعل: {name}"
         )
 
-        return
+        raise ApplicationHandlerStop
 
     user = update.effective_user
+
+    if not user:
+
+        unlock_big_game(
+            chat_id,
+            LIARS_TABLE_KEY
+        )
+
+        return
 
     active_liars_tables[chat_id] = {
 
@@ -539,6 +551,8 @@ async def start_liars_table(
         "• الفرص: 2 🟢🟢."
     )
 
+    raise ApplicationHandlerStop
+
 
 # ============================================================
 # دخول اللاعب
@@ -563,16 +577,24 @@ async def join_liars_table(
         chat_id
     )
 
+    # لا توجد طاولة كذب
+    # نخلي الألعاب القديمة تتعامل مع دخول
     if not game:
         return
 
+    # اللعبة بدأت
     if game["started"]:
-        return
+
+        await update.message.reply_text(
+            "⚠️ اللعبة بدأت بالفعل، لا يمكنك الانضمام الآن."
+        )
+
+        raise ApplicationHandlerStop
 
     user = update.effective_user
 
     if not user:
-        return
+        raise ApplicationHandlerStop
 
     if user.id in game["players"]:
 
@@ -581,7 +603,7 @@ async def join_liars_table(
             "أنت داخل اللعبة بالفعل."
         )
 
-        return
+        raise ApplicationHandlerStop
 
     game["players"].append(
         user.id
@@ -593,6 +615,10 @@ async def join_liars_table(
         f"✅ انضم {get_player_name(user)} 🍻\n"
         f"👥 العدد: {len(game['players'])}"
     )
+
+    # مهم جدًا:
+    # يمنع ألعاب دخول القديمة من استقبال نفس الرسالة
+    raise ApplicationHandlerStop
 
 
 # ============================================================
@@ -618,19 +644,34 @@ async def leave_liars_table(
         chat_id
     )
 
+    # لا توجد طاولة كذب
+    # خلي لعبة الكذاب القديمة تتعامل مع الأمر
     if not game:
-        return
-
-    if game["started"]:
         return
 
     user = update.effective_user
 
     if not user:
-        return
 
+        raise ApplicationHandlerStop
+
+    # إذا اللعبة بدأت
+    if game["started"]:
+
+        await update.message.reply_text(
+            "⚠️ اللعبة بدأت بالفعل، لا يمكنك الخروج من التسجيل."
+        )
+
+        raise ApplicationHandlerStop
+
+    # اللاعب ليس داخل الطاولة
     if user.id not in game["players"]:
-        return
+
+        await update.message.reply_text(
+            "⚠️ أنت لست داخل طاولة الكذب."
+        )
+
+        raise ApplicationHandlerStop
 
     game["players"].remove(
         user.id
@@ -641,7 +682,16 @@ async def leave_liars_table(
         None
     )
 
+    # إذا لم يبق أي لاعب
     if not game["players"]:
+
+        task = game.get("start_task")
+
+        if task:
+            try:
+                task.cancel()
+            except Exception:
+                pass
 
         active_liars_tables.pop(
             chat_id,
@@ -654,15 +704,18 @@ async def leave_liars_table(
         )
 
         await update.message.reply_text(
-            "❌ تم إلغاء طاولة الكذب."
+            "🚪 خرجت من طاولة الكذب.\n"
+            "🧹 لم يعد هناك لاعبون، لذلك أغلقت الطاولة."
         )
 
-        return
+        raise ApplicationHandlerStop
 
     await update.message.reply_text(
         f"🚪 خرج {get_player_name(user)}.\n"
         f"👥 العدد: {len(game['players'])}"
     )
+
+    raise ApplicationHandlerStop
 
 
 # ============================================================
@@ -688,14 +741,22 @@ async def begin_liars_table(
         chat_id
     )
 
+    # لا توجد طاولة كذب
     if not game:
         return
 
+    # مهم:
+    # حتى لو الشخص ليس أدمن، لا نخلي .ابدا القديمة تشتغل
     if not await is_group_admin(
         update,
         context
     ):
-        return
+
+        await update.message.reply_text(
+            "❌ هذا الأمر للأدمن وفوق فقط."
+        )
+
+        raise ApplicationHandlerStop
 
     if game["started"]:
 
@@ -703,7 +764,7 @@ async def begin_liars_table(
             "⚠️ اللعبة بدأت بالفعل."
         )
 
-        return
+        raise ApplicationHandlerStop
 
     if len(game["players"]) < MIN_PLAYERS:
 
@@ -712,7 +773,7 @@ async def begin_liars_table(
             f"{MIN_PLAYERS} لاعبين على الأقل."
         )
 
-        return
+        raise ApplicationHandlerStop
 
     game["started"] = True
 
@@ -736,10 +797,6 @@ async def begin_liars_table(
         "🎮 تبدأ اللعبة الآن!\n\n"
         "سيتم توزيع الأوراق وبدء الجولة الأولى."
     )
-
-    # ========================================================
-    # إرسال الكروت للخاص بدون أزرار
-    # ========================================================
 
     failed = []
 
@@ -802,7 +859,11 @@ async def begin_liars_table(
     )
 
     if old_task:
-        old_task.cancel()
+
+        try:
+            old_task.cancel()
+        except Exception:
+            pass
 
     game["start_task"] = asyncio.create_task(
         start_first_turn(
@@ -810,6 +871,8 @@ async def begin_liars_table(
             chat_id
         )
     )
+
+    raise ApplicationHandlerStop
 
 
 # ============================================================
@@ -939,11 +1002,6 @@ async def send_private_hand(
         f"{card_text(target)}\n"
     )
 
-    # ========================================================
-    # بداية اللعبة:
-    # عرض فقط بدون أزرار
-    # ========================================================
-
     if delay_message:
 
         text += (
@@ -957,11 +1015,6 @@ async def send_private_hand(
         )
 
         return
-
-    # ========================================================
-    # عند وصول دور اللاعب:
-    # عرض أزرار الاختيار
-    # ========================================================
 
     keyboard = build_card_keyboard(
         chat_id,
@@ -1012,10 +1065,6 @@ def build_card_keyboard(
 
     keyboard = []
 
-    # ========================================================
-    # الكروت
-    # ========================================================
-
     for index, card in enumerate(
         hand
     ):
@@ -1038,10 +1087,6 @@ def build_card_keyboard(
             )
         ])
 
-    # ========================================================
-    # إرسال الكروت
-    # ========================================================
-
     keyboard.append([
         InlineKeyboardButton(
             "إرسال الكروت 🃏",
@@ -1052,10 +1097,6 @@ def build_card_keyboard(
             )
         )
     ])
-
-    # ========================================================
-    # تكذيب اللاعب
-    # ========================================================
 
     previous = None
 
@@ -1138,7 +1179,11 @@ async def play_cards(
         current_task = asyncio.current_task()
 
         if task is not current_task:
-            task.cancel()
+
+            try:
+                task.cancel()
+            except Exception:
+                pass
 
     remaining = hand.copy()
 
@@ -1403,7 +1448,14 @@ async def start_trigger(
 
     if old_task:
 
-        old_task.cancel()
+        current_task = asyncio.current_task()
+
+        if old_task is not current_task:
+
+            try:
+                old_task.cancel()
+            except Exception:
+                pass
 
     game["trigger_task"] = asyncio.create_task(
         trigger_timeout(
@@ -1446,11 +1498,6 @@ async def trigger_timeout(
 
     if game["trigger_player"] != player_id:
         return
-
-    # ========================================================
-    # انتهى الوقت:
-    # سحب تلقائي مباشرة
-    # ========================================================
 
     await pull_trigger(
         context,
@@ -1497,10 +1544,6 @@ async def pull_trigger(
 
     game["resolving"] = True
 
-    # ========================================================
-    # إلغاء مؤقت الزناد إذا كان مختلفًا عن المهمة الحالية
-    # ========================================================
-
     task = game.get(
         "trigger_task"
     )
@@ -1509,7 +1552,10 @@ async def pull_trigger(
 
     if task and task is not current_task:
 
-        task.cancel()
+        try:
+            task.cancel()
+        except Exception:
+            pass
 
     attempts -= 1
 
@@ -1537,7 +1583,7 @@ async def pull_trigger(
     )
 
     # ========================================================
-    # 💥 رصاصة
+    # رصاصة
     # ========================================================
 
     if bullet:
@@ -1704,11 +1750,6 @@ async def new_round(
 
     game["resolving"] = False
 
-    # ========================================================
-    # الجولة الجديدة:
-    # إرسال الكروت للخاص بدون أزرار
-    # ========================================================
-
     for player_id in game["players"]:
 
         try:
@@ -1768,7 +1809,7 @@ async def new_round(
 
 
 # ============================================================
-# إنهاء اللعبة
+# إنهاء اللعبة طبيعيًا
 # ============================================================
 
 async def finish_liars_table(
@@ -1850,6 +1891,80 @@ async def finish_liars_table(
         chat_id,
         LIARS_TABLE_KEY
     )
+
+
+# ============================================================
+# إنهاء طاولة الكذب يدويًا
+# للأدمن والمالك فقط
+# ============================================================
+
+async def end_liars_table(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not update.message:
+        return
+
+    chat = update.effective_chat
+
+    if not chat:
+        return
+
+    chat_id = chat.id
+
+    game = active_liars_tables.get(
+        chat_id
+    )
+
+    # لا توجد طاولة كذب
+    # نخلي أي معالجات أخرى تتعامل مع الرسالة
+    if not game:
+        return
+
+    if not await is_group_admin(
+        update,
+        context
+    ):
+
+        await update.message.reply_text(
+            "❌ هذا الأمر للأدمن وفوق فقط."
+        )
+
+        raise ApplicationHandlerStop
+
+    game["finished"] = True
+
+    for key in (
+        "turn_task",
+        "trigger_task",
+        "start_task"
+    ):
+
+        task = game.get(key)
+
+        if task:
+
+            try:
+                task.cancel()
+            except Exception:
+                pass
+
+    active_liars_tables.pop(
+        chat_id,
+        None
+    )
+
+    unlock_big_game(
+        chat_id,
+        LIARS_TABLE_KEY
+    )
+
+    await update.message.reply_text(
+        "🛑 تم إنهاء طاولة الكذب."
+    )
+
+    raise ApplicationHandlerStop
 
 
 # ============================================================
@@ -2442,10 +2557,6 @@ async def liars_table_private_start(
         )
 
         raise ApplicationHandlerStop
-
-    # ========================================================
-    # إذا كان دور اللاعب
-    # ========================================================
 
     if game["current_player"] == player_id:
 
