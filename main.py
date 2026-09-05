@@ -49,6 +49,7 @@ from games.liars_table import (
     join_liars_table,
     leave_liars_table,
     begin_liars_table,
+    end_liars_table,
     liars_table_callback,
     liars_table_private_start,
 )
@@ -1280,7 +1281,10 @@ def main():
     # 🍻 طاولة الكذب
     # ==================================================
 
+    # --------------------------------------------------
     # بدء طاولة الكذب
+    # --------------------------------------------------
+
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -1290,7 +1294,27 @@ def main():
         group=-4
     )
 
-    # خروج من التسجيل
+
+    # --------------------------------------------------
+    # دخول طاولة الكذب
+    # يتم عبر big_game_join_router
+    # لكن يجب أن يكون قبل الهاندلرات القديمة
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(r"^دخول$"),
+            join_big_game_router
+        ),
+        group=-4
+    )
+
+
+    # --------------------------------------------------
+    # خروج من طاولة الكذب
+    # --------------------------------------------------
+
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -1300,7 +1324,11 @@ def main():
         group=-4
     )
 
-    # بدء اللعبة - للأدمن
+
+    # --------------------------------------------------
+    # بدء طاولة الكذب
+    # --------------------------------------------------
+
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -1310,7 +1338,26 @@ def main():
         group=-4
     )
 
-    # أزرار اللعبة
+
+    # --------------------------------------------------
+    # إنهاء طاولة الكذب
+    # للأدمن والمالك
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(r"^انهاء طاولة الكذب$"),
+            end_liars_table
+        ),
+        group=-4
+    )
+
+
+    # --------------------------------------------------
+    # أزرار طاولة الكذب
+    # --------------------------------------------------
+
     app.add_handler(
         CallbackQueryHandler(
             liars_table_callback,
@@ -1319,7 +1366,11 @@ def main():
         group=-4
     )
 
-    # /start الخاص بفتح لعبة طاولة الكذب
+
+    # --------------------------------------------------
+    # /start الخاص بطاولة الكذب
+    # --------------------------------------------------
+
     app.add_handler(
         CommandHandler(
             "start",
@@ -1600,13 +1651,7 @@ def main():
     )
 
 
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(r"^دخول$"),
-            join_big_game_router
-        ),
-        group=-3
-    )
+
 
     # ==================================================
     # شرح الألعاب
