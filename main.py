@@ -567,7 +567,7 @@ def main():
             filters.TEXT & ~filters.COMMAND,
             command_guard
         ),
-        group=-4
+        group=-5
     )   
 
     # ==================================================
@@ -973,7 +973,7 @@ def main():
             & filters.Regex(r"^سباق الكلمات$"),
             start_word_race
         ),
-        group=-3
+        group=-4
     )
 
     # خروج
@@ -983,7 +983,7 @@ def main():
             & WordRaceActiveFilter([r"^خروج$"]),
             leave_word_race
         ),
-        group=-2
+        group=-4
     )
 
     # .الطور
@@ -993,7 +993,7 @@ def main():
             & WordRaceActiveFilter([r"^\.الطور$"]),
             word_race_mode
         ),
-        group=-2
+        group=-4
     )
 
     # .توزيع
@@ -1003,7 +1003,7 @@ def main():
             & WordRaceActiveFilter([r"^\.وزع$"]),
             word_race_distribution
         ),
-        group=-2
+        group=-4
     )
 
     # .اضافة احمر / ازرق / اخضر / اصفر
@@ -1015,7 +1015,7 @@ def main():
             ),
             word_race_manual_team
         ),
-        group=-2
+        group=-4
     )
 
     # .ابدا
@@ -1025,7 +1025,7 @@ def main():
             & WordRaceActiveFilter([r"^\.ابدا$"]),
             begin_word_race
         ),
-        group=-2
+        group=-4
     )
 
     # .كمل
@@ -1035,7 +1035,7 @@ def main():
             & WordRaceActiveFilter([r"^\.كمل$"]),
             continue_word_race
         ),
-        group=-2
+        group=-4
     )
 
     # إنهاء سباق الكلمات
@@ -1047,7 +1047,7 @@ def main():
             ),
             end_word_race
         ),
-        group=-2
+        group=-4
     )
 
     # أزرار سباق الكلمات
