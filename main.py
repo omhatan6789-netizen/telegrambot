@@ -967,6 +967,7 @@ def main():
     # 🐎 سباق الكلمات
     # ==================================================
 
+    # بدء سباق الكلمات
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -976,7 +977,7 @@ def main():
         group=-3
     )
 
-    
+    # خروج
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -986,6 +987,7 @@ def main():
         group=-2
     )
 
+    # .الطور
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -995,15 +997,17 @@ def main():
         group=-2
     )
 
+    # .وزع
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
-            & WordRaceActiveFilter([r"^\.توزيع$"]),
+            & WordRaceActiveFilter([r"^\.وزع$"]),
             word_race_distribution
         ),
         group=-2
     )
 
+    # .اضافة احمر / ازرق / اخضر / اصفر
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -1015,6 +1019,7 @@ def main():
         group=-2
     )
 
+    # .ابدا
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -1024,6 +1029,7 @@ def main():
         group=-2
     )
 
+    # .كمل
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -1033,15 +1039,19 @@ def main():
         group=-2
     )
 
+    # إنهاء سباق الكلمات
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
-            & WordRaceActiveFilter([r"^انهاء سباق الكلمات$"]),
+            & WordRaceActiveFilter(
+                [r"^انهاء سباق الكلمات$"]
+            ),
             end_word_race
         ),
         group=-2
     )
 
+    # أزرار سباق الكلمات
     app.add_handler(
         CallbackQueryHandler(
             word_race_callback,
@@ -1050,6 +1060,7 @@ def main():
         group=-4
     )
 
+    # إجابات سباق الكلمات
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
