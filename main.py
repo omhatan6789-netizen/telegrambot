@@ -997,7 +997,7 @@ def main():
         group=-2
     )
 
-    # .وزع
+    # .توزيع
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
