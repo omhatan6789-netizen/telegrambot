@@ -56,6 +56,7 @@ from games.word_race import (
     word_race_callback,
     continue_word_race,
     end_word_race,
+    WordRaceActiveFilter,
 )
 
 from games.liars_table import (
