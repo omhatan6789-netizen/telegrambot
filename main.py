@@ -50,12 +50,12 @@ from games.word_race import (
     word_race_mode,
     word_race_distribution,
     word_race_manual_team,
+    word_race_add_solo,
     begin_word_race,
+    check_word_race_message,
+    word_race_callback,
     continue_word_race,
     end_word_race,
-    word_race_callback,
-    check_word_race_message,
-    WordRaceActiveFilter,
 )
 
 from games.liars_table import (

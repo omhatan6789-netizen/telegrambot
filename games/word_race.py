@@ -64,8 +64,8 @@ STAGE_CENTERS = {
 
 STAGE_BOARD_PATHS = {
     n: [
-        os.path.join(BASE_DIR, "assets", f"word_race_board_{n}.jpg"),
-        os.path.join(BASE_DIR, "assets", f"word_race_board_{n}.png"),
+        os.path.join(BASE_DIR, f"word_race_board_{n}.jpg"),
+        os.path.join(BASE_DIR, f"word_race_board_{n}.png"),
     ]
     for n in range(4, 10)
 }
@@ -432,17 +432,7 @@ async def _send_or_edit_board(
     bio = io.BytesIO(data)
     bio.name = "word_race.jpg"
 
-    if state.board_message_id:
-        try:
-            await context.bot.edit_message_media(
-                chat_id=state.chat_id,
-                message_id=state.board_message_id,
-                media=InputMediaPhoto(media=bio),
-            )
-            return
-        except Exception:
-            state.board_message_id = None
-
+    # كل تحديث للوحة يرسل صورة جديدة ولا يعدل الصورة السابقة.
     msg = await context.bot.send_photo(
         chat_id=state.chat_id,
         photo=bio,
@@ -640,17 +630,28 @@ async def _show_distribution(
 ):
     if state.mode != "teams" or not state.team_count:
         return
+
     lines = ["📋 قائمة الفرق — سباق الكلمات", ""]
+
     for team in _active_teams(state):
-        members = [p for p in state.players.values() if p.team == team]
+        members = [
+            p for p in state.players.values()
+            if p.team == team
+        ]
+
         lines.append(f"{_team_title(team)}:")
+
         if members:
             for i, p in enumerate(members, 1):
                 lines.append(f"  {i}. {p.name}")
         else:
             lines.append("  لا يوجد")
+
         lines.append("")
+
     text = "\n".join(lines).strip()
+
+    # إذا كانت القائمة موجودة، نعدل نفس الرسالة فقط
     if state.distribution_message_id:
         try:
             await context.bot.edit_message_text(
@@ -660,9 +661,18 @@ async def _show_distribution(
             )
             return
         except Exception:
+            # إذا الرسالة انحذفت أو لم تعد قابلة للتعديل
             state.distribution_message_id = None
-    msg = await context.bot.send_message(chat_id=state.chat_id, text=text)
+
+    # أول مرة فقط: إرسال رسالة القائمة
+    msg = await context.bot.send_message(
+        chat_id=state.chat_id,
+        text=text,
+    )
+
     state.distribution_message_id = msg.message_id
+
+    # تثبيت القائمة
     try:
         await context.bot.pin_chat_message(
             chat_id=state.chat_id,
@@ -672,6 +682,21 @@ async def _show_distribution(
     except Exception:
         pass
 
+
+async def _unpin_distribution(
+    state: RaceState,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    if not state.distribution_message_id:
+        return
+
+    try:
+        await context.bot.unpin_chat_message(
+            chat_id=state.chat_id,
+            message_id=state.distribution_message_id,
+        )
+    except Exception:
+        pass
 
 async def word_race_distribution(
     update: Update,
@@ -715,12 +740,16 @@ async def word_race_manual_team(
 
     if not state or not user:
         return
+
     if not _is_controller(state, user.id):
         await _deny_controller(update)
         return
 
-    match = re.match(r"^\.اضافة\s+(احمر|ازرق|اخضر|اصفر)$",
-                      update.message.text.strip())
+    match = re.match(
+        r"^\\.اضافة\\s+(احمر|ازرق|اخضر|اصفر)$",
+        update.message.text.strip()
+    )
+
     if not match:
         return
 
@@ -729,23 +758,107 @@ async def word_race_manual_team(
         return
 
     target = update.message.reply_to_message.from_user
-    if not target or target.id not in state.players:
-        await update.message.reply_text("❌ هذا اللاعب ليس داخل اللعبة.")
+    if not target:
+        return
+
+    if state.mode != "teams":
         return
 
     team = match.group(1)
-    state.players[target.id].team = team
 
-    await update.message.reply_text(
-        f"✅ تمت إضافة {state.players[target.id].name} إلى الفريق "
-        f"{_team_title(team)}"
+    # لا يسمح بإضافة لاعب إلى فريق غير مختار.
+    if team not in _active_teams(state):
+        return
+
+    # لاعب جديد: يضاف مباشرة إلى السباق والفريق المحدد.
+    if target.id not in state.players:
+        initial_stage = _team_stage(state, team) if state.started else 1
+        state.players[target.id] = Player(
+            user_id=target.id,
+            name=_clean_name(target.full_name),
+            stage=initial_stage,
+            team=team,
+            label_color=random.choice(SOLO_LABEL_COLORS),
+        )
+        action_text = (
+            f"✅ تمت إضافة {state.players[target.id].name} إلى الفريق "
+            f"{_team_title(team)}"
+        )
+    else:
+        # اللاعب الموجود ينتقل للفريق الجديد، ويختفي تلقائيًا من الفريق القديم.
+        old_team = state.players[target.id].team
+        state.players[target.id].team = team
+
+        if old_team == team:
+            action_text = (
+                f"✅ {state.players[target.id].name} موجود أصلًا في "
+                f"{_team_title(team)}"
+            )
+        else:
+            action_text = (
+                f"✅ تم نقل {state.players[target.id].name} إلى الفريق "
+                f"{_team_title(team)}"
+            )
+
+    await update.message.reply_text(action_text)
+
+    # تعديل نفس رسالة قائمة الفرق، وليس إرسال قائمة جديدة.
+    await _show_distribution(update, state, context)
+
+    # إذا كان القيم بدأ، حدث اللوحة فورًا.
+    if state.started:
+        await _send_or_edit_board(state, context)
+
+
+async def word_race_add_solo(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    if not await _ensure_group(update):
+        return
+
+    state = _state(update)
+    user = update.effective_user
+
+    if not state or not user:
+        return
+
+    if not _is_controller(state, user.id):
+        await _deny_controller(update)
+        return
+
+    if update.message.text.strip() != ".اضافة":
+        return
+
+    if state.mode != "solo":
+        return
+
+    if not update.message.reply_to_message:
+        await update.message.reply_text("❌ لازم ترد على رسالة اللاعب.")
+        return
+
+    target = update.message.reply_to_message.from_user
+    if not target:
+        return
+
+    if target.id in state.players:
+        return
+
+    state.players[target.id] = Player(
+        user_id=target.id,
+        name=_clean_name(target.full_name),
+        stage=1,
+        team=None,
+        label_color=random.choice(SOLO_LABEL_COLORS),
     )
 
-    if state.mode == "teams":
-        await _show_distribution(update, state, context)
-        if state.started:
-            await _send_or_edit_board(state, context)
+    await update.message.reply_text(
+        f"✅ تمت إضافة {state.players[target.id].name} إلى سباق الكلمات!"
+    )
 
+    # أثناء القيم يظهر اللاعب على اللوحة فورًا.
+    if state.started:
+        await _send_or_edit_board(state, context)
 
 
 # ------------------------------------------------------------
@@ -1540,6 +1653,9 @@ async def _declare_winner(
     player_id: Optional[int] = None,
     team: Optional[str] = None,
 ):
+
+    await _unpin_distribution(state, context)
+
     if state.finished:
         return
 
@@ -1624,6 +1740,9 @@ async def end_word_race(
     if not user or not _is_admin_plus(user.id):
         return
 
+    # فك تثبيت قائمة الفرق، مع إبقاء الرسالة موجودة في المحادثة.
+    await _unpin_distribution(state, context)
+
     # إلغاء كل الحالة فورًا: الجولة، الكلمة، الانتظار، .كمل، إلخ.
     await _cancel_action_timeout(state)
     RACES.pop(state.chat_id, None)
@@ -1632,7 +1751,7 @@ async def end_word_race(
         unlock_big_game(state.chat_id, WORD_RACE_LOCK_KEY)
     except Exception:
         pass
-
+    
     await update.message.reply_text(
         "🛑 تم إنهاء لعبة سباق الكلمات."
     )
