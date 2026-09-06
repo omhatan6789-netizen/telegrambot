@@ -10,43 +10,40 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
-from games.big_game_lock import (
-    get_big_game,
-    lock_big_game,
-    unlock_big_game,
-)
-
-WORD_RACE_LOCK_KEY = "word_race"
-
 from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     InputMediaPhoto,
     Update,
 )
-
 from telegram.ext import ContextTypes, filters
 
+try:
+    from handlers.roles import (
+        is_primary_developer,
+        is_secondary_developer,
+        get_rank,
+    )
+except Exception:
+    is_primary_developer = lambda _uid: False
+    is_secondary_developer = lambda _uid: False
+    get_rank = lambda _uid: ""
 
-from handlers.roles import (
-    get_rank_level,
-    is_primary_developer,
-    is_secondary_developer,
-)
-
+try:
+    from permissions import get_permission_level
+except Exception:
+    get_permission_level = lambda _uid: 0
 
 try:
     from handlers.points import add_points
 except Exception:
     add_points = None
 
-
 # ------------------------------------------------------------
 # الإعدادات
 # ------------------------------------------------------------
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
 ASSET_PATHS = [
     os.path.join(BASE_DIR, "assets", "word_race_board.jpg"),
     os.path.join(BASE_DIR, "assets", "word_race_board.png"),
@@ -54,10 +51,8 @@ ASSET_PATHS = [
     os.path.join(os.path.dirname(__file__), "word_race_board.png"),
 ]
 
-
 # مواقع مربعات اللوحة في الصور المرفوعة 850x480.
 # من اليمين إلى اليسار: 1,2,3,4 ثم النهاية.
-
 STAGE_CENTERS = {
     1: (746, 385),
     2: (585, 385),
@@ -67,8 +62,15 @@ STAGE_CENTERS = {
     6: (101, 385),
 }
 
-STAGE_TEXT_Y = 385
+STAGE_BOARD_PATHS = {
+    n: [
+        os.path.join(BASE_DIR, "assets", f"word_race_board_{n}.jpg"),
+        os.path.join(BASE_DIR, "assets", f"word_race_board_{n}.png"),
+    ]
+    for n in range(4, 10)
+}
 
+STAGE_TEXT_Y = 385
 LABEL_MAX_WIDTH = 104
 LABEL_HEIGHT = 28
 LABEL_GAP = 4
@@ -96,22 +98,17 @@ TEAM_ORDER = ["احمر", "ازرق", "اخضر", "اصفر"]
 
 class WordRaceActiveFilter(filters.MessageFilter):
     """فلتر يمنع أوامر سباق الكلمات من اعتراض ألعاب البوت الأخرى."""
-
     def __init__(self, patterns):
         super().__init__()
         self.patterns = [re.compile(p) for p in patterns]
 
     def filter(self, message):
         chat = getattr(message, "chat", None)
-
         if not chat or chat.type not in ("group", "supergroup"):
             return False
-
         if chat.id not in RACES:
             return False
-
         text = getattr(message, "text", None) or ""
-
         return any(p.fullmatch(text) for p in self.patterns)
 
 
@@ -131,6 +128,7 @@ class RaceState:
     host_name: str
     players: Dict[int, Player] = field(default_factory=dict)
     mode: Optional[str] = None  # solo / teams
+    team_count: int = 0
     stages_count: int = 5
     started: bool = False
     finished: bool = False
@@ -148,12 +146,12 @@ class RaceState:
     private_word_waiting: bool = False
     countdown_running: bool = False
     action_message_id: Optional[int] = None
+    action_timeout_task: Optional[asyncio.Task] = field(default=None, repr=False, compare=False)
+    distribution_message_id: Optional[int] = None
 
 
 RACES: Dict[int, RaceState] = {}
-
 PRIVATE_HOST_CHAT: Dict[int, int] = {}
-
 
 # ------------------------------------------------------------
 # أدوات عامة
@@ -169,21 +167,41 @@ def _normalize_word(text: str) -> str:
     return (text or "").strip()
 
 
-def _is_admin_plus(user_id: int) -> bool:
+def _get_rank_level(user_id: int) -> int:
     try:
-        return get_rank_level(user_id) > 0
+        value = int(get_permission_level(user_id))
+        if value:
+            return value
     except Exception:
-        return False
+        pass
+
+    try:
+        rank = get_rank(user_id)
+    except Exception:
+        rank = ""
+
+    levels = {
+        "مميز": 1,
+        "ادمن": 2,
+        "ادمن اساسي": 3,
+        "نائب المالك": 4,
+        "المالك": 5,
+        "Dev": 6,
+    }
+    return levels.get(rank, 0)
+
+
+def _is_admin_plus(user_id: int) -> bool:
+    return _get_rank_level(user_id) >= 2
 
 
 def _is_developer(user_id: int) -> bool:
     try:
-        return (
-            is_primary_developer(user_id)
-            or is_secondary_developer(user_id)
-        )
+        if is_primary_developer(user_id) or is_secondary_developer(user_id):
+            return True
     except Exception:
-        return False
+        pass
+    return _get_rank_level(user_id) >= 6
 
 
 def _is_controller(state: RaceState, user_id: int) -> bool:
@@ -199,7 +217,6 @@ def _mention_html(user_id: int, name: str) -> str:
         .replace("<", "&lt;")
         .replace(">", "&gt;")
     )
-
     return f'<a href="tg://user?id={user_id}">{safe}</a>'
 
 
@@ -214,13 +231,11 @@ def _team_color(team: str) -> Tuple[int, int, int]:
 
 def _load_font(size: int, bold: bool = False):
     candidates = []
-
     if bold:
         candidates += [
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
             "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
         ]
-
     else:
         candidates += [
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
@@ -228,18 +243,14 @@ def _load_font(size: int, bold: bool = False):
         ]
 
     candidates += [
-        (
-            "/usr/share/fonts/truetype/noto/NotoSansArabic-Bold.ttf"
-            if bold
-            else "/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf"
-        ),
+        "/usr/share/fonts/truetype/noto/NotoSansArabic-Bold.ttf" if bold
+        else "/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf",
     ]
 
     for path in candidates:
         if os.path.exists(path):
             try:
                 return ImageFont.truetype(path, size=size)
-
             except Exception:
                 pass
 
@@ -250,92 +261,48 @@ def _find_asset() -> Optional[str]:
     for path in ASSET_PATHS:
         if os.path.exists(path):
             return path
-
     return None
 
 
-def _base_board(stages_count: int) -> Image.Image:
-    path = _find_asset()
+def _find_stage_asset(stages_count: int) -> Optional[str]:
+    for path in STAGE_BOARD_PATHS.get(stages_count, []):
+        if os.path.exists(path):
+            return path
+    return _find_asset()
 
+
+def _base_board(stages_count: int) -> Image.Image:
+    path = _find_stage_asset(stages_count)
     if path:
         try:
             image = Image.open(path).convert("RGBA")
             return image
-
         except Exception:
             pass
 
     # fallback في حال لم يرفع المستخدم صورة القالب.
-    image = Image.new(
-        "RGBA",
-        (850, 480),
-        (10, 18, 38, 255),
-    )
-
+    image = Image.new("RGBA", (850, 480), (10, 18, 38, 255))
     draw = ImageDraw.Draw(image)
-
     title_font = _load_font(38, True)
-
-    draw.text(
-        (425, 42),
-        "سباق الكلمات",
-        font=title_font,
-        anchor="mm",
-        fill=(245, 250, 255),
-    )
-
+    draw.text((425, 42), "سباق الكلمات", font=title_font, anchor="mm",
+              fill=(245, 250, 255))
     for stage in range(1, stages_count + 1):
-        x, y = STAGE_CENTERS.get(
-            stage,
-            STAGE_CENTERS[5],
-        )
-
-        draw.rounded_rectangle(
-            (
-                x - 75,
-                y - 22,
-                x + 75,
-                y + 22,
-            ),
-            radius=12,
-            outline=(40, 190, 255),
-            width=3,
-        )
-
-        draw.text(
-            (x, y),
-            str(stage),
-            font=_load_font(22, True),
-            anchor="mm",
-            fill=(245, 250, 255),
-        )
-
+        x, y = STAGE_CENTERS.get(stage, STAGE_CENTERS[5])
+        draw.rounded_rectangle((x - 75, y - 22, x + 75, y + 22),
+                               radius=12, outline=(40, 190, 255), width=3)
+        draw.text((x, y), str(stage), font=_load_font(22, True),
+                  anchor="mm", fill=(245, 250, 255))
     return image
 
 
-def _fit_text(
-    draw,
-    text,
-    max_width,
-    start_size=16,
-    bold=True,
-):
+def _fit_text(draw, text, max_width, start_size=16, bold=True):
     size = start_size
-
     while size >= 9:
         font = _load_font(size, bold)
-
-        box = draw.textbbox(
-            (0, 0),
-            text,
-            font=font,
-        )
-
+        box = draw.textbbox((0, 0), text, font=font)
         if box[2] - box[0] <= max_width:
             return font
-
         size -= 1
-
     return _load_font(9, bold)
 
 
@@ -348,37 +315,15 @@ def _draw_glow_label(
 ):
     # الاسم فقط، بدون صورة شخصية أو رقم لاعب.
     text = _clean_name(text)
-
-    glow = Image.new(
-        "RGBA",
-        base.size,
-        (0, 0, 0, 0),
-    )
-
+    glow = Image.new("RGBA", base.size, (0, 0, 0, 0))
     gd = ImageDraw.Draw(glow)
 
-    temp_font = _fit_text(
-        gd,
-        text,
-        LABEL_MAX_WIDTH - 18,
-        16,
-        True,
-    )
-
-    bbox = gd.textbbox(
-        (0, 0),
-        text,
-        font=temp_font,
-    )
-
+    temp_font = _fit_text(gd, text, LABEL_MAX_WIDTH - 18, 16, True)
+    bbox = gd.textbbox((0, 0), text, font=temp_font)
     tw = bbox[2] - bbox[0]
     th = bbox[3] - bbox[1]
 
-    width = min(
-        LABEL_MAX_WIDTH,
-        max(54, tw + 22),
-    )
-
+    width = min(LABEL_MAX_WIDTH, max(54, tw + 22))
     height = LABEL_HEIGHT
 
     x1 = int(center_x - width / 2)
@@ -387,64 +332,28 @@ def _draw_glow_label(
     y2 = y1 + height
 
     # توهج
-    for blur, alpha, grow in [
-        (12, 85, 8),
-        (6, 130, 4),
-    ]:
-        layer = Image.new(
-            "RGBA",
-            base.size,
-            (0, 0, 0, 0),
-        )
-
+    for blur, alpha, grow in [(12, 85, 8), (6, 130, 4)]:
+        layer = Image.new("RGBA", base.size, (0, 0, 0, 0))
         ld = ImageDraw.Draw(layer)
-
         ld.rounded_rectangle(
-            (
-                x1 - grow,
-                y1 - grow,
-                x2 + grow,
-                y2 + grow,
-            ),
+            (x1 - grow, y1 - grow, x2 + grow, y2 + grow),
             radius=10 + grow // 2,
-            fill=(
-                rgb[0],
-                rgb[1],
-                rgb[2],
-                alpha,
-            ),
+            fill=(rgb[0], rgb[1], rgb[2], alpha),
         )
-
-        layer = layer.filter(
-            ImageFilter.GaussianBlur(blur)
-        )
-
+        layer = layer.filter(ImageFilter.GaussianBlur(blur))
         base.alpha_composite(layer)
 
     gd.rounded_rectangle(
         (x1, y1, x2, y2),
         radius=8,
         fill=(12, 20, 40, 235),
-        outline=(
-            rgb[0],
-            rgb[1],
-            rgb[2],
-            255,
-        ),
+        outline=(rgb[0], rgb[1], rgb[2], 255),
         width=2,
     )
 
     # لمعان داخلي خفيف
-    gd.line(
-        (
-            x1 + 6,
-            y1 + 2,
-            x2 - 6,
-            y1 + 2,
-        ),
-        fill=(255, 255, 255, 70),
-        width=1,
-    )
+    gd.line((x1 + 6, y1 + 2, x2 - 6, y1 + 2),
+            fill=(255, 255, 255, 70), width=1)
 
     gd.text(
         (center_x, center_y + 1),
@@ -460,130 +369,58 @@ def _draw_glow_label(
 def _grouped_positions(state: RaceState):
     """
     يعيد العناصر مجمعة حسب المرحلة.
-
     في الفردي: اللاعبين.
-
     في الفرق: الفرق الموجودة فقط.
     """
-
-    groups: Dict[
-        int,
-        List[Tuple[str, Tuple[int, int, int]]]
-    ] = {
-        stage: []
-        for stage in range(
-            1,
-            state.stages_count + 1
-        )
+    groups: Dict[int, List[Tuple[str, Tuple[int, int, int]]]] = {
+        stage: [] for stage in range(1, state.stages_count + 1)
     }
 
     if state.mode == "teams":
         teams = {}
-
         for p in state.players.values():
             if p.team:
                 teams[p.team] = p.stage
-
         for team, stage in teams.items():
             if stage < 1:
                 stage = 1
-
             if stage > state.stages_count:
                 stage = state.stages_count
-
-            groups.setdefault(
-                stage,
-                []
-            ).append(
-                (
-                    _team_title(team),
-                    _team_color(team),
-                )
+            groups.setdefault(stage, []).append(
+                (_team_title(team), _team_color(team))
             )
-
     else:
         for p in state.players.values():
-            stage = max(
-                1,
-                min(
-                    state.stages_count,
-                    p.stage,
-                ),
-            )
-
-            groups.setdefault(
-                stage,
-                []
-            ).append(
-                (
-                    p.name,
-                    p.label_color,
-                )
+            stage = max(1, min(state.stages_count, p.stage))
+            groups.setdefault(stage, []).append(
+                (p.name, p.label_color)
             )
 
     return groups
 
 
 def _render_board(state: RaceState) -> bytes:
-    base = _base_board(
-        state.stages_count
-    ).convert("RGBA")
-
+    base = _base_board(state.stages_count).convert("RGBA")
     groups = _grouped_positions(state)
 
     # لكل مرحلة، نضع الملصقات فوق بعضها عموديًا حول مركز المرحلة.
     for stage, entries in groups.items():
-
         if not entries:
             continue
 
-        cx, cy = STAGE_CENTERS.get(
-            stage,
-            STAGE_CENTERS[5],
-        )
-
+        cx, cy = STAGE_CENTERS.get(stage, STAGE_CENTERS[5])
         # الملصقات تظهر فوق المربع، مثل التصميم المرفوع.
         label_center_y = cy - 54
-
-        total_h = (
-            len(entries) * LABEL_HEIGHT
-            + (len(entries) - 1) * LABEL_GAP
-        )
-
-        start_y = (
-            label_center_y
-            - total_h / 2
-        )
+        total_h = len(entries) * LABEL_HEIGHT + (len(entries) - 1) * LABEL_GAP
+        start_y = label_center_y - total_h / 2
 
         for i, (label, rgb) in enumerate(entries):
-            ly = int(
-                start_y
-                + LABEL_HEIGHT / 2
-                + i * (
-                    LABEL_HEIGHT
-                    + LABEL_GAP
-                )
-            )
-
-            _draw_glow_label(
-                base,
-                cx,
-                ly,
-                label,
-                rgb,
-            )
+            ly = int(start_y + LABEL_HEIGHT / 2 + i * (LABEL_HEIGHT + LABEL_GAP))
+            _draw_glow_label(base, cx, ly, label, rgb)
 
     out = io.BytesIO()
-
-    base.convert("RGB").save(
-        out,
-        format="JPEG",
-        quality=88,
-        optimize=True,
-    )
-
+    base.convert("RGB").save(out, format="JPEG", quality=88, optimize=True)
     out.seek(0)
-
     return out.getvalue()
 
 
@@ -592,7 +429,6 @@ async def _send_or_edit_board(
     context: ContextTypes.DEFAULT_TYPE,
 ):
     data = _render_board(state)
-
     bio = io.BytesIO(data)
     bio.name = "word_race.jpg"
 
@@ -601,13 +437,9 @@ async def _send_or_edit_board(
             await context.bot.edit_message_media(
                 chat_id=state.chat_id,
                 message_id=state.board_message_id,
-                media=InputMediaPhoto(
-                    media=bio
-                ),
+                media=InputMediaPhoto(media=bio),
             )
-
             return
-
         except Exception:
             state.board_message_id = None
 
@@ -615,24 +447,14 @@ async def _send_or_edit_board(
         chat_id=state.chat_id,
         photo=bio,
     )
-
     state.board_message_id = msg.message_id
 
 
-async def _safe_delete(
-    context,
-    chat_id: int,
-    message_id: Optional[int],
-):
+async def _safe_delete(context, chat_id: int, message_id: Optional[int]):
     if not message_id:
         return
-
     try:
-        await context.bot.delete_message(
-            chat_id,
-            message_id,
-        )
-
+        await context.bot.delete_message(chat_id, message_id)
     except Exception:
         pass
 
@@ -640,24 +462,18 @@ async def _safe_delete(
 def _state(update: Update) -> Optional[RaceState]:
     if not update.effective_chat:
         return None
-
-    return RACES.get(
-        update.effective_chat.id
-    )
+    return RACES.get(update.effective_chat.id)
 
 
 async def _deny_controller(update: Update):
     if update.message:
-        await update.message.reply_text(
-            "❌ هذا الأمر خاص بأدمن اللعبة."
-        )
+        await update.message.reply_text("❌ هذا الأمر خاص بأدمن اللعبة.")
 
 
 async def _ensure_group(update: Update) -> bool:
     return bool(
         update.effective_chat
-        and update.effective_chat.type
-        in ("group", "supergroup")
+        and update.effective_chat.type in ("group", "supergroup")
     )
 
 
@@ -675,51 +491,24 @@ async def start_word_race(
     user = update.effective_user
     chat_id = update.effective_chat.id
 
-    # أولًا: التأكد من الصلاحية
-    # حتى لا يتم قفل اللعبة على شخص غير مصرح له.
     if not user or not _is_admin_plus(user.id):
         return
 
-    # إذا كانت هناك حالة سباق موجودة بالفعل.
     if chat_id in RACES:
-        await update.message.reply_text(
-            "⚠️ يوجد سباق كلمات قائم بالفعل في هذه المجموعة."
-        )
-        return
-
-    # منع تشغيل أكثر من لعبة كبيرة في نفس القروب.
-    big_game = get_big_game(chat_id)
-
-    if big_game:
-        await update.message.reply_text(
-            f"❌ فيه لعبة شغالة حاليًا!: "
-            f"{big_game['name']}\n\n"
-            "🛑 أنهِ اللعبة الحالية أولًا قبل بدء لعبة أخرى."
-        )
-        return
-
-    # قفل اللعبة الكبيرة.
-    if not lock_big_game(
-        chat_id,
-        WORD_RACE_LOCK_KEY,
-        "سباق الكلمات 🐎"
-    ):
+        await update.message.reply_text("⚠️ يوجد سباق كلمات قائم بالفعل في هذه المجموعة.")
         return
 
     state = RaceState(
         chat_id=chat_id,
         host_id=user.id,
-        host_name=_clean_name(
-            user.full_name
-        ),
+        host_name=_clean_name(user.full_name),
     )
-
     RACES[chat_id] = state
 
     await update.message.reply_text(
-        "تم بدأ لعبة (سباق الكلمات 🐎)\n\n"
+        "<b>تم بدأ لعبة (سباق الكلمات 🐎)</b>\n\n"
         "اكتب `دخول`",
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
 
 
@@ -731,12 +520,10 @@ async def join_word_race(
         return
 
     state = _state(update)
-
     if not state or state.started or state.finished:
         return
 
     user = update.effective_user
-
     if not user:
         return
 
@@ -745,18 +532,12 @@ async def join_word_race(
 
     state.players[user.id] = Player(
         user_id=user.id,
-        name=_clean_name(
-            user.full_name
-        ),
-        label_color=random.choice(
-            SOLO_LABEL_COLORS
-        ),
+        name=_clean_name(user.full_name),
+        label_color=random.choice(SOLO_LABEL_COLORS),
     )
 
     await update.message.reply_text(
-        f"✅ انضم "
-        f"{_clean_name(user.full_name)} "
-        f"إلى لعبة سباق الكلمات🐎!\n"
+        f"✅ انضم {_clean_name(user.full_name)} إلى لعبة سباق الكلمات🐎!\n"
         f"👥 العدد: {len(state.players)}"
     )
 
@@ -769,17 +550,14 @@ async def leave_word_race(
         return
 
     state = _state(update)
-
     if not state or state.started:
         return
 
     user = update.effective_user
-
     if not user or user.id not in state.players:
         return
 
     name = state.players[user.id].name
-
     del state.players[user.id]
 
     await update.message.reply_text(
@@ -804,105 +582,95 @@ async def word_race_mode(
 
     if not state or state.started:
         return
-
-    if not user or not _is_controller(
-        state,
-        user.id
-    ):
+    if not user or not _is_controller(state, user.id):
         await _deny_controller(update)
         return
-
     if len(state.players) < 2:
-        await update.message.reply_text(
-            "❌ لازم عدد اللاعبين يكون اثنين على الأقل."
-        )
+        await update.message.reply_text("❌ لازم يكون فيه لاعبين اثنين على الأقل.")
         return
 
     keyboard = InlineKeyboardMarkup([
         [
-            InlineKeyboardButton(
-                "فردي",
-                callback_data="wr:mode:solo",
-            ),
-            InlineKeyboardButton(
-                "فرق",
-                callback_data="wr:mode:teams",
-            ),
+            InlineKeyboardButton("فردي", callback_data="wr:mode:solo"),
+            InlineKeyboardButton("فرق", callback_data="wr:mode:teams"),
         ]
     ])
-
     await update.message.reply_text(
         "اختر الطور الذي تريده",
         reply_markup=keyboard,
     )
 
 
-async def _ask_stage_count(
-    query,
-    state: RaceState,
-):
-    keyboard = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton(
-                "4",
-                callback_data="wr:stages:4",
-            ),
-            InlineKeyboardButton(
-                "5",
-                callback_data="wr:stages:5",
-            ),
-            InlineKeyboardButton(
-                "6",
-                callback_data="wr:stages:6",
-            ),
-        ]
-    ])
+def _active_teams(state: RaceState) -> List[str]:
+    if not (2 <= state.team_count <= 4):
+        return []
+    return TEAM_ORDER[:state.team_count]
 
-    await query.message.reply_text(
-        "اختر عدد المراحل",
-        reply_markup=keyboard,
+
+async def _ask_team_count(query, state: RaceState):
+    buttons = [
+        InlineKeyboardButton("فريقين 2", callback_data="wr:teams:2"),
+        InlineKeyboardButton("ثلاث أفرقة 3", callback_data="wr:teams:3"),
+        InlineKeyboardButton("أربع أفرقة 4", callback_data="wr:teams:4"),
+    ]
+    await query.get_bot().send_message(
+        chat_id=state.chat_id,
+        text="اختر عدد الأفرقة!",
+        reply_markup=InlineKeyboardMarkup([buttons]),
+    )
+
+
+async def _ask_stage_count(query, state: RaceState):
+    labels = {
+        4: "أربع مراحل 4", 5: "خمس مراحل 5", 6: "ست مراحل 6",
+        7: "سبع مراحل 7", 8: "ثمان مراحل 8", 9: "تسع مراحل 9",
+    }
+    buttons = [InlineKeyboardButton(labels[n], callback_data=f"wr:stages:{n}") for n in range(4, 10)]
+    await query.get_bot().send_message(
+        chat_id=state.chat_id,
+        text="اختر عدد المراحل التي تريدها.",
+        reply_markup=InlineKeyboardMarkup([buttons[:3], buttons[3:6]]),
     )
 
 
 async def _show_distribution(
     update: Update,
     state: RaceState,
+    context: ContextTypes.DEFAULT_TYPE,
 ):
-    lines = [
-        "📋 قائمة الفرق — سباق الكلمات",
-        "",
-    ]
-
-    for team in TEAM_ORDER:
-        members = [
-            p
-            for p in state.players.values()
-            if p.team == team
-        ]
-
-        lines.append(
-            f"{_team_title(team)}:"
-        )
-
+    if state.mode != "teams" or not state.team_count:
+        return
+    lines = ["📋 قائمة الفرق — سباق الكلمات", ""]
+    for team in _active_teams(state):
+        members = [p for p in state.players.values() if p.team == team]
+        lines.append(f"{_team_title(team)}:")
         if members:
-            for i, p in enumerate(
-                members,
-                1
-            ):
-                lines.append(
-                    f"  {i}. {p.name}"
-                )
-
+            for i, p in enumerate(members, 1):
+                lines.append(f"  {i}. {p.name}")
         else:
-            lines.append(
-                "  لا يوجد"
-            )
-
+            lines.append("  لا يوجد")
         lines.append("")
-
-    await update.message.reply_text(
-        "\n".join(lines).strip()
-    )
+    text = "\n".join(lines).strip()
+    if state.distribution_message_id:
+        try:
+            await context.bot.edit_message_text(
+                chat_id=state.chat_id,
+                message_id=state.distribution_message_id,
+                text=text,
+            )
+            return
+        except Exception:
+            state.distribution_message_id = None
+    msg = await context.bot.send_message(chat_id=state.chat_id, text=text)
+    state.distribution_message_id = msg.message_id
+    try:
+        await context.bot.pin_chat_message(
+            chat_id=state.chat_id,
+            message_id=msg.message_id,
+            disable_notification=True,
+        )
+    except Exception:
+        pass
 
 
 async def word_race_distribution(
@@ -915,45 +683,23 @@ async def word_race_distribution(
     state = _state(update)
     user = update.effective_user
 
-    if (
-        not state
-        or state.started
-        or not user
-    ):
+    if not state or state.started or not user:
         return
-
-    if not _is_controller(
-        state,
-        user.id
-    ):
+    if not _is_controller(state, user.id):
         await _deny_controller(update)
         return
-
     if state.mode != "teams":
-        await update.message.reply_text(
-            "❌ التوزيع متاح في طور الفرق فقط."
-        )
+        await update.message.reply_text("❌ التوزيع متاح في طور الفرق فقط.")
         return
 
-    # توزيع متوازن قدر الإمكان على الفرق الأربعة.
-    players = list(
-        state.players.values()
-    )
-
+    if not (2 <= state.team_count <= 4):
+        return
+    players = list(state.players.values())
     random.shuffle(players)
-
-    for p in players:
-        p.team = None
-
+    active = _active_teams(state)
     for i, p in enumerate(players):
-        p.team = TEAM_ORDER[
-            i % len(TEAM_ORDER)
-        ]
-
-    await _show_distribution(
-        update,
-        state,
-    )
+        p.team = active[i % len(active)]
+    await _show_distribution(update, state, context)
 
 
 async def word_race_manual_team(
@@ -968,129 +714,36 @@ async def word_race_manual_team(
 
     if not state or not user:
         return
-
-    # فقط صاحب اللعبة أو المطورون
-    if not _is_controller(
-        state,
-        user.id
-    ):
+    if not _is_controller(state, user.id):
         await _deny_controller(update)
         return
 
-    # الأمر:
-    # .اضافة احمر
-    # .اضافة ازرق
-    # .اضافة اخضر
-    # .اضافة اصفر
-
-    # تم إصلاح الـ Regex هنا.
-    match = re.match(
-        r"^\.اضافة\s+(احمر|ازرق|اخضر|اصفر)$",
-        (update.message.text or "").strip()
-    )
-
+    match = re.match(r"^\.اضافة\s+(احمر|ازرق|اخضر|اصفر)$",
+                      update.message.text.strip())
     if not match:
         return
 
-    # لازم يكون الأمر ردًا على رسالة اللاعب.
     if not update.message.reply_to_message:
-        await update.message.reply_text(
-            "❌ لازم ترد على رسالة اللاعب."
-        )
+        await update.message.reply_text("❌ لازم ترد على رسالة اللاعب.")
         return
 
-    target = (
-        update.message.reply_to_message.from_user
+    target = update.message.reply_to_message.from_user
+    if not target or target.id not in state.players:
+        await update.message.reply_text("❌ هذا اللاعب ليس داخل اللعبة.")
+        return
+
+    team = match.group(1)
+    state.players[target.id].team = team
+
+    await update.message.reply_text(
+        f"✅ تمت إضافة {state.players[target.id].name} إلى الفريق "
+        f"{_team_title(team)}"
     )
 
-    if not target:
-        await update.message.reply_text(
-            "❌ ما قدرت أحدد اللاعب."
-        )
-        return
-
-    # تحديد الفريق
-    team = match.group(1)
-
-    # --------------------------------------------------
-    # طور الفردي
-    # --------------------------------------------------
-
-    if state.mode == "solo":
-        await update.message.reply_text(
-            "❌ أمر إضافة الفرق يعمل فقط في طور الفرق."
-        )
-        return
-
-    # --------------------------------------------------
-    # اللاعب خارج اللعبة → ندخله مباشرة
-    # --------------------------------------------------
-
-    if target.id not in state.players:
-        state.players[target.id] = Player(
-            user_id=target.id,
-            name=_clean_name(
-                target.full_name
-            ),
-            stage=1,
-            team=team,
-            label_color=random.choice(
-                SOLO_LABEL_COLORS
-            ),
-        )
-
-        await update.message.reply_text(
-            f"✅ تمت إضافة "
-            f"{state.players[target.id].name} "
-            f"إلى الفريق "
-            f"{_team_title(team)}"
-        )
-
-    # --------------------------------------------------
-    # اللاعب داخل اللعبة → تغيير فريقه
-    # --------------------------------------------------
-
-    else:
-        player = state.players[target.id]
-        old_team = player.team
-
-        # إذا كان أصلًا في نفس الفريق
-        if old_team == team:
-            await update.message.reply_text(
-                f"ℹ️ {player.name} موجود بالفعل في الفريق "
-                f"{_team_title(team)}."
-            )
-            return
-
-        player.team = team
-
-        await update.message.reply_text(
-            f"✅ تم نقل {player.name} إلى الفريق "
-            f"{_team_title(team)}"
-        )
-
-    # --------------------------------------------------
-    # تحديث اللوحة / التوزيع
-    # --------------------------------------------------
-
-    if state.started:
-        # أثناء السباق:
-        # اللاعب الجديد يبدأ من المرحلة 1،
-        # واللاعب المنقول يحتفظ بمرحلته الحالية.
-
-        await _send_or_edit_board(
-            state,
-            context
-        )
-
-    else:
-        # قبل بداية السباق:
-        # تحديث قائمة الفرق مباشرة.
-
-        await _show_distribution(
-            update,
-            state
-        )
+    if state.mode == "teams":
+        await _show_distribution(update, state, context)
+        if state.started:
+            await _send_or_edit_board(state, context)
 
 
 # ------------------------------------------------------------
@@ -1107,60 +760,34 @@ async def begin_word_race(
     state = _state(update)
     user = update.effective_user
 
-    if (
-        not state
-        or not user
-        or state.started
-    ):
+    if not state or not user or state.started:
         return
-
-    if not _is_controller(
-        state,
-        user.id
-    ):
+    if not _is_controller(state, user.id):
         return
 
     if len(state.players) < 2:
-        await update.message.reply_text(
-            "❌ لازم يكون فيه لاعبين اثنين على الأقل."
-        )
+        await update.message.reply_text("❌ لازم يكون فيه لاعبين اثنين على الأقل.")
         return
 
     if not state.mode:
-        await update.message.reply_text(
-            "❌ اختر الطور أولًا باستخدام `.الطور`."
-        )
+        await update.message.reply_text("❌ اختر الطور أولًا باستخدام `.الطور`.")
         return
 
     if state.mode == "teams":
-
-        if not any(
-            p.team
-            for p in state.players.values()
-        ):
-            await update.message.reply_text(
-                "❌ وزّع اللاعبين أولًا باستخدام "
-                "`.توزيع` أو `.اضافة`."
-            )
+        if not any(p.team for p in state.players.values()):
+            await update.message.reply_text("❌ وزّع اللاعبين أولًا باستخدام `.توزيع` أو `.اضافة`.")
             return
-
-        # أي لاعب بلا فريق يدخل تلقائيًا
-        # في الفريق الأقل عددًا.
+        if not (2 <= state.team_count <= 4):
+            await update.message.reply_text("❌ اختر عدد الأفرقة أولًا.")
+            return
+        active = _active_teams(state)
+        if not any(p.team in active for p in state.players.values()):
+            await update.message.reply_text("❌ وزّع اللاعبين أولًا باستخدام `.توزيع` أو `.اضافة`.")
+            return
         for p in state.players.values():
-
-            if not p.team:
-                counts = {
-                    t: sum(
-                        x.team == t
-                        for x in state.players.values()
-                    )
-                    for t in TEAM_ORDER
-                }
-
-                p.team = min(
-                    TEAM_ORDER,
-                    key=lambda t: counts[t]
-                )
+            if p.team not in active:
+                counts = {t: sum(x.team == t for x in state.players.values()) for t in active}
+                p.team = min(active, key=lambda t: counts[t])
 
     for p in state.players.values():
         p.stage = 1
@@ -1169,34 +796,29 @@ async def begin_word_race(
     state.current_round = 1
     state.countdown_running = True
 
-    await update.message.reply_text(
-        "🏁 استعدوا للسباق! 🏁"
+    await context.bot.send_message(
+        chat_id=state.chat_id,
+        text="<b>🏁 استعدوا للسباق! 🏁</b>",
+        parse_mode="HTML",
     )
-
     for n in (3, 2, 1):
         await asyncio.sleep(1)
-
-        await update.message.reply_text(
-            f"🔢 {n}"
+        await context.bot.send_message(
+            chat_id=state.chat_id,
+            text=f"<b>{n} 🔢….</b>",
+            parse_mode="HTML",
         )
 
     await asyncio.sleep(0.5)
-
-    await update.message.reply_text(
-        "بدأ السباق 🐎🔥"
+    await context.bot.send_message(
+        chat_id=state.chat_id,
+        text="<b>🚀 انطلقنا!</b>",
+        parse_mode="HTML",
     )
-
-    await _send_or_edit_board(
-        state,
-        context
-    )
+    await _send_or_edit_board(state, context)
 
     state.countdown_running = False
-
-    await _request_word_from_host(
-        state,
-        context
-    )
+    await _request_word_from_host(state, context)
 
 
 async def _request_word_from_host(
@@ -1204,45 +826,33 @@ async def _request_word_from_host(
     context: ContextTypes.DEFAULT_TYPE,
 ):
     state.private_word_waiting = True
-
     state.accepted_words.clear()
     state.display_word = ""
-
     state.answer_locked = False
     state.action_pending = False
-
     state.pending_answerer_id = None
     state.pending_answerer_name = ""
-
     state.hint_sent = False
 
-    PRIVATE_HOST_CHAT[
-        state.host_id
-    ] = state.chat_id
+    PRIVATE_HOST_CHAT[state.host_id] = state.chat_id
 
     try:
         await context.bot.send_message(
             chat_id=state.host_id,
             text=(
-                f"✏️ سباق الكلمات - الجولة "
-                f"{state.current_round}\n\n"
+                f"✏️ سباق الكلمات - الجولة {state.current_round}\n\n"
                 "أرسل الكلمة أو الكلمات المطلوبة بهذه الصيغة:\n"
                 "الكلمة\n"
                 "أو للكلمات البديلة المقبولة:\n"
                 "كلمة1 - كلمة2 - كلمة3"
             ),
         )
-
     except Exception:
-        # لا نكسر اللعبة إذا كان الحكم
-        # لم يبدأ محادثة خاصة مع البوت.
-
+        # لا نكسر اللعبة إذا كان الحكم لم يبدأ محادثة خاصة مع البوت.
         await context.bot.send_message(
             chat_id=state.chat_id,
-            text=(
-                "⚠️ لم أستطع إرسال الكلمة للحكم في الخاص. "
-                "يجب أن يفتح الحكم محادثة البوت أولًا."
-            ),
+            text="⚠️ لم أستطع إرسال الكلمة للأدمن في الخاص. "
+                 "يجب أن يفتح الادمن محادثة البوت أولًا."
         )
 
 
@@ -1254,72 +864,45 @@ async def check_word_race_message(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
-    if (
-        not update.message
-        or not update.message.text
-    ):
+    if not update.message or not update.message.text:
         return
 
     text = update.message.text
     user = update.effective_user
 
     # الخاص: كلمة الحكم.
-    if (
-        update.effective_chat
-        and update.effective_chat.type
-        == "private"
-    ):
+    if update.effective_chat and update.effective_chat.type == "private":
         if not user:
             return
 
-        chat_id = PRIVATE_HOST_CHAT.get(
-            user.id
-        )
-
+        chat_id = PRIVATE_HOST_CHAT.get(user.id)
         if not chat_id:
             return
 
         state = RACES.get(chat_id)
-
-        if (
-            not state
-            or not state.started
-            or not state.private_word_waiting
-        ):
+        if not state or not state.started or not state.private_word_waiting:
             return
-
         if user.id != state.host_id:
             return
 
         raw = text.strip()
-
         if not raw:
             return
 
-        words = [
-            _normalize_word(x)
-            for x in raw.split("-")
-        ]
-
-        words = [
-            x for x in words
-            if x
-        ]
-
+        words = [_normalize_word(x) for x in raw.split("-")]
+        words = [x for x in words if x]
         if not words:
             return
 
         state.accepted_words = set(words)
         state.display_word = words[0]
-
         state.private_word_waiting = False
 
         await update.message.reply_text(
-            f"✅ تم حفظ الكلمة: "
-            f"{words[0]}\n"
+            f"✅ تم حفظ الكلمة: {words[0]}\n"
             + (
-                "الكلمات المقبولة: "
-                + " + ".join(words[1:])
+                "الكلمات المقبولة: " +
+                " + ".join(words[1:])
                 if len(words) > 1
                 else ""
             )
@@ -1328,102 +911,72 @@ async def check_word_race_message(
         await context.bot.send_message(
             chat_id=state.chat_id,
             text=(
-                f"📢 يا الادمن "
-                f"{_mention_html(state.host_id, state.host_name)}، "
-                f"لمح للكلمة المطلوبة في الجولة "
-                f"({state.current_round})!"
+                f"📢 يا حكم {_mention_html(state.host_id, state.host_name)}، "
+                f"لمح للكلمة المطلوبة في الجولة ({state.current_round})!"
             ),
             parse_mode="HTML",
         )
-
         state.hint_sent = True
-
         return
 
     # المجموعة: إجابات اللاعبين.
-    if (
-        not update.effective_chat
-        or update.effective_chat.type
-        not in ("group", "supergroup")
+    if not update.effective_chat or update.effective_chat.type not in (
+        "group", "supergroup"
     ):
         return
 
     state = _state(update)
-
-    if (
-        not state
-        or not state.started
-        or state.finished
-    ):
+    if not state or not state.started or state.finished:
         return
 
-    if (
-        state.private_word_waiting
-        or state.waiting_continue
-    ):
+    if state.private_word_waiting or state.waiting_continue:
         return
 
-    if (
-        state.answer_locked
-        or state.action_pending
-    ):
+    if state.answer_locked or state.action_pending:
         return
 
     if not state.accepted_words:
         return
 
-    if (
-        not user
-        or user.id not in state.players
-    ):
+    if not user or user.id not in state.players:
         return
 
-    # حتى لو كان الحكم مشاركًا،
-    # لا تحتسب إجابته من المجموعة.
+    # حتى لو كان الحكم مشاركًا، لا تحتسب إجابته من المجموعة.
     if user.id == state.host_id:
         return
 
     answer = _normalize_word(text)
-
     if answer not in state.accepted_words:
         return
 
     # أول إجابة صحيحة فقط.
     state.answer_locked = True
     state.action_pending = True
-
     state.pending_answerer_id = user.id
-    state.pending_answerer_name = _clean_name(
-        user.full_name
-    )
+    state.pending_answerer_name = _clean_name(user.full_name)
 
     if state.mode == "solo":
         keyboard = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton(
                     "تقديم",
-                    callback_data=(
-                        f"wr:advance:{user.id}"
-                    ),
+                    callback_data=f"wr:advance:{user.id}",
                 ),
                 InlineKeyboardButton(
                     "ترجيع",
-                    callback_data=(
-                        f"wr:backmenu:{user.id}"
-                    ),
+                    callback_data=f"wr:backmenu:{user.id}",
                 ),
             ]
         ])
-
-        await update.message.reply_text(
-            f"🎉 إجابة صحيحة! من "
-            f"{state.pending_answerer_name}\n"
-            f"الكلمة الصحيحة هي: "
-            f"{state.display_word}\n\n"
-            "اختر تقديم فريقك! او ترجيع فريق الخصم.",
+        sent = await update.message.reply_text(
+            f"<b>🎉 إجابة صحيحة! من {state.pending_answerer_name}\n"
+            f"الكلمة الصحيحة هي: {state.display_word}\n\n"
+            "اختر تقديم فريقك! او ترجيع فريق الخصم.</b>",
             reply_markup=keyboard,
+            parse_mode="HTML",
         )
-
+        state.action_message_id = sent.message_id
+        _start_action_timeout(state, context, user.id)
         return
 
     # الفرق.
@@ -1433,82 +986,52 @@ async def check_word_race_message(
     buttons = [
         InlineKeyboardButton(
             "تقديم",
-            callback_data=(
-                f"wr:advance:{user.id}"
-            ),
+            callback_data=f"wr:advance:{user.id}",
         )
     ]
 
     for team in TEAM_ORDER:
-        if (
-            team != own_team
-            and any(
-                p.team == team
-                for p in state.players.values()
-            )
+        if team != own_team and any(
+            p.team == team for p in state.players.values()
         ):
             buttons.append(
                 InlineKeyboardButton(
                     f"ترجيع {_team_title(team)}",
-                    callback_data=(
-                        f"wr:backteam:{user.id}:{team}"
-                    ),
+                    callback_data=f"wr:backteam:{user.id}:{team}",
                 )
             )
 
-    await update.message.reply_text(
-        f"🎉 إجابة صحيحة! من "
-        f"{state.pending_answerer_name}\n"
-        f"الكلمة الصحيحة هي: "
-        f"{state.display_word}\n\n"
-        "اختر تقديم فريقك! او ترجيع فريق الخصم.",
-        reply_markup=InlineKeyboardMarkup(
-            [buttons]
-        ),
+    sent = await update.message.reply_text(
+        f"<b>🎉 إجابة صحيحة! من {state.pending_answerer_name}\n"
+        f"الكلمة الصحيحة هي: {state.display_word}\n\n"
+        "اختر تقديم فريقك! او ترجيع فريق الخصم.</b>",
+        reply_markup=InlineKeyboardMarkup([buttons]),
+        parse_mode="HTML",
     )
+    state.action_message_id = sent.message_id
+    _start_action_timeout(state, context, user.id)
 
 
 # ------------------------------------------------------------
 # ترجيع الفردي: اختيار الخصم
 # ------------------------------------------------------------
 
-async def _solo_back_menu(
-    query,
-    state: RaceState,
-    answerer_id: int,
-):
+async def _solo_back_menu(query, state: RaceState, answerer_id: int):
     buttons = []
-
     for p in state.players.values():
-
         if p.user_id != answerer_id:
             buttons.append(
                 InlineKeyboardButton(
                     p.name,
-                    callback_data=(
-                        f"wr:backplayer:"
-                        f"{answerer_id}:"
-                        f"{p.user_id}"
-                    ),
+                    callback_data=f"wr:backplayer:{answerer_id}:{p.user_id}",
                 )
             )
 
     if not buttons:
-        await query.answer(
-            "لا يوجد خصم.",
-            show_alert=True,
-        )
+        await query.answer("لا يوجد خصم.", show_alert=True)
         return
 
-    rows = [
-        buttons[i:i + 2]
-        for i in range(
-            0,
-            len(buttons),
-            2
-        )
-    ]
-
+    rows = [buttons[i:i + 2] for i in range(0, len(buttons), 2)]
     await query.edit_message_reply_markup(
         reply_markup=InlineKeyboardMarkup(rows)
     )
@@ -1518,126 +1041,239 @@ async def _solo_back_menu(
 # تطبيق الحركة
 # ------------------------------------------------------------
 
-def _advance_player(
-    state: RaceState,
-    user_id: int,
-) -> Tuple[bool, bool]:
+def _advance_player(state: RaceState, user_id: int) -> Tuple[bool, bool]:
     """
     return (reached_final, won)
     """
-
     p = state.players.get(user_id)
-
     if not p:
         return False, False
 
     if p.stage < state.stages_count:
         p.stage += 1
-
-        return (
-            p.stage == state.stages_count,
-            False,
-        )
+        return p.stage == state.stages_count, False
 
     return True, True
 
 
-def _back_player(
-    state: RaceState,
-    user_id: int,
-) -> bool:
+def _back_player(state: RaceState, user_id: int) -> bool:
     p = state.players.get(user_id)
-
     if not p:
         return False
-
     old = p.stage
-
-    p.stage = max(
-        1,
-        p.stage - 1
-    )
-
+    p.stage = max(1, p.stage - 1)
     return old != p.stage
 
 
-def _team_stage(
-    state: RaceState,
-    team: str,
-) -> int:
-    members = [
-        p
-        for p in state.players.values()
-        if p.team == team
-    ]
-
-    return (
-        members[0].stage
-        if members
-        else 1
-    )
+def _team_stage(state: RaceState, team: str) -> int:
+    members = [p for p in state.players.values() if p.team == team]
+    return members[0].stage if members else 1
 
 
-def _advance_team(
-    state: RaceState,
-    team: str,
-) -> Tuple[bool, bool]:
-    members = [
-        p
-        for p in state.players.values()
-        if p.team == team
-    ]
-
+def _advance_team(state: RaceState, team: str) -> Tuple[bool, bool]:
+    members = [p for p in state.players.values() if p.team == team]
     if not members:
         return False, False
 
-    old = _team_stage(
-        state,
-        team
-    )
-
-    new = min(
-        state.stages_count,
-        old + 1
-    )
-
+    old = _team_stage(state, team)
+    new = min(state.stages_count, old + 1)
     for p in members:
         p.stage = new
 
-    return (
-        new == state.stages_count,
-        new == state.stages_count
-        and old == state.stages_count,
-    )
+    return new == state.stages_count, new == state.stages_count and old == state.stages_count
 
 
-def _back_team(
-    state: RaceState,
-    team: str,
-) -> bool:
-    members = [
-        p
-        for p in state.players.values()
-        if p.team == team
-    ]
-
+def _back_team(state: RaceState, team: str) -> bool:
+    members = [p for p in state.players.values() if p.team == team]
     if not members:
         return False
 
-    old = _team_stage(
-        state,
-        team
-    )
-
-    new = max(
-        1,
-        old - 1
-    )
-
+    old = _team_stage(state, team)
+    new = max(1, old - 1)
     for p in members:
         p.stage = new
 
     return old != new
+
+
+# ------------------------------------------------------------
+# مؤقت اختيار الحركة
+# ------------------------------------------------------------
+
+async def _cancel_action_timeout(state: RaceState):
+    task = state.action_timeout_task
+    state.action_timeout_task = None
+    if not task or task.done() or task is asyncio.current_task():
+        return
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+
+async def _auto_advance_after_timeout(
+    state: RaceState,
+    context: ContextTypes.DEFAULT_TYPE,
+    answerer_id: int,
+):
+    try:
+        await asyncio.sleep(30)
+    except asyncio.CancelledError:
+        return
+
+    if state.finished or not state.action_pending:
+        return
+    if state.pending_answerer_id != answerer_id:
+        return
+
+    # نفس اختيار «تقديم» الطبيعي، بدون إنشاء إجابة جديدة.
+    await _apply_advance_action(state, context, answerer_id)
+
+
+def _start_action_timeout(
+    state: RaceState,
+    context: ContextTypes.DEFAULT_TYPE,
+    answerer_id: int,
+):
+    old = state.action_timeout_task
+    if old and not old.done():
+        old.cancel()
+    state.action_timeout_task = asyncio.create_task(
+        _auto_advance_after_timeout(state, context, answerer_id)
+    )
+
+
+async def _apply_advance_action(
+    state: RaceState,
+    context: ContextTypes.DEFAULT_TYPE,
+    answerer_id: int,
+    query=None,
+):
+    if state.finished or not state.action_pending:
+        return
+    if state.pending_answerer_id != answerer_id:
+        return
+
+    await _cancel_action_timeout(state)
+
+    if state.mode == "teams":
+        answerer = state.players.get(answerer_id)
+        if not answerer or not answerer.team:
+            return
+
+        team = answerer.team
+        old_stage = _team_stage(state, team)
+        if old_stage >= state.stages_count:
+            if query is not None:
+                try:
+                    await query.edit_message_text("<b>🎉 إجابة صحيحة! من " + state.pending_answerer_name + "\n\nالكلمة الصحيحة هي: " + state.display_word + "\n\n✅ تم اختيار: تقديم</b>", parse_mode="HTML")
+                except Exception:
+                    pass
+            else:
+                # timeout: لا توجد query، نعدل رسالة الإجابة مباشرة إذا كانت محفوظة.
+                if state.action_message_id:
+                    try:
+                        await context.bot.edit_message_text(
+                            chat_id=state.chat_id,
+                            message_id=state.action_message_id,
+                            text=(f"<b>🎉 إجابة صحيحة! من {state.pending_answerer_name}\n\n"
+                                  f"الكلمة الصحيحة هي: {state.display_word}\n\n"
+                                  "✅ تم اختيار: تقديم</b>"),
+                            parse_mode="HTML",
+                        )
+                    except Exception:
+                        pass
+            await _declare_winner(state, context, team=team)
+            return
+
+        new_stage = old_stage + 1
+        for p in state.players.values():
+            if p.team == team:
+                p.stage = new_stage
+
+        text = (f"<b>🎉 إجابة صحيحة! من {state.pending_answerer_name}\n\n"
+                f"الكلمة الصحيحة هي: {state.display_word}\n\n"
+                "✅ تم اختيار: تقديم</b>")
+        if query is not None:
+            try:
+                await query.edit_message_text(text, parse_mode="HTML")
+            except Exception:
+                pass
+        elif state.action_message_id:
+            try:
+                await context.bot.edit_message_text(chat_id=state.chat_id, message_id=state.action_message_id, text=text, parse_mode="HTML")
+            except Exception:
+                pass
+
+        await context.bot.send_message(
+            chat_id=state.chat_id,
+            text=f"<b>🚀 يتقدم {_team_title(team)} إلى المرحلة {new_stage}!</b>",
+            parse_mode="HTML",
+        )
+        await _send_or_edit_board(state, context)
+
+        if new_stage == state.stages_count:
+            await context.bot.send_message(
+                chat_id=state.chat_id,
+                text=(f"<b>🚨 انتبه! {_team_title(team)} وصل إلى المرحلة "
+                      f"{state.stages_count} والأخيرة! الإجابة الصحيحة القادمة "
+                      f"له تعني الفوز بالسباق! 🏁</b>"),
+                parse_mode="HTML",
+            )
+        await _finish_action(state, context)
+        return
+
+    p = state.players.get(answerer_id)
+    if not p:
+        return
+
+    if p.stage >= state.stages_count:
+        text = (f"<b>🎉 إجابة صحيحة! من {state.pending_answerer_name}\n\n"
+                f"الكلمة الصحيحة هي: {state.display_word}\n\n"
+                "✅ تم اختيار: تقديم</b>")
+        if query is not None:
+            try:
+                await query.edit_message_text(text, parse_mode="HTML")
+            except Exception:
+                pass
+        elif state.action_message_id:
+            try:
+                await context.bot.edit_message_text(chat_id=state.chat_id, message_id=state.action_message_id, text=text, parse_mode="HTML")
+            except Exception:
+                pass
+        await _declare_winner(state, context, player_id=answerer_id)
+        return
+
+    p.stage += 1
+    text = (f"<b>🎉 إجابة صحيحة! من {state.pending_answerer_name}\n\n"
+            f"الكلمة الصحيحة هي: {state.display_word}\n\n"
+            "✅ تم اختيار: تقديم</b>")
+    if query is not None:
+        try:
+            await query.edit_message_text(text, parse_mode="HTML")
+        except Exception:
+            pass
+    elif state.action_message_id:
+        try:
+            await context.bot.edit_message_text(chat_id=state.chat_id, message_id=state.action_message_id, text=text, parse_mode="HTML")
+        except Exception:
+            pass
+    await context.bot.send_message(
+        chat_id=state.chat_id,
+        text=f"<b>🚀 يتقدم {p.name} إلى المرحلة {p.stage}!</b>",
+        parse_mode="HTML",
+    )
+    await _send_or_edit_board(state, context)
+    if p.stage == state.stages_count:
+        await context.bot.send_message(
+            chat_id=state.chat_id,
+            text=(f"<b>🚨 انتبه! {p.name} وصل إلى المرحلة "
+                  f"{state.stages_count} والأخيرة! الإجابة الصحيحة القادمة "
+                  f"له تعني الفوز بالسباق! 🏁</b>"),
+            parse_mode="HTML",
+        )
+    await _finish_action(state, context)
 
 
 # ------------------------------------------------------------
@@ -1649,7 +1285,6 @@ async def word_race_callback(
     context: ContextTypes.DEFAULT_TYPE,
 ):
     query = update.callback_query
-
     if not query or not query.data:
         return
 
@@ -1658,74 +1293,79 @@ async def word_race_callback(
     if not query.message:
         return
 
-    state = RACES.get(
-        query.message.chat.id
-    )
-
+    state = RACES.get(query.message.chat.id)
     if not state or state.finished:
         return
 
     user = query.from_user
 
     if query.data.startswith("wr:mode:"):
-
-        if not _is_controller(
-            state,
-            user.id
-        ):
-            await query.answer(
-                "انتظر ليس دورك!",
-                show_alert=True,
-            )
+        if not _is_controller(state, user.id):
+            await query.answer("انتظر ليس دورك!", show_alert=True)
             return
-
         if state.started:
             return
 
         mode = query.data.split(":")[-1]
-
         state.mode = mode
-
         await query.delete_message()
+        if mode == "teams":
+            await _ask_team_count(query, state)
+        else:
+            await _ask_stage_count(query, state)
+        return
 
-        await _ask_stage_count(
-            query,
-            state
-        )
-
+    if query.data.startswith("wr:teams:"):
+        if not _is_controller(state, user.id) or state.started:
+            await query.answer("انتظر ليس دورك!", show_alert=True)
+            return
+        try:
+            count = int(query.data.split(":")[-1])
+        except ValueError:
+            return
+        if not 2 <= count <= 4:
+            return
+        state.team_count = count
+        active = _active_teams(state)
+        players = list(state.players.values())
+        random.shuffle(players)
+        for i, p in enumerate(players):
+            p.team = active[i % len(active)]
+        await query.delete_message()
+        await _show_distribution(update, state, context)
+        await _ask_stage_count(query, state)
         return
 
     if query.data.startswith("wr:stages:"):
-
-        if not _is_controller(
-            state,
-            user.id
-        ):
-            await query.answer(
-                "انتظر ليس دورك!",
-                show_alert=True,
-            )
+        if not _is_controller(state, user.id):
+            await query.answer("انتظر ليس دورك!", show_alert=True)
             return
 
         try:
-            stages = int(
-                query.data.split(":")[-1]
-            )
-
+            stages = int(query.data.split(":")[-1])
         except ValueError:
             return
 
+        if not 4 <= stages <= 9:
+            return
         state.stages_count = stages
-
         await query.delete_message()
-
+        if state.mode == "teams":
+            text = ("تم اعتماد التعديلات! 👍🏻\n\n"
+                    f"طور اللعبة: فِرَق\n"
+                    f"عدد الفرق: {state.team_count}\n"
+                    f"عدد المراحل: {state.stages_count}\n"
+                    "الادمن يكتب .ابدا  لبدا اللعبة!")
+        else:
+            text = ("تم اعتماد التعديلات! 👍🏻\n\n"
+                    "طور اللعبة: فردي\n"
+                    f"عدد المراحل: {state.stages_count}\n"
+                    "الادمن يكتب .ابدا  لبدا اللعبة!")
+        await context.bot.send_message(chat_id=state.chat_id, text=f"<b>{text}</b>", parse_mode="HTML")
         return
 
-    # كل أزرار الحركة لا يسمح بها إلا الشخص
-    # الذي أجاب أولًا.
-
+    # كل أزرار الحركة لا يسمح بها إلا الشخص الذي أجاب أولًا.
     parts = query.data.split(":")
-
     if len(parts) < 3:
         return
 
@@ -1733,278 +1373,94 @@ async def word_race_callback(
 
     try:
         answerer_id = int(parts[2])
-
     except ValueError:
         return
 
     if state.pending_answerer_id != answerer_id:
-        await query.answer(
-            "انتظر ليس دورك!",
-            show_alert=True,
-        )
+        await query.answer("انتظر ليس دورك!", show_alert=True)
         return
 
     if action == "backmenu":
-
         if state.mode != "solo":
             return
-
-        await _solo_back_menu(
-            query,
-            state,
-            answerer_id
-        )
-
+        await _solo_back_menu(query, state, answerer_id)
         return
 
     if action == "backplayer":
-
         if len(parts) != 4:
             return
-
         try:
             target_id = int(parts[3])
-
         except ValueError:
             return
 
         if user.id != answerer_id:
-            await query.answer(
-                "انتظر ليس دورك!",
-                show_alert=True,
-            )
+            await query.answer("انتظر ليس دورك!", show_alert=True)
+            return
+        if target_id == answerer_id or target_id not in state.players:
             return
 
-        if (
-            target_id == answerer_id
-            or target_id not in state.players
-        ):
-            return
-
-        changed = _back_player(
-            state,
-            target_id
-        )
-
+        await _cancel_action_timeout(state)
+        changed = _back_player(state, target_id)
         target = state.players[target_id]
 
         await query.edit_message_text(
-            (
-                f"✅ تم اختيار: ترجيع\n\n"
-                f"🔙 تم ترجيع {target.name} خطوة للخلف!"
-                if changed
-                else
-                f"🔙 {target.name} بالفعل في المرحلة الأولى."
-            )
+            f"<b>🎉 إجابة صحيحة! من {state.pending_answerer_name}\n\n"
+            f"الكلمة الصحيحة هي: {state.display_word}\n\n"
+            "✅ تم اختيار: ترجيع</b>",
+            parse_mode="HTML",
+        )
+        await context.bot.send_message(
+            chat_id=state.chat_id,
+            text=(f"<b>🔙 تم ترجيع {target.name} خطوة للخلف!</b>" if changed
+                  else f"<b>🔙 {target.name} بالفعل في المرحلة الأولى.</b>"),
+            parse_mode="HTML",
         )
 
-        await _send_or_edit_board(
-            state,
-            context
-        )
-
-        await _finish_action(
-            state,
-            context
-        )
-
+        await _send_or_edit_board(state, context)
+        await _finish_action(state, context)
         return
 
     if action == "backteam":
-
         if len(parts) != 4:
             return
 
         team = parts[3]
-
-        if (
-            state.mode != "teams"
-            or team not in TEAM_INFO
-        ):
+        if state.mode != "teams" or team not in _active_teams(state):
             return
 
         if user.id != answerer_id:
-            await query.answer(
-                "انتظر ليس دورك!",
-                show_alert=True,
-            )
+            await query.answer("انتظر ليس دورك!", show_alert=True)
             return
 
-        if (
-            team
-            == state.players[
-                answerer_id
-            ].team
-        ):
+        if team == state.players[answerer_id].team:
             return
 
-        changed = _back_team(
-            state,
-            team
-        )
+        await _cancel_action_timeout(state)
+        changed = _back_team(state, team)
 
         await query.edit_message_text(
-            (
-                f"✅ تم اختيار: "
-                f"ترجيع {_team_title(team)}\n\n"
-                + (
-                    f"🔙 تم ترجيع "
-                    f"{_team_title(team)} "
-                    f"خطوة للخلف!"
-                    if changed
-                    else
-                    f"🔙 {_team_title(team)} "
-                    f"بالفعل في المرحلة الأولى."
-                )
-            )
+            f"<b>🎉 إجابة صحيحة! من {state.pending_answerer_name}\n\n"
+            f"الكلمة الصحيحة هي: {state.display_word}\n\n"
+            f"✅ تم اختيار: ترجيع {TEAM_INFO[team][0]} {TEAM_INFO[team][1].replace('الفريق ', '')}</b>",
+            parse_mode="HTML",
+        )
+        await context.bot.send_message(
+            chat_id=state.chat_id,
+            text=(f"<b>🔙 تم ترجيع {_team_title(team)} خطوة للخلف!</b>" if changed
+                  else f"<b>🔙 {_team_title(team)} بالفعل في المرحلة الأولى.</b>"),
+            parse_mode="HTML",
         )
 
-        await _send_or_edit_board(
-            state,
-            context
-        )
-
-        await _finish_action(
-            state,
-            context
-        )
-
+        await _send_or_edit_board(state, context)
+        await _finish_action(state, context)
         return
 
     if action == "advance":
-
         if user.id != answerer_id:
-            await query.answer(
-                "انتظر ليس دورك!",
-                show_alert=True,
-            )
+            await query.answer("انتظر ليس دورك!", show_alert=True)
             return
-
-        if state.mode == "teams":
-
-            answerer = state.players.get(
-                answerer_id
-            )
-
-            if not answerer or not answerer.team:
-                return
-
-            team = answerer.team
-
-            old_stage = _team_stage(
-                state,
-                team
-            )
-
-            if old_stage >= state.stages_count:
-
-                await _declare_winner(
-                    state,
-                    context,
-                    team=team
-                )
-
-                try:
-                    await query.edit_message_text(
-                        "✅ تم اختيار: تقديم"
-                    )
-
-                except Exception:
-                    pass
-
-                return
-
-            new_stage = old_stage + 1
-
-            for p in state.players.values():
-                if p.team == team:
-                    p.stage = new_stage
-
-            await query.edit_message_text(
-                f"✅ تم اختيار: تقديم\n\n"
-                f"🚀 يتقدم {_team_title(team)} "
-                f"إلى المرحلة {new_stage}!"
-            )
-
-            await _send_or_edit_board(
-                state,
-                context
-            )
-
-            if new_stage == state.stages_count:
-                await context.bot.send_message(
-                    chat_id=state.chat_id,
-                    text=(
-                        f"🚨 انتبه! "
-                        f"{_team_title(team)} وصل إلى المرحلة "
-                        f"{state.stages_count} والأخيرة! "
-                        "الإجابة الصحيحة القادمة له "
-                        "تعني الفوز بالسباق! 🏁"
-                    ),
-                )
-
-            await _finish_action(
-                state,
-                context
-            )
-
-            return
-
-        # الفردي
-        p = state.players.get(
-            answerer_id
-        )
-
-        if not p:
-            return
-
-        if p.stage >= state.stages_count:
-
-            try:
-                await query.edit_message_text(
-                    "✅ تم اختيار: تقديم"
-                )
-
-            except Exception:
-                pass
-
-            await _declare_winner(
-                state,
-                context,
-                player_id=answerer_id
-            )
-
-            return
-
-        p.stage += 1
-
-        await query.edit_message_text(
-            f"✅ تم اختيار: تقديم\n\n"
-            f"🚀 يتقدم {p.name} "
-            f"إلى المرحلة {p.stage}!"
-        )
-
-        await _send_or_edit_board(
-            state,
-            context
-        )
-
-        if p.stage == state.stages_count:
-            await context.bot.send_message(
-                chat_id=state.chat_id,
-                text=(
-                    f"🚨 انتبه! {p.name} وصل إلى المرحلة "
-                    f"{state.stages_count} والأخيرة! "
-                    "الإجابة الصحيحة القادمة له "
-                    "تعني الفوز بالسباق! 🏁"
-                ),
-            )
-
-        await _finish_action(
-            state,
-            context
-        )
-
+        await _apply_advance_action(state, context, answerer_id, query=query)
 
 # ------------------------------------------------------------
 # نهاية الحركة والجولة التالية
@@ -2014,9 +1470,11 @@ async def _finish_action(
     state: RaceState,
     context: ContextTypes.DEFAULT_TYPE,
 ):
+    await _cancel_action_timeout(state)
     state.action_pending = False
     state.answer_locked = True
     state.waiting_continue = True
+    state.action_message_id = None
 
     await context.bot.send_message(
         chat_id=state.chat_id,
@@ -2034,83 +1492,42 @@ async def continue_word_race(
     state = _state(update)
     user = update.effective_user
 
-    if (
-        not state
-        or not state.started
-        or state.finished
-    ):
+    if not state or not state.started or state.finished:
         return
-
     if not user or user.id != state.host_id:
         await _deny_controller(update)
         return
-
     if not state.waiting_continue:
         return
 
     state.waiting_continue = False
     state.current_round += 1
-
-    await _request_word_from_host(
-        state,
-        context
-    )
+    await _request_word_from_host(state, context)
 
 
 # ------------------------------------------------------------
 # الفوز والنقاط
 # ------------------------------------------------------------
 
-async def _give_points(
-    user_id: int,
-    amount: int = 70,
-):
+async def _give_points(user_id: int, amount: int = 70):
     if not add_points:
         return
 
     attempts = [
-        (
-            (user_id, amount),
-            {}
-        ),
-        (
-            (),
-            {
-                "user_id": user_id,
-                "amount": amount,
-            }
-        ),
-        (
-            (),
-            {
-                "user_id": user_id,
-                "points": amount,
-            }
-        ),
-        (
-            (user_id,),
-            {
-                "points": amount,
-            }
-        ),
+        ((user_id, amount), {}),
+        ((), {"user_id": user_id, "amount": amount}),
+        ((), {"user_id": user_id, "points": amount}),
+        ((user_id,), {"points": amount}),
     ]
 
     for args, kwargs in attempts:
-
         try:
-            result = add_points(
-                *args,
-                **kwargs
-            )
-
+            result = add_points(*args, **kwargs)
             if asyncio.iscoroutine(result):
                 await result
-
             return
-
         except TypeError:
             continue
-
         except Exception:
             return
 
@@ -2124,6 +1541,7 @@ async def _declare_winner(
     if state.finished:
         return
 
+    await _cancel_action_timeout(state)
     state.finished = True
     state.started = False
     state.waiting_continue = False
@@ -2134,123 +1552,54 @@ async def _declare_winner(
     winners: List[Player] = []
 
     if team:
-        winners = [
-            p
-            for p in state.players.values()
-            if p.team == team
-        ]
-
+        winners = [p for p in state.players.values() if p.team == team]
         winner_title = _team_title(team)
-
-        winner_line = (
-            f"ألف مبروك لـ {winner_title} "
-            "الفوز بسباق الكلمات! 🥇"
-        )
-
-    elif (
-        player_id is not None
-        and player_id in state.players
-    ):
-        winners = [
-            state.players[player_id]
-        ]
-
-        winner_title = state.players[
-            player_id
-        ].name
-
-        winner_line = (
-            f"ألف مبروك لـ {winner_title} "
-            "الفوز بسباق الكلمات! 🥇"
-        )
-
+        winner_line = f"ألف مبروك لـ {winner_title} الفوز بسباق الكلمات! 🥇"
+    elif player_id is not None and player_id in state.players:
+        winners = [state.players[player_id]]
+        winner_title = state.players[player_id].name
+        winner_line = f"ألف مبروك لـ {winner_title} الفوز بسباق الكلمات! 🥇"
     else:
         return
 
     await context.bot.send_message(
         chat_id=state.chat_id,
         text=(
-            "🏆🎉 الفائز بالسباق! 🎉🏆\n\n"
-            f"{winner_line}"
+            "<b>🏆🎉 الفائز بالسباق! 🎉🏆\n\n"
+            f"{winner_line}</b>"
         ),
+        parse_mode="HTML",
     )
 
-    await _send_or_edit_board(
-        state,
-        context
-    )
+    await _send_or_edit_board(state, context)
 
-    # كل فائز +70،
-    # والحكم +70 حتى لو لم يكن مشاركًا.
+    # كل فائز +70، والحكم +70 حتى لو لم يكن مشاركًا.
     awarded: List[Tuple[str, int]] = []
-
     seen = set()
 
     for p in winners:
-
         if p.user_id not in seen:
-
-            await _give_points(
-                p.user_id,
-                70
-            )
-
-            awarded.append(
-                (
-                    p.name,
-                    70
-                )
-            )
-
+            await _give_points(p.user_id, 70)
+            awarded.append((p.name, 70))
             seen.add(p.user_id)
 
     if state.host_id not in seen:
+        await _give_points(state.host_id, 70)
+        awarded.append((state.host_name, 70))
 
-        await _give_points(
-            state.host_id,
-            70
-        )
-
-        awarded.append(
-            (
-                state.host_name,
-                70
-            )
-        )
-
-    lines = [
-        "✨ جوائز النقاط للفائزين ✨"
-    ]
-
+    lines = ["✨ جوائز النقاط للفائزين ✨"]
     for name, amount in awarded:
-        lines.append(
-            f"• {name} — حصل على "
-            f"+{amount} نقطة 🏅"
-        )
+        lines.append(f"• {name} — حصل على +{amount} نقطة 🏅")
 
     await context.bot.send_message(
         chat_id=state.chat_id,
-        text="\n".join(lines),
+        text="<b>" + "\n".join(lines) + "</b>",
+        parse_mode="HTML",
     )
 
-    # نبقي اللوحة النهائية،
-    # ونزيل حالة السباق من الذاكرة بعد إرسال كل شيء.
-    PRIVATE_HOST_CHAT.pop(
-        state.host_id,
-        None
-    )
-
-    # مهم:
-    # فك قفل الألعاب الكبيرة بعد انتهاء السباق.
-    unlock_big_game(
-        state.chat_id,
-        WORD_RACE_LOCK_KEY
-    )
-
-    RACES.pop(
-        state.chat_id,
-        None
-    )
+    # نبقي اللوحة النهائية، ونزيل حالة السباق من الذاكرة بعد إرسال كل شيء.
+    PRIVATE_HOST_CHAT.pop(state.host_id, None)
+    RACES.pop(state.chat_id, None)
 
 
 # ------------------------------------------------------------
@@ -2273,23 +1622,15 @@ async def end_word_race(
     if not user or not _is_admin_plus(user.id):
         return
 
-    # إلغاء كل الحالة فورًا:
-    # الجولة، الكلمة، الانتظار، .كمل، إلخ.
-    RACES.pop(
-        state.chat_id,
-        None
-    )
-
-    PRIVATE_HOST_CHAT.pop(
-        state.host_id,
-        None
-    )
-
-    unlock_big_game(
-        state.chat_id,
-        WORD_RACE_LOCK_KEY
-    )
+    # إلغاء كل الحالة فورًا: الجولة، الكلمة، الانتظار، .كمل، إلخ.
+    await _cancel_action_timeout(state)
+    RACES.pop(state.chat_id, None)
+    PRIVATE_HOST_CHAT.pop(state.host_id, None)
+    try:
+        unlock_big_game(state.chat_id, WORD_RACE_LOCK_KEY)
+    except Exception:
+        pass
 
     await update.message.reply_text(
-        "🛑 تم إنهاء لعبة سباق الكلمات ."
+        "🛑 تم إنهاء لعبة سباق الكلمات."
     )
