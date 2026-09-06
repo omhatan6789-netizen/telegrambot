@@ -28,22 +28,11 @@ from telegram import (
 from telegram.ext import ContextTypes, filters
 
 
-try:
-    from handlers.roles import (
-        is_primary_developer,
-        is_secondary_developer,
-        get_rank,
-    )
-except Exception:
-    is_primary_developer = lambda _uid: False
-    is_secondary_developer = lambda _uid: False
-    get_rank = lambda _uid: ""
-
-
-try:
-    from permissions import get_permission_level
-except Exception:
-    get_permission_level = lambda _uid: 0
+from handlers.roles import (
+    get_rank_level,
+    is_primary_developer,
+    is_secondary_developer,
+)
 
 
 try:
@@ -180,50 +169,21 @@ def _normalize_word(text: str) -> str:
     return (text or "").strip()
 
 
-def _get_rank_level(user_id: int) -> int:
-    try:
-        value = int(get_permission_level(user_id))
-
-        if value:
-            return value
-
-    except Exception:
-        pass
-
-    try:
-        rank = get_rank(user_id)
-
-    except Exception:
-        rank = ""
-
-    levels = {
-        "مميز": 1,
-        "ادمن": 2,
-        "ادمن اساسي": 3,
-        "نائب المالك": 4,
-        "المالك": 5,
-        "Dev": 6,
-    }
-
-    return levels.get(rank, 0)
-
-
 def _is_admin_plus(user_id: int) -> bool:
-    return _get_rank_level(user_id) >= 2
+    try:
+        return get_rank_level(user_id) > 0
+    except Exception:
+        return False
 
 
 def _is_developer(user_id: int) -> bool:
     try:
-        if (
+        return (
             is_primary_developer(user_id)
             or is_secondary_developer(user_id)
-        ):
-            return True
-
+        )
     except Exception:
-        pass
-
-    return _get_rank_level(user_id) >= 6
+        return False
 
 
 def _is_controller(state: RaceState, user_id: int) -> bool:
