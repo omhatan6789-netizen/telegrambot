@@ -702,6 +702,7 @@ async def word_race_distribution(
     await _show_distribution(update, state, context)
 
 
+
 async def word_race_manual_team(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
@@ -744,6 +745,7 @@ async def word_race_manual_team(
         await _show_distribution(update, state, context)
         if state.started:
             await _send_or_edit_board(state, context)
+
 
 
 # ------------------------------------------------------------
