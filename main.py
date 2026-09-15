@@ -278,7 +278,9 @@ from handlers.whisper import (
     whisper_start,
     whisper_private_message,
     whisper_callbacks,
-    whisper_callback_filter,
+    enable_whispers_command,
+    disable_whispers_command,
+    whispers_list_command,
 )
 
 import os
@@ -987,7 +989,7 @@ def main():
 
 
     # ==================================================
-    # الهمسات - أمر الهمسة في القروب
+    # الهمسات - أوامر القروب
     # ==================================================
 
     app.add_handler(
@@ -998,6 +1000,21 @@ def main():
         group=0,
     )
 
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^تفعيل الهمسات$"),
+            enable_whispers_command,
+        ),
+        group=0,
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^تعطيل الهمسات$"),
+            disable_whispers_command,
+        ),
+        group=0,
+    )
 
     # ==================================================
     # الهمسات - استقبال الهمسة في الخاص
@@ -1009,6 +1026,17 @@ def main():
             whisper_private_message,
         ),
         group=0,
+    )
+
+    # ==================================================
+    # الهمسات - أمر المطور
+    # ==================================================
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^الهمسات$"),
+            whispers_list_command,
+        ),
     )
 
     
@@ -1493,7 +1521,7 @@ def main():
 
 
     # --------------------------------------------------
-    # خروج من طاو��ة الكذب
+    # خروج من طاولة الكذب
     # --------------------------------------------------
 
     app.add_handler(
