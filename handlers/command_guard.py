@@ -429,6 +429,10 @@ async def command_guard(
                 command
             )
         )
+        print(
+            f"🛡️ GUARD | command={command!r} | "
+            f"allowed={allowed} | required={required}"
+        )
 
     except Exception as e:
 
