@@ -1,7 +1,8 @@
 from telegram import Update
 from telegram.ext import ContextTypes, ConversationHandler
+from telegram.ext import MessageHandler
+
 from database import connect
-import copy
 
 
 OWNER_ID = 8453977662
@@ -46,7 +47,7 @@ async def receive_old_command(
     user_id = update.effective_user.id
 
     if user_id not in add_command_sessions:
-        return
+        return WAIT_OLD
 
     if not update.message or not update.message.text:
         return WAIT_OLD
@@ -104,8 +105,8 @@ async def receive_new_command(
     conn = connect()
     cur = conn.cursor()
 
-    # إذا كان الاسم الجديد مستخدمًا كاختصار من قبل
-    # نحذفه ونستبدله بالاختصار الجديد
+    # إذا كان الاختصار موجودًا من قبل
+    # يتم تحديثه بدل إنشاء نسخة ثانية
     cur.execute(
         """
         DELETE FROM custom_commands
@@ -181,7 +182,7 @@ async def custom_commands_list(
 
 
 # ==================================================
-# بدء حذف أمر
+# حذف أمر
 # ==================================================
 
 async def delete_command_start(
@@ -195,10 +196,6 @@ async def delete_command_start(
 
     context.user_data["delete_command"] = True
 
-
-# ==================================================
-# حذف أمر
-# ==================================================
 
 async def delete_command(
     update: Update,
@@ -269,10 +266,10 @@ async def delete_all_commands(
 
 
 # ==================================================
-# الحصول على الأمر الأصلي
+# جلب الأمر الأصلي
 # ==================================================
 
-def get_custom_command(text: str):
+def get_custom_command(text):
 
     conn = connect()
     cur = conn.cursor()
@@ -298,47 +295,54 @@ def get_custom_command(text: str):
 
 
 # ==================================================
-# حل الاختصارات المتسلسلة
-#
-# مثال:
-#
-# أ -> ب
-# ب -> كلمات
-#
-# أ
-# ↓
-# ب
-# ↓
-# كلمات
+# التحقق هل الـ Handler عبارة عن Handler عام
 # ==================================================
 
-def resolve_custom_command(text: str):
+def is_generic_handler(handler):
 
-    current = text
-    visited = set()
+    callback = getattr(
+        handler,
+        "callback",
+        None
+    )
 
-    while True:
+    if callback is None:
+        return True
 
-        if current in visited:
-            return None
+    name = getattr(
+        callback,
+        "__name__",
+        ""
+    )
 
-        visited.add(current)
+    # هذه Handlers تستقبل إجابات/رسائل عامة
+    # وليست أوامر بداية
+    generic_names = {
+        "check_speed_words",
+        "check_anime_answer",
+        "check_game_answer",
+        "check_word_race_message",
+        "check_liar_message",
+        "check_replies",
+        "save_user_message",
+        "play_game",
+        "add_reply_handler",
+        "add_special_reply_handler",
+        "edit_reply_handler",
+        "edit_special_reply_handler",
+        "delete_reply_handler",
+        "delete_special_reply_handler",
+        "add_game_handler",
+        "add_question_handler",
+        "delete_command",
+        "save_lock_rank",
+    }
 
-        old_command = get_custom_command(current)
-
-        if not old_command:
-            break
-
-        current = old_command
-
-    if current == text:
-        return None
-
-    return current
+    return name in generic_names
 
 
 # ==================================================
-# تشغيل الأمر كأنه مكتوب من المستخدم
+# تشغيل الـ Handler الخاص بالأمر
 # ==================================================
 
 async def check_custom_commands(
@@ -354,32 +358,141 @@ async def check_custom_commands(
 
     text = update.message.text.strip()
 
-    old_command = resolve_custom_command(text)
+    old_command = get_custom_command(text)
 
     if not old_command:
         return False
 
-    # --------------------------------------------------
-    # نسخة مستقلة من الـ Update
-    # --------------------------------------------------
-
-    fake_update = copy.deepcopy(update)
+    application = context.application
 
     # --------------------------------------------------
-    # تغيير النص في النسخة فقط
+    # نبحث عن Handler يطابق الأمر الأصلي
     # --------------------------------------------------
 
-    fake_update.message.text = old_command
+    for group in sorted(application.handlers.keys()):
 
-    # --------------------------------------------------
-    # تشغيل النسخة من خلال Application نفسها
-    #
-    # بهذا الشكل Telegram يعيد فحص جميع الـ handlers
-    # بنفس ترتيب main.py الأصلي.
-    # --------------------------------------------------
+        handlers = application.handlers[group]
 
-    await context.application.process_update(
-        fake_update
+        for handler in handlers:
+
+            # ConversationHandler يتم التعامل معه
+            # بشكل منفصل
+            if isinstance(
+                handler,
+                ConversationHandler
+            ):
+                continue
+
+            # لا نختار الـ handlers العامة
+            if is_generic_handler(handler):
+                continue
+
+            try:
+                check_result = handler.check_update(
+                    _make_fake_update(
+                        update,
+                        old_command
+                    )
+                )
+            except Exception:
+                continue
+
+            if not check_result:
+                continue
+
+            callback = getattr(
+                handler,
+                "callback",
+                None
+            )
+
+            if callback is None:
+                continue
+
+            fake_update = _make_fake_update(
+                update,
+                old_command
+            )
+
+            try:
+
+                await callback(
+                    fake_update,
+                    context
+                )
+
+                return True
+
+            except Exception as e:
+
+                print(
+                    "⚠️ خطأ في الأمر المضاف "
+                    f"{text} -> {old_command}: {e}"
+                )
+
+                return True
+
+    return False
+
+
+# ==================================================
+# إنشاء Update مؤقت
+# ==================================================
+
+def _make_fake_update(
+    update,
+    text
+):
+
+    message = update.message
+
+    # Message objects في PTB يمكن نسخها
+    # ونبقي جميع معلومات المستخدم والقروب
+    # كما هي، ونغير النص فقط.
+
+    fake_message = message.__class__(
+        message_id=message.message_id,
+        date=message.date,
+        chat=message.chat,
+        from_user=message.from_user,
+        sender_chat=message.sender_chat,
+        text=text,
+        entities=message.entities,
+        caption=message.caption,
+        caption_entities=message.caption_entities,
+        photo=message.photo,
+        audio=message.audio,
+        document=message.document,
+        video=message.video,
+        video_note=message.video_note,
+        voice=message.voice,
+        contact=message.contact,
+        location=message.location,
+        venue=message.venue,
+        sticker=message.sticker,
+        animation=message.animation,
+        reply_to_message=message.reply_to_message,
+        pinned_message=message.pinned_message,
+        quote=message.quote,
+        reply_markup=message.reply_markup,
+        edit_date=message.edit_date,
+        media_group_id=message.media_group_id,
+        author_signature=message.author_signature,
+        forward_origin=message.forward_origin,
+        is_topic_message=message.is_topic_message,
+        message_thread_id=message.message_thread_id,
+        via_bot=message.via_bot,
+        has_protected_content=message.has_protected_content,
+        is_automatic_forward=message.is_automatic_forward,
+        has_media_spoiler=message.has_media_spoiler,
+        link_preview_options=message.link_preview_options,
+        effect_id=message.effect_id,
+        business_connection_id=message.business_connection_id,
+        direct_messages_topic=message.direct_messages_topic,
+        suggested_post_info=message.suggested_post_info,
     )
 
-    return True
+    return Update(
+        update_id=update.update_id,
+        message=fake_message
+    )
