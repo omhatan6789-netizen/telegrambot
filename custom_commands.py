@@ -1,6 +1,8 @@
 from telegram import Update
-from telegram.ext import ContextTypes, ConversationHandler
-from telegram.ext import MessageHandler
+from telegram.ext import (
+    ContextTypes,
+    ConversationHandler,
+)
 
 from database import connect
 
@@ -20,6 +22,12 @@ async def add_command_start(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
+
+    if not update.message:
+        return
+
+    if not update.effective_user:
+        return
 
     if update.effective_user.id != OWNER_ID:
         return
@@ -43,6 +51,9 @@ async def receive_old_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
+
+    if not update.effective_user:
+        return WAIT_OLD
 
     user_id = update.effective_user.id
 
@@ -78,6 +89,9 @@ async def receive_new_command(
     context: ContextTypes.DEFAULT_TYPE
 ):
 
+    if not update.effective_user:
+        return ConversationHandler.END
+
     user_id = update.effective_user.id
 
     if user_id not in add_command_sessions:
@@ -105,35 +119,53 @@ async def receive_new_command(
     conn = connect()
     cur = conn.cursor()
 
-    # إذا كان الاختصار موجودًا من قبل
-    # يتم تحديثه بدل إنشاء نسخة ثانية
-    cur.execute(
-        """
-        DELETE FROM custom_commands
-        WHERE new_command = ?
-        """,
-        (new,)
-    )
+    try:
 
-    cur.execute(
-        """
-        INSERT INTO custom_commands
-        (
-            old_command,
-            new_command
+        # حذف الاختصار القديم إن وجد
+        cur.execute(
+            """
+            DELETE FROM custom_commands
+            WHERE new_command = ?
+            """,
+            (new,)
         )
-        VALUES (?, ?)
-        """,
-        (
-            old,
-            new
-        )
-    )
 
-    conn.commit()
+        # إضافة الاختصار
+        cur.execute(
+            """
+            INSERT INTO custom_commands
+            (
+                old_command,
+                new_command
+            )
+            VALUES (?, ?)
+            """,
+            (
+                old,
+                new
+            )
+        )
+
+        conn.commit()
+
+    except Exception:
+
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+
+        conn.close()
+
+        await update.message.reply_text(
+            "❌ حصل خطأ أثناء حفظ الأمر."
+        )
+
+        return WAIT_NEW
+
     conn.close()
 
-    del add_command_sessions[user_id]
+    add_command_sessions.pop(user_id, None)
 
     await update.message.reply_text(
         f"✅ تم إضافة الأمر\n\n"
@@ -152,31 +184,48 @@ async def custom_commands_list(
     context: ContextTypes.DEFAULT_TYPE
 ):
 
+    if not update.message:
+        return
+
     conn = connect()
     cur = conn.cursor()
 
-    cur.execute(
-        """
-        SELECT old_command, new_command
-        FROM custom_commands
-        ORDER BY new_command
-        """
-    )
+    try:
 
-    data = cur.fetchall()
+        cur.execute(
+            """
+            SELECT old_command, new_command
+            FROM custom_commands
+            ORDER BY new_command
+            """
+        )
 
-    conn.close()
+        data = cur.fetchall()
+
+    finally:
+
+        try:
+            cur.close()
+        except Exception:
+            pass
+
+        conn.close()
 
     if not data:
+
         await update.message.reply_text(
             "لا توجد أوامر مضافة"
         )
+
         return
 
     text = "📌 الأوامر المضافة:\n\n"
 
     for old, new in data:
-        text += f"{new} ➜ {old}\n"
+
+        text += (
+            f"{new} ➜ {old}\n"
+        )
 
     await update.message.reply_text(text)
 
@@ -190,11 +239,14 @@ async def delete_command_start(
     context: ContextTypes.DEFAULT_TYPE
 ):
 
+    if not update.message:
+        return
+
+    context.user_data["delete_command"] = True
+
     await update.message.reply_text(
         "أرسل الأمر الجديد الذي تريد حذفه"
     )
-
-    context.user_data["delete_command"] = True
 
 
 async def delete_command(
@@ -202,10 +254,15 @@ async def delete_command(
     context: ContextTypes.DEFAULT_TYPE
 ):
 
-    if not context.user_data.get("delete_command"):
+    if not context.user_data.get(
+        "delete_command"
+    ):
         return
 
-    if not update.message or not update.message.text:
+    if not update.message:
+        return
+
+    if not update.message.text:
         return
 
     command = update.message.text.strip()
@@ -213,17 +270,40 @@ async def delete_command(
     conn = connect()
     cur = conn.cursor()
 
-    cur.execute(
-        """
-        DELETE FROM custom_commands
-        WHERE new_command = ?
-        """,
-        (command,)
-    )
+    try:
 
-    deleted = cur.rowcount
+        cur.execute(
+            """
+            DELETE FROM custom_commands
+            WHERE new_command = ?
+            """,
+            (command,)
+        )
 
-    conn.commit()
+        deleted = cur.rowcount
+
+        conn.commit()
+
+    except Exception:
+
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+
+        conn.close()
+
+        context.user_data.pop(
+            "delete_command",
+            None
+        )
+
+        await update.message.reply_text(
+            "❌ حصل خطأ أثناء حذف الأمر."
+        )
+
+        return
+
     conn.close()
 
     context.user_data.pop(
@@ -232,10 +312,13 @@ async def delete_command(
     )
 
     if deleted:
+
         await update.message.reply_text(
             "✅ تم حذف الأمر المضاف"
         )
+
     else:
+
         await update.message.reply_text(
             "• ما لقيت هذا الأمر ضمن الأوامر المضافة"
         )
@@ -250,14 +333,35 @@ async def delete_all_commands(
     context: ContextTypes.DEFAULT_TYPE
 ):
 
+    if not update.message:
+        return
+
     conn = connect()
     cur = conn.cursor()
 
-    cur.execute(
-        "DELETE FROM custom_commands"
-    )
+    try:
 
-    conn.commit()
+        cur.execute(
+            "DELETE FROM custom_commands"
+        )
+
+        conn.commit()
+
+    except Exception:
+
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+
+        conn.close()
+
+        await update.message.reply_text(
+            "❌ حصل خطأ أثناء حذف الأوامر."
+        )
+
+        return
+
     conn.close()
 
     await update.message.reply_text(
@@ -271,22 +375,36 @@ async def delete_all_commands(
 
 def get_custom_command(text):
 
+    if not text:
+        return None
+
+    text = text.strip()
+
     conn = connect()
     cur = conn.cursor()
 
-    cur.execute(
-        """
-        SELECT old_command
-        FROM custom_commands
-        WHERE new_command = ?
-        LIMIT 1
-        """,
-        (text,)
-    )
+    try:
 
-    result = cur.fetchone()
+        cur.execute(
+            """
+            SELECT old_command
+            FROM custom_commands
+            WHERE new_command = ?
+            LIMIT 1
+            """,
+            (text,)
+        )
 
-    conn.close()
+        result = cur.fetchone()
+
+    finally:
+
+        try:
+            cur.close()
+        except Exception:
+            pass
+
+        conn.close()
 
     if not result:
         return None
@@ -295,7 +413,53 @@ def get_custom_command(text):
 
 
 # ==================================================
-# التحقق هل الـ Handler عبارة عن Handler عام
+# الهاندلرات العامة التي لا تعتبر أوامر بداية
+# ==================================================
+
+GENERIC_CALLBACK_NAMES = {
+
+    "custom_command_alias_handler",
+    "command_guard",
+    "check_custom_commands",
+
+    "check_speed_words",
+    "check_anime_answer",
+
+    "play_game",
+    "check_game_answer",
+
+    "check_word_race_message",
+    "check_liar_message",
+
+    "check_replies",
+
+    "save_user_message",
+
+    "add_reply_handler",
+    "add_special_reply_handler",
+
+    "edit_reply_handler",
+    "edit_special_reply_handler",
+
+    "delete_reply_handler",
+    "delete_special_reply_handler",
+
+    "add_game_handler",
+    "add_question_handler",
+
+    "change_button_color_handler",
+
+    "whisper_private_message",
+
+    "delete_command",
+    "save_lock_rank",
+
+    "stop_after_game",
+}
+
+
+# ==================================================
+# التحقق من Handler عام
 # ==================================================
 
 def is_generic_handler(handler):
@@ -315,34 +479,55 @@ def is_generic_handler(handler):
         ""
     )
 
-    # هذه Handlers تستقبل إجابات/رسائل عامة
-    # وليست أوامر بداية
-    generic_names = {
-        "check_speed_words",
-        "check_anime_answer",
-        "check_game_answer",
-        "check_word_race_message",
-        "check_liar_message",
-        "check_replies",
-        "save_user_message",
-        "play_game",
-        "add_reply_handler",
-        "add_special_reply_handler",
-        "edit_reply_handler",
-        "edit_special_reply_handler",
-        "delete_reply_handler",
-        "delete_special_reply_handler",
-        "add_game_handler",
-        "add_question_handler",
-        "delete_command",
-        "save_lock_rank",
-    }
-
-    return name in generic_names
+    return name in GENERIC_CALLBACK_NAMES
 
 
 # ==================================================
-# تشغيل الـ Handler الخاص بالأمر
+# إنشاء Update وهمي
+# ==================================================
+
+def _make_fake_update(
+    update: Update,
+    old_command: str,
+    application
+):
+
+    try:
+
+        data = update.to_dict()
+
+        if "message" not in data:
+            return None
+
+        message_data = data["message"]
+
+        message_data["text"] = old_command
+
+        # النص تغير، لذلك نحذف entities القديمة
+        message_data.pop(
+            "entities",
+            None
+        )
+
+        fake_update = Update.de_json(
+            data,
+            application.bot
+        )
+
+        return fake_update
+
+    except Exception as e:
+
+        print(
+            "❌ خطأ في إنشاء Update للأمر المضاف:",
+            e
+        )
+
+        return None
+
+
+# ==================================================
+# تشغيل الأمر الأصلي
 # ==================================================
 
 async def check_custom_commands(
@@ -350,118 +535,91 @@ async def check_custom_commands(
     context: ContextTypes.DEFAULT_TYPE,
     application=None
 ):
+
     if not update.message:
         return False
 
     if not update.message.text:
         return False
 
-    text = update.message.text.strip()
-
-    conn = connect()
-    cur = conn.cursor()
-
-    cur.execute(
-        """
-        SELECT old_command
-        FROM custom_commands
-        WHERE new_command = ?
-        """,
-        (text,)
-    )
-
-    result = cur.fetchone()
-
-    conn.close()
-
-    # ليس أمرًا مضافًا
-    if not result:
-        return False
-
-    old_command = result[0].strip()
-
     if not application:
         return False
 
-    # ==================================================
-    # إنشاء Update جديد بنفس الرسالة
-    # لكن بالنص الأصلي
-    # ==================================================
+    text = update.message.text.strip()
 
-    try:
-        data = update.to_dict()
-
-        if "message" not in data:
-            return False
-
-        data["message"]["text"] = old_command
-
-        # إزالة entities القديمة لأن النص تغير
-        data["message"].pop("entities", None)
-
-        fake_update = Update.de_json(
-            data,
-            application.bot
-        )
-
-    except Exception as e:
-        print(
-            f"❌ خطأ في إنشاء Update للأمر المضاف: {e}"
-        )
+    if not text:
         return False
 
     # ==================================================
-    # البحث عن الهاندلر الأصلي
+    # لا تتدخل في جلسة "اضف امر"
     # ==================================================
 
-    ignored_callbacks = {
-        "custom_command_alias_handler",
-        "command_guard",
-        "check_custom_commands",
-
-        # هاندلرات عامة لا نريد اعتبارها أمرًا أصليًا
-        "check_speed_words",
-        "check_anime_answer",
-        "play_game",
-        "check_game_answer",
-        "check_replies",
-        "save_user_message",
-
-        "add_reply_handler",
-        "edit_reply_handler",
-        "delete_reply_handler",
-
-        "add_special_reply_handler",
-        "edit_special_reply_handler",
-        "delete_special_reply_handler",
-
-        "add_game_handler",
-        "add_question_handler",
-
-        "change_button_color_handler",
-
-        "whisper_private_message",
-
-        "check_word_race_message",
-        "check_liar_message",
-
-        "delete_command",
-        "save_lock_rank",
-
-        "stop_after_game",
-    }
+    if (
+        update.effective_user
+        and update.effective_user.id
+        in add_command_sessions
+    ):
+        return False
 
     # ==================================================
-    # البحث بالترتيب نفسه الذي يستخدمه البوت
+    # لا تتدخل في جلسة "مسح امر"
     # ==================================================
 
-    for group in sorted(application.handlers.keys()):
+    if context.user_data.get(
+        "delete_command"
+    ):
+        return False
+
+    # ==================================================
+    # البحث عن الاختصار
+    # ==================================================
+
+    old_command = get_custom_command(
+        text
+    )
+
+    if not old_command:
+        return False
+
+    old_command = old_command.strip()
+
+    if not old_command:
+        return False
+
+    # ==================================================
+    # إنشاء Update بالنص الأصلي
+    # ==================================================
+
+    fake_update = _make_fake_update(
+        update,
+        old_command,
+        application
+    )
+
+    if not fake_update:
+        return False
+
+    # ==================================================
+    # البحث عن Handler الأمر الأصلي
+    # ==================================================
+
+    for group in sorted(
+        application.handlers.keys()
+    ):
 
         handlers = application.handlers[group]
 
         for handler in handlers:
 
-            callback = getattr(handler, "callback", None)
+            # --------------------------------------------------
+            # لا نشغل هاندلرات الأوامر المضافة
+            # --------------------------------------------------
+
+            callback = getattr(
+                handler,
+                "callback",
+                None
+            )
 
             callback_name = getattr(
                 callback,
@@ -469,25 +627,49 @@ async def check_custom_commands(
                 ""
             )
 
-            if callback_name in ignored_callbacks:
+            if callback_name in GENERIC_CALLBACK_NAMES:
                 continue
 
-            # لا نعيد تشغيل هاندلر الأوامر المضافة نفسه
-            if callback_name == "custom_command_alias_handler":
-                continue
+            # --------------------------------------------------
+            # فحص الـ Handler
+            # --------------------------------------------------
 
             try:
-                check_result = handler.check_update(
-                    fake_update
+
+                check_result = (
+                    handler.check_update(
+                        fake_update
+                    )
                 )
 
-            except Exception:
+            except Exception as e:
+
+                print(
+                    f"⚠️ تعذر فحص Handler "
+                    f"{callback_name}: {e}"
+                )
+
                 continue
 
             if not check_result:
                 continue
 
+            # --------------------------------------------------
+            # تشغيل الـ Handler
+            # --------------------------------------------------
+
             try:
+
+                # مهم جدًا:
+                # تجهيز الـ context مثل Application
+                # الطبيعي قبل handle_update
+
+                handler.collect_additional_context(
+                    context,
+                    fake_update,
+                    application,
+                    check_result
+                )
 
                 await handler.handle_update(
                     fake_update,
@@ -497,7 +679,8 @@ async def check_custom_commands(
                 )
 
                 print(
-                    f"🔁 الأمر المضاف: {text} → {old_command}"
+                    f"🔁 الأمر المضاف: "
+                    f"{text} → {old_command}"
                 )
 
                 return True
@@ -509,74 +692,15 @@ async def check_custom_commands(
                     f"{old_command}: {e}"
                 )
 
-                return True
+                return False
+
+    # ==================================================
+    # لم نجد الأمر الأصلي
+    # ==================================================
 
     print(
-        f"⚠️ لم يتم العثور على الأمر الأصلي: "
+        f"⚠️ لم يتم العثور على الأمر: "
         f"{old_command}"
     )
 
     return False
-
-
-# ==================================================
-# إنشاء Update مؤقت
-# ==================================================
-
-def _make_fake_update(
-    update,
-    text
-):
-
-    message = update.message
-
-    # Message objects في PTB يمكن نسخها
-    # ونبقي جميع معلومات المستخدم والقروب
-    # كما هي، ونغير النص فقط.
-
-    fake_message = message.__class__(
-        message_id=message.message_id,
-        date=message.date,
-        chat=message.chat,
-        from_user=message.from_user,
-        sender_chat=message.sender_chat,
-        text=text,
-        entities=message.entities,
-        caption=message.caption,
-        caption_entities=message.caption_entities,
-        photo=message.photo,
-        audio=message.audio,
-        document=message.document,
-        video=message.video,
-        video_note=message.video_note,
-        voice=message.voice,
-        contact=message.contact,
-        location=message.location,
-        venue=message.venue,
-        sticker=message.sticker,
-        animation=message.animation,
-        reply_to_message=message.reply_to_message,
-        pinned_message=message.pinned_message,
-        quote=message.quote,
-        reply_markup=message.reply_markup,
-        edit_date=message.edit_date,
-        media_group_id=message.media_group_id,
-        author_signature=message.author_signature,
-        forward_origin=message.forward_origin,
-        is_topic_message=message.is_topic_message,
-        message_thread_id=message.message_thread_id,
-        via_bot=message.via_bot,
-        has_protected_content=message.has_protected_content,
-        is_automatic_forward=message.is_automatic_forward,
-        has_media_spoiler=message.has_media_spoiler,
-        link_preview_options=message.link_preview_options,
-        effect_id=message.effect_id,
-        business_connection_id=message.business_connection_id,
-        direct_messages_topic=message.direct_messages_topic,
-        suggested_post_info=message.suggested_post_info,
-    )
-
-    return Update(
-        update_id=update.update_id,
-        message=fake_message
-    )
