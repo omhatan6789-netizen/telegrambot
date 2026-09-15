@@ -269,6 +269,18 @@ from handlers.button_colors import (
     change_button_color_handler
 )
 
+# ==================================================
+# الهمسات
+# ==================================================
+
+from handlers.whisper import (
+    whisper_command,
+    whisper_start,
+    whisper_private_message,
+    whisper_callbacks,
+    whisper_callback_filter,
+)
+
 import os
 import threading
 import asyncio
@@ -605,6 +617,18 @@ def main():
             save_lock_rank
         ),
         group=1
+    )
+
+
+    # ==================================================
+    # الهمسات - /start
+    # ==================================================
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^/start\s+whisper_[A-Za-z0-9_-]+$"),
+            whisper_start,
+        )
     )
 
 
@@ -961,6 +985,31 @@ def main():
         )
     )
 
+
+    # ==================================================
+    # الهمسات - أمر الهمسة في القروب
+    # ==================================================
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^(همسه|همسة|اهمس)$"),
+            whisper_command,
+        ),
+        group=0,
+    )
+
+
+    # ==================================================
+    # الهمسات - استقبال الهمسة في الخاص
+    # ==================================================
+
+    app.add_handler(
+        MessageHandler(
+            filters.ALL,
+            whisper_private_message,
+        ),
+        group=0,
+    )
 
     
     # ==================================================
@@ -1444,7 +1493,7 @@ def main():
 
 
     # --------------------------------------------------
-    # خروج من طاولة الكذب
+    # خروج من طاو��ة الكذب
     # --------------------------------------------------
 
     app.add_handler(
@@ -1812,6 +1861,17 @@ def main():
         MessageHandler(
             filters.Regex(r"^اوامر المطور$"),
             developer_panel
+        )
+    )
+
+    # ==================================================
+    # الهمسات - CallbackQuery
+    # ==================================================
+
+    app.add_handler(
+        CallbackQueryHandler(
+            whisper_callbacks,
+            pattern=r"^wh_",
         )
     )
 
