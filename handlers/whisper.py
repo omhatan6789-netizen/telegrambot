@@ -115,11 +115,51 @@ def _view_keyboard(whisper_id: str, sender_name: str) -> InlineKeyboardMarkup:
 
 
 def _split_pages(text: str) -> List[str]:
-    lines = text.splitlines() or [""]
-    pages = [
-        "\n".join(lines[i:i + LINES_PER_PAGE])
-        for i in range(0, len(lines), LINES_PER_PAGE)
-    ]
+    """
+    تقسيم الهمسة إلى صفحات.
+
+    - كل صفحة بحد أقصى 6 سطور.
+    - كذلك نراعي حد CallbackQuery حتى لا نضطر لإرسال الصفحة في الخاص.
+    - السطر الطويل جدًا يُقسّم تلقائيًا إلى أجزاء، مع الحفاظ على ترتيب النص.
+    """
+    MAX_PAGE_CHARS = 180  # مساحة آمنة للنص + عنوان الصفحة داخل التنبيه
+
+    raw_lines = text.splitlines() or [""]
+    prepared_lines: List[str] = []
+
+    for line in raw_lines:
+        if not line:
+            prepared_lines.append("")
+            continue
+
+        # نقسم السطر الطويل حتى لا تتجاوز الصفحة حد callback.
+        while len(line) > MAX_PAGE_CHARS:
+            prepared_lines.append(line[:MAX_PAGE_CHARS])
+            line = line[MAX_PAGE_CHARS:]
+        prepared_lines.append(line)
+
+    pages: List[str] = []
+    current: List[str] = []
+    current_len = 0
+
+    for line in prepared_lines:
+        extra = len(line) + (1 if current else 0)
+
+        # لا نتجاوز 6 سطور أو حجم الصفحة الآمن.
+        if current and (
+            len(current) >= LINES_PER_PAGE
+            or current_len + extra > MAX_PAGE_CHARS
+        ):
+            pages.append("\n".join(current))
+            current = []
+            current_len = 0
+
+        current.append(line)
+        current_len += len(line) + (1 if len(current) > 1 else 0)
+
+    if current or not pages:
+        pages.append("\n".join(current))
+
     return pages
 
 
@@ -144,7 +184,7 @@ async def whisper_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not creator:
         return
 
-    # تنظيف الجلسات ا��منتهية.
+    # تنظيف الجلسات المنتهية.
     _clean_expired_drafts()
 
     token = secrets.token_urlsafe(10)
@@ -368,18 +408,9 @@ async def whisper_open_callback(update: Update, context: ContextTypes.DEFAULT_TY
         page_label = f"📄 الصفحة {current + 1}/{len(whisper.pages)}"
         alert = f"{page}\n\n{page_label}"
 
-        # CallbackQuery alerts لا تتجاوز 200 حرفًا.
-        if len(alert) <= 200:
-            await query.answer(alert, show_alert=True)
-        else:
-            await query.answer("📄 الصفحة طويلة، تم إرسالها لك في الخاص.", show_alert=True)
-            try:
-                await context.bot.send_message(
-                    chat_id=user_id,
-                    text=f"{page}\n\n{page_label}",
-                )
-            except Exception:
-                pass
+        # الصفحات تم تقسيمها مسبقًا لتبقى داخل حد CallbackQuery.
+        # لا نرسل محتوى الهمسة في الخاص مهما كان طولها.
+        await query.answer(alert[:200], show_alert=True)
 
         next_page = current + 1
         if next_page >= len(whisper.pages):
