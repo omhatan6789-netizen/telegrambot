@@ -39,7 +39,6 @@ from games.penalties import (
     end_penalty_game,
 )
 
-from handlers.cancel import cancel_command
 
 from handlers.delete_messages import delete_messages
 
@@ -479,17 +478,6 @@ def main():
 
 
     # ==================================================
-    # إلغاء أي عملية
-    # ==================================================
-
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(r"^الغاء$"),
-            cancel_command
-        ),
-        group=-100
-    )
-    # ==================================================
     # الأوامر المضافة
     # ==================================================
 
@@ -520,12 +508,7 @@ def main():
 
         },
 
-        fallbacks=[
-            MessageHandler(
-                filters.Regex(r"^الغاء$"),
-                cancel_command
-            )
-        ]
+        fallbacks=[]
 
     )    
     app.add_handler(
@@ -1274,12 +1257,7 @@ def main():
             ]
         },
 
-        fallbacks=[
-            MessageHandler(
-                filters.Regex(r"^الغاء$"),
-                cancel_command
-            )
-        ],    
+        fallbacks=[],    
             
         allow_reentry=True
     )
