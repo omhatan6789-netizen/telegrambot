@@ -2,6 +2,7 @@ from telegram import Update
 
 from telegram.ext import (
     Application,
+    ApplicationHandlerStop,
     CommandHandler,
     MessageHandler,
     ContextTypes,
@@ -584,11 +585,14 @@ def main():
         context: ContextTypes.DEFAULT_TYPE
     ):
 
-        await check_custom_commands(
+        executed = await check_custom_commands(
             update,
             context,
             application=app
         )
+
+        if executed:
+            raise ApplicationHandlerStop()
 
 
     app.add_handler(
@@ -596,7 +600,7 @@ def main():
             filters.TEXT & ~filters.COMMAND,
             custom_command_alias_handler
         ),
-        group=-1
+        group=-7
     )
     
     app.add_handler(
