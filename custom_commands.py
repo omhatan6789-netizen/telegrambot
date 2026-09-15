@@ -347,9 +347,9 @@ def is_generic_handler(handler):
 
 async def check_custom_commands(
     update: Update,
-    context: ContextTypes.DEFAULT_TYPE
+    context: ContextTypes.DEFAULT_TYPE,
+    application=None
 ):
-
     if not update.message:
         return False
 
@@ -358,16 +358,102 @@ async def check_custom_commands(
 
     text = update.message.text.strip()
 
-    old_command = get_custom_command(text)
+    conn = connect()
+    cur = conn.cursor()
 
-    if not old_command:
+    cur.execute(
+        """
+        SELECT old_command
+        FROM custom_commands
+        WHERE new_command = ?
+        """,
+        (text,)
+    )
+
+    result = cur.fetchone()
+
+    conn.close()
+
+    # ليس أمرًا مضافًا
+    if not result:
         return False
 
-    application = context.application
+    old_command = result[0].strip()
 
-    # --------------------------------------------------
-    # نبحث عن Handler يطابق الأمر الأصلي
-    # --------------------------------------------------
+    if not application:
+        return False
+
+    # ==================================================
+    # إنشاء Update جديد بنفس الرسالة
+    # لكن بالنص الأصلي
+    # ==================================================
+
+    try:
+        data = update.to_dict()
+
+        if "message" not in data:
+            return False
+
+        data["message"]["text"] = old_command
+
+        # إزالة entities القديمة لأن النص تغير
+        data["message"].pop("entities", None)
+
+        fake_update = Update.de_json(
+            data,
+            application.bot
+        )
+
+    except Exception as e:
+        print(
+            f"❌ خطأ في إنشاء Update للأمر المضاف: {e}"
+        )
+        return False
+
+    # ==================================================
+    # البحث عن الهاندلر الأصلي
+    # ==================================================
+
+    ignored_callbacks = {
+        "custom_command_alias_handler",
+        "command_guard",
+        "check_custom_commands",
+
+        # هاندلرات عامة لا نريد اعتبارها أمرًا أصليًا
+        "check_speed_words",
+        "check_anime_answer",
+        "play_game",
+        "check_game_answer",
+        "check_replies",
+        "save_user_message",
+
+        "add_reply_handler",
+        "edit_reply_handler",
+        "delete_reply_handler",
+
+        "add_special_reply_handler",
+        "edit_special_reply_handler",
+        "delete_special_reply_handler",
+
+        "add_game_handler",
+        "add_question_handler",
+
+        "change_button_color_handler",
+
+        "whisper_private_message",
+
+        "check_word_race_message",
+        "check_liar_message",
+
+        "delete_command",
+        "save_lock_rank",
+
+        "stop_after_game",
+    }
+
+    # ==================================================
+    # البحث بالترتيب نفسه الذي يستخدمه البوت
+    # ==================================================
 
     for group in sorted(application.handlers.keys()):
 
@@ -375,50 +461,43 @@ async def check_custom_commands(
 
         for handler in handlers:
 
-            # ConversationHandler يتم التعامل معه
-            # بشكل منفصل
-            if isinstance(
-                handler,
-                ConversationHandler
-            ):
+            callback = getattr(handler, "callback", None)
+
+            callback_name = getattr(
+                callback,
+                "__name__",
+                ""
+            )
+
+            if callback_name in ignored_callbacks:
                 continue
 
-            # لا نختار الـ handlers العامة
-            if is_generic_handler(handler):
+            # لا نعيد تشغيل هاندلر الأوامر المضافة نفسه
+            if callback_name == "custom_command_alias_handler":
                 continue
 
             try:
                 check_result = handler.check_update(
-                    _make_fake_update(
-                        update,
-                        old_command
-                    )
+                    fake_update
                 )
+
             except Exception:
                 continue
 
             if not check_result:
                 continue
 
-            callback = getattr(
-                handler,
-                "callback",
-                None
-            )
-
-            if callback is None:
-                continue
-
-            fake_update = _make_fake_update(
-                update,
-                old_command
-            )
-
             try:
 
-                await callback(
+                await handler.handle_update(
                     fake_update,
+                    application,
+                    check_result,
                     context
+                )
+
+                print(
+                    f"🔁 الأمر المضاف: {text} → {old_command}"
                 )
 
                 return True
@@ -426,11 +505,16 @@ async def check_custom_commands(
             except Exception as e:
 
                 print(
-                    "⚠️ خطأ في الأمر المضاف "
-                    f"{text} -> {old_command}: {e}"
+                    f"❌ خطأ أثناء تشغيل الأمر "
+                    f"{old_command}: {e}"
                 )
 
                 return True
+
+    print(
+        f"⚠️ لم يتم العثور على الأمر الأصلي: "
+        f"{old_command}"
+    )
 
     return False
 
