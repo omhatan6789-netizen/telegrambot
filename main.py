@@ -1048,7 +1048,7 @@ def main():
 
     app.add_handler(
         MessageHandler(
-            filters.ALL,
+            filters.ChatType.PRIVATE,
             whisper_private_message,
         ),
         group=0,
