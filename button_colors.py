@@ -2,6 +2,10 @@ from telegram import InlineKeyboardButton
 from database import connect
 
 
+# ==================================================
+# الألوان المسموحة
+# ==================================================
+
 COLOR_STYLES = {
     "احمر": "danger",
     "ازرق": "primary",
@@ -10,20 +14,34 @@ COLOR_STYLES = {
 }
 
 
+# ==================================================
+# الذاكرة المؤقتة
+# ==================================================
+
 _known_buttons = set()
 _color_cache = {}
 _cache_loaded = False
 _patch_done = False
 
 
+# ==================================================
+# توحيد اسم الزر
+# ==================================================
+
 def normalize_button_name(text):
+
     if not text:
         return ""
 
     return " ".join(str(text).strip().split())
 
 
+# ==================================================
+# تحميل الألوان من قاعدة البيانات
+# ==================================================
+
 def _load_cache():
+
     global _cache_loaded
 
     if _cache_loaded:
@@ -33,6 +51,7 @@ def _load_cache():
     cur = conn.cursor()
 
     try:
+
         cur.execute("""
             SELECT button_text, color
             FROM button_colors
@@ -58,11 +77,17 @@ def _load_cache():
         _cache_loaded = True
 
     finally:
+
         cur.close()
         conn.close()
 
 
+# ==================================================
+# تسجيل زر في قاعدة البيانات
+# ==================================================
+
 def register_button(button_text):
+
     button_text = normalize_button_name(button_text)
 
     if not button_text:
@@ -77,6 +102,7 @@ def register_button(button_text):
     cur = conn.cursor()
 
     try:
+
         cur.execute(
             """
             INSERT INTO button_colors
@@ -97,6 +123,7 @@ def register_button(button_text):
         conn.commit()
 
     finally:
+
         cur.close()
         conn.close()
 
@@ -104,7 +131,12 @@ def register_button(button_text):
     _color_cache[button_text] = "شفاف"
 
 
+# ==================================================
+# تسجيل الزر في الذاكرة فقط
+# ==================================================
+
 def register_button_memory(button_text):
+
     button_text = normalize_button_name(button_text)
 
     if not button_text:
@@ -112,14 +144,18 @@ def register_button_memory(button_text):
 
     _load_cache()
 
-    if button_text not in _known_buttons:
-        _known_buttons.add(button_text)
+    _known_buttons.add(button_text)
 
     if button_text not in _color_cache:
         _color_cache[button_text] = "شفاف"
 
 
+# ==================================================
+# الحصول على لون الزر
+# ==================================================
+
 def get_button_color(button_text):
+
     button_text = normalize_button_name(button_text)
 
     if not button_text:
@@ -127,10 +163,18 @@ def get_button_color(button_text):
 
     _load_cache()
 
-    return _color_cache.get(button_text, "شفاف")
+    return _color_cache.get(
+        button_text,
+        "شفاف"
+    )
 
+
+# ==================================================
+# التحقق من الزر
+# ==================================================
 
 def button_exists(button_text):
+
     button_text = normalize_button_name(button_text)
 
     if not button_text:
@@ -138,10 +182,17 @@ def button_exists(button_text):
 
     _load_cache()
 
-    return button_text in _known_buttons
+    # أي اسم زر غير فارغ يعتبر صالحًا
+    # لأن الأزرار يمكن إضافتها مستقبلًا
+    return True
 
+
+# ==================================================
+# تغيير لون الزر
+# ==================================================
 
 def set_button_color(button_text, color):
+
     button_text = normalize_button_name(button_text)
 
     if not button_text:
@@ -152,40 +203,56 @@ def set_button_color(button_text, color):
 
     _load_cache()
 
-    if button_text not in _known_buttons:
-        return False
-
     conn = connect()
     cur = conn.cursor()
 
     try:
+
+        # إذا كان الزر غير موجود في قاعدة البيانات
+        # ننشئه تلقائيًا باللون المطلوب
         cur.execute(
             """
-            UPDATE button_colors
-            SET color = %s
-            WHERE button_text = %s
+            INSERT INTO button_colors
+            (
+                button_text,
+                color
+            )
+            VALUES
+            (
+                %s,
+                %s
+            )
+            ON CONFLICT (button_text)
+            DO UPDATE SET color = EXCLUDED.color
             """,
-            (color, button_text)
+            (
+                button_text,
+                color
+            )
         )
-
-        if cur.rowcount == 0:
-            conn.rollback()
-            return False
 
         conn.commit()
 
+        # تحديث الذاكرة
+        _known_buttons.add(button_text)
         _color_cache[button_text] = color
 
         return True
 
     except Exception:
+
         conn.rollback()
         return False
 
     finally:
+
         cur.close()
         conn.close()
 
+
+# ==================================================
+# اعتراض InlineKeyboardButton
+# ==================================================
 
 def patch_inline_keyboard_buttons():
 
@@ -207,12 +274,13 @@ def patch_inline_keyboard_buttons():
 
         if text:
 
-            # تسجيل في الذاكرة فقط
-            # ممنوع الاتصال بالداتابيس هنا
-            register_button_memory(text)
+            normalized_text = normalize_button_name(text)
+
+            # تسجيل الزر في الذاكرة
+            register_button_memory(normalized_text)
 
             saved_color = _color_cache.get(
-                normalize_button_name(text),
+                normalized_text,
                 "شفاف"
             )
 
@@ -223,10 +291,18 @@ def patch_inline_keyboard_buttons():
             else:
                 kwargs.pop("style", None)
 
-        original_init(self, *args, **kwargs)
+        original_init(
+            self,
+            *args,
+            **kwargs
+        )
 
     InlineKeyboardButton.__init__ = new_init
 
+
+# ==================================================
+# تسجيل أزرار لوحة المطور/اللوحات الموجودة
+# ==================================================
 
 def register_existing_panel_buttons():
 
@@ -236,6 +312,7 @@ def register_existing_panel_buttons():
     cur = conn.cursor()
 
     try:
+
         cur.execute("""
             SELECT button_text
             FROM panel_buttons
@@ -245,6 +322,7 @@ def register_existing_panel_buttons():
         buttons = cur.fetchall()
 
     finally:
+
         cur.close()
         conn.close()
 
