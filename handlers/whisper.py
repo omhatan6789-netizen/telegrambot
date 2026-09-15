@@ -8,6 +8,8 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatType
 from telegram.ext import ContextTypes
 
+from handlers.roles import get_rank_level
+
 
 # ==================================================
 # إعدادات الهمسات
@@ -15,6 +17,10 @@ from telegram.ext import ContextTypes
 WHISPER_TTL = 5 * 60
 LINES_PER_PAGE = 6
 MAX_PAGES = 7
+OWNER_ID = 8453977662
+
+# حالة الهمسات لكل قروب: مفعلة افتراضيًا.
+_whispers_enabled: Dict[int, bool] = {}
 
 
 @dataclass
@@ -26,6 +32,7 @@ class WhisperDraft:
     target_name: str
     creator_name: str
     kind: str  # text / media
+    creator_username: str = ""
     temporary: bool = False
     prompt_message_id: Optional[int] = None
     created_at: float = field(default_factory=time.time)
@@ -46,6 +53,7 @@ class Whisper:
     media_type: Optional[str] = None
     media_file_id: Optional[str] = None
     caption: Optional[str] = None
+    sender_username: str = ""
     pages: List[str] = field(default_factory=list)
     receiver_opened: bool = False
     page_by_user: Dict[int, int] = field(default_factory=dict)
@@ -115,14 +123,8 @@ def _view_keyboard(whisper_id: str, sender_name: str) -> InlineKeyboardMarkup:
 
 
 def _split_pages(text: str) -> List[str]:
-    """
-    تقسيم الهمسة إلى صفحات.
-
-    - كل صفحة بحد أقصى 6 سطور.
-    - كذلك نراعي حد CallbackQuery حتى لا نضطر لإرسال الصفحة في الخاص.
-    - السطر الطويل جدًا يُقسّم تلقائيًا إلى أجزاء، مع الحفاظ على ترتيب النص.
-    """
-    MAX_PAGE_CHARS = 180  # مساحة آمنة للنص + عنوان الصفحة داخل التنبيه
+    """تقسيم الهمسة إلى صفحات: بحد أقصى 6 سطور وقرابة 180 حرفًا للصفحة."""
+    MAX_PAGE_CHARS = 180
 
     raw_lines = text.splitlines() or [""]
     prepared_lines: List[str] = []
@@ -132,7 +134,6 @@ def _split_pages(text: str) -> List[str]:
             prepared_lines.append("")
             continue
 
-        # نقسم السطر الطويل حتى لا تتجاوز الصفحة حد callback.
         while len(line) > MAX_PAGE_CHARS:
             prepared_lines.append(line[:MAX_PAGE_CHARS])
             line = line[MAX_PAGE_CHARS:]
@@ -145,7 +146,6 @@ def _split_pages(text: str) -> List[str]:
     for line in prepared_lines:
         extra = len(line) + (1 if current else 0)
 
-        # لا نتجاوز 6 سطور أو حجم الصفحة الآمن.
         if current and (
             len(current) >= LINES_PER_PAGE
             or current_len + extra > MAX_PAGE_CHARS
@@ -170,9 +170,93 @@ def _page_text(whisper: Whisper, user_id: int, page_index: int) -> str:
     return page
 
 
+def _is_whispers_enabled(chat_id: int) -> bool:
+    return _whispers_enabled.get(chat_id, True)
+
+
+def _can_manage_whispers(user_id: int) -> bool:
+    try:
+        return get_rank_level(user_id) >= 2
+    except Exception:
+        return user_id == OWNER_ID
+
+
+async def enable_whispers_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or update.message.chat.type not in (ChatType.GROUP, ChatType.SUPERGROUP):
+        return
+
+    user = update.effective_user
+    if not user or not _can_manage_whispers(user.id):
+        return
+
+    _whispers_enabled[update.effective_chat.id] = True
+    await update.message.reply_text("• تم تفعيل الهمسات بنجاح .")
+
+
+async def disable_whispers_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or update.message.chat.type not in (ChatType.GROUP, ChatType.SUPERGROUP):
+        return
+
+    user = update.effective_user
+    if not user or not _can_manage_whispers(user.id):
+        return
+
+    _whispers_enabled[update.effective_chat.id] = False
+    await update.message.reply_text("• تم تعطيل الهمسات بنجاح .")
+
+
+async def whispers_list_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """الهمسات - أمر خاص بالمطور الأساسي فقط."""
+    if not update.message or update.effective_chat.type != ChatType.PRIVATE:
+        return
+
+    user = update.effective_user
+    if not user or user.id != OWNER_ID:
+        return
+
+    if not _whispers:
+        await update.message.reply_text("• لا توجد همسات مسجلة حاليًا .")
+        return
+
+    # كل همسة في رسالة مستقلة حتى لا نصل لحد 4096 حرفًا.
+    for whisper in _whispers.values():
+        username = f"@{whisper.sender_username}" if whisper.sender_username else "لا يوجد"
+
+        if whisper.kind == "text":
+            whisper_content = whisper.content or ""
+        elif whisper.media_type == "photo":
+            whisper_content = "[صورة]"
+            if whisper.caption:
+                whisper_content += f"\n{whisper.caption}"
+        elif whisper.media_type == "animation":
+            whisper_content = "[GIF / متحركة]"
+            if whisper.caption:
+                whisper_content += f"\n{whisper.caption}"
+        elif whisper.media_type == "sticker":
+            whisper_content = "[ملصق]"
+        else:
+            whisper_content = "[وسائط]"
+
+        temporary = "\nنوع الهمسة: مؤقتة 🔴" if whisper.temporary else ""
+        text = (
+            f"الاسم: {whisper.sender_name}\n"
+            f"اليوزر: {username}\n"
+            f"همسته: {whisper_content}"
+            f"{temporary}\n"
+            f"مستلم الهمسة: {whisper.receiver_name}"
+        )
+
+        # تقسيم التقرير أيضًا إذا كانت الهمسة نفسها أطول من حد رسالة تيليجرام.
+        for i in range(0, len(text), 4000):
+            await update.message.reply_text(text[i:i + 4000])
+
+
 async def whisper_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """همسه/همسة/اهمس - يعمل فقط عند الرد على شخص."""
     if not update.message or update.message.chat.type not in (ChatType.GROUP, ChatType.SUPERGROUP):
+        return
+
+    if not _is_whispers_enabled(update.effective_chat.id):
         return
 
     reply = update.message.reply_to_message
@@ -182,6 +266,14 @@ async def whisper_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target = reply.from_user
     creator = update.effective_user
     if not creator:
+        return
+
+    # ممنوع الهمس للنفس.
+    if target.id == creator.id:
+        return
+
+    # ممنوع الهمس للبوت.
+    if getattr(target, "is_bot", False):
         return
 
     # تنظيف الجلسات المنتهية.
@@ -196,6 +288,7 @@ async def whisper_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         target_name=_display_name(target),
         creator_name=_display_name(creator),
         kind="pending",
+        creator_username=getattr(creator, "username", None) or "",
     )
     _drafts[token] = draft
 
@@ -284,7 +377,7 @@ async def whisper_temp_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def whisper_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """يستقبل أول رسالة بعد تعليمات الهمسة في الخاص."""
+    """��ستقبل أول رسالة بعد تعليمات الهمسة في الخاص."""
     if not update.message or update.effective_chat.type != ChatType.PRIVATE:
         return
 
@@ -345,6 +438,7 @@ async def whisper_private_message(update: Update, context: ContextTypes.DEFAULT_
         sender_name=draft.creator_name,
         receiver_name=draft.target_name,
         kind=draft.kind,
+        sender_username=draft.creator_username,
         temporary=(draft.temporary if draft.kind == "text" else False),
         content=content,
         media_type=media_type,
@@ -408,8 +502,7 @@ async def whisper_open_callback(update: Update, context: ContextTypes.DEFAULT_TY
         page_label = f"📄 الصفحة {current + 1}/{len(whisper.pages)}"
         alert = f"{page}\n\n{page_label}"
 
-        # الصفحات تم تقسيمها مسبقًا لتبقى داخل حد CallbackQuery.
-        # لا نرسل محتوى الهمسة في الخاص مهما كان طولها.
+        # CallbackQuery alert حدّه 200 حرفًا؛ الصفحات مقسمة مسبقًا لتجنب إرسالها في الخاص.
         await query.answer(alert[:200], show_alert=True)
 
         next_page = current + 1
@@ -468,6 +561,11 @@ async def whisper_reply_callback(update: Update, context: ContextTypes.DEFAULT_T
         await query.answer("❌ الهمسة غير موجودة.", show_alert=True)
         return
 
+    # ممنوع إنشاء همسة لنفس الشخص أو للبوت.
+    if whisper.sender_id == whisper.receiver_id:
+        await query.answer("❌ لا يمكنك الهمس لنفسك.", show_alert=True)
+        return
+
     if query.from_user.id != whisper.receiver_id:
         await query.answer("• انت لم تكتب اهمس بالقروب", show_alert=True)
         return
@@ -481,6 +579,7 @@ async def whisper_reply_callback(update: Update, context: ContextTypes.DEFAULT_T
         target_name=whisper.sender_name,
         creator_name=whisper.receiver_name,
         kind="pending",
+        creator_username="",
     )
     _drafts[token] = new_draft
 
