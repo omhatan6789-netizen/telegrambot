@@ -571,8 +571,32 @@ def main():
         ),
         group=-10
     )
+    
+    # ==================================================
+    # الأوامر المضافة - Alias
+    # ==================================================
+
+    async def custom_command_alias_handler(
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE
+    ):
+
+        executed = await check_custom_commands(
+            update,
+            context
+        )
+
+        if executed:
+            raise ApplicationHandlerStop()
 
 
+    app.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            custom_command_alias_handler
+        ),
+        group=-9
+    )
     # ==================================================
     # حارس الأوامر
     # ==================================================
@@ -1435,19 +1459,6 @@ def main():
         group=31
     )
 
-
-    
-    # ==================================================
-    # الأوامر المضافة وتشغيلها
-    # ==================================================
-
-    app.add_handler(
-        MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
-            check_custom_commands
-        ),
-        group=35
-    )
 
 
     # ==================================================
