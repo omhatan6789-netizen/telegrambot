@@ -70,6 +70,11 @@ from games.liars_table import (
     liars_table_private_start,
 )
 
+from handlers.games_menu import (
+    games_menu_command,
+    games_menu_callback,
+)
+
 from games.liar import (
     start_liar_game_lobby,
     join_liar_game,
@@ -1070,7 +1075,14 @@ def main():
         group=-1,
     )
 
-    
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS & filters.Regex(r"^\.لعبة$"),
+            games_menu_command,
+        ),
+        group=-4,
+    )
     # ==================================================
     # 🐎 سباق الكلمات
     # ==================================================
@@ -1922,6 +1934,13 @@ def main():
         )
     )
 
+
+    app.add_handler(
+        CallbackQueryHandler(
+            games_menu_callback,
+            pattern=r"^game_menu:"
+        )
+    )
     # --------------------------------------------------
     # لوحة الأدمن
     #
