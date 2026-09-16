@@ -101,7 +101,7 @@ async def games_menu_callback(
         return
 
     # ==========================================
-    # تغيير القائمة إلى جاري تحميل اللعبة
+    # 1 - تغيير القائمة إلى جاري تحميل اللعبة
     # ==========================================
 
     await query.edit_message_text(
@@ -110,34 +110,45 @@ async def games_menu_callback(
     )
 
     # ==========================================
-    # تجهيز Update كأنه أمر عادي
+    # 2 - إنشاء رسالة مستقلة وهمية
     # ==========================================
 
     original_data = update.to_dict()
 
     callback_data = original_data.get("callback_query", {})
     callback_message = callback_data.get("message")
+    user_data = callback_data.get("from")
 
     if not callback_message:
         return
 
-    user_data = callback_data.get("from")
-
+    # ننسخ بيانات الرسالة
     fake_message = dict(callback_message)
 
-    # الشخص الذي ضغط الزر هو صاحب الرسالة الوهمية
+    # صاحب الرسالة = الشخص الذي ضغط الزر
     if user_data:
         fake_message["from"] = user_data
 
-    # نخلي النص هو اسم اللعبة الأصلي
+    # اسم اللعبة كأنه الأمر الذي كتبه المستخدم
     fake_message["text"] = game["name"]
 
-    # مهم:
-    # نشيل أي Reply حتى لا تعتبر رسالة البداية ردًا
+    # ==========================================
+    # مهم جدًا:
+    # إزالة أي Reply من الرسالة الوهمية
+    # ==========================================
+
     fake_message.pop("reply_to_message", None)
+    fake_message.pop("reply_to", None)
+
+    # إزالة الكيبورد
+    fake_message.pop("reply_markup", None)
+
+    # ==========================================
+    # إنشاء Update مستقل
+    # ==========================================
 
     fake_update_data = {
-        "update_id": original_data.get("update_id", 0),
+        "update_id": original_data.get("update_id", 0) + 1,
         "message": fake_message,
     }
 
@@ -147,7 +158,7 @@ async def games_menu_callback(
     )
 
     # ==========================================
-    # تشغيل نفس دالة اللعبة الأصلية
+    # 3 - تشغيل اللعبة الأصلية
     # ==========================================
 
     await game["handler"](fake_update, context)
