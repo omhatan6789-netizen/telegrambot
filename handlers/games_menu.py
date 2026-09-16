@@ -100,18 +100,18 @@ async def games_menu_callback(
         await query.answer("اللعبة غير موجودة", show_alert=True)
         return
 
-    handler = game["handler"]
+    # ==========================================
+    # تغيير القائمة إلى جاري تحميل اللعبة
+    # ==========================================
 
-    # -----------------------------------------------------
-    # نسوي Update مشابه للرسالة العادية
-    # عشان دالة اللعبة الأصلية تستقبل:
-    #
-    # update.message
-    # update.effective_user
-    # update.effective_chat
-    #
-    # وكأن المستخدم كتب الأمر في القروب.
-    # -----------------------------------------------------
+    await query.edit_message_text(
+        "<b>جاري تحميل اللعبة… 🎮</b>",
+        parse_mode="HTML"
+    )
+
+    # ==========================================
+    # تجهيز Update كأنه أمر عادي
+    # ==========================================
 
     original_data = update.to_dict()
 
@@ -125,9 +125,16 @@ async def games_menu_callback(
 
     fake_message = dict(callback_message)
 
-    # نخلي صاحب الرسالة هو الشخص اللي ضغط الزر
+    # الشخص الذي ضغط الزر هو صاحب الرسالة الوهمية
     if user_data:
         fake_message["from"] = user_data
+
+    # نخلي النص هو اسم اللعبة الأصلي
+    fake_message["text"] = game["name"]
+
+    # مهم:
+    # نشيل أي Reply حتى لا تعتبر رسالة البداية ردًا
+    fake_message.pop("reply_to_message", None)
 
     fake_update_data = {
         "update_id": original_data.get("update_id", 0),
@@ -139,5 +146,8 @@ async def games_menu_callback(
         context.bot
     )
 
-    # تشغيل نفس دالة بداية اللعبة الأصلية
-    await handler(fake_update, context)
+    # ==========================================
+    # تشغيل نفس دالة اللعبة الأصلية
+    # ==========================================
+
+    await game["handler"](fake_update, context)
