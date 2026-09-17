@@ -509,14 +509,6 @@ def main():
     )
 
     
-
-    app.add_handler(
-        MessageHandler(
-            filters.ALL,
-            profile_reply_pending_handler
-        ),
-        group=-100
-    )
     # ==================================================
     # الأوامر المضافة
     # ==================================================
@@ -747,6 +739,13 @@ def main():
     # لازم يكون قبل المعالجات العامة
     # --------------------------------------------------
 
+    app.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            profile_reply_pending_handler
+        ),
+        group=-11
+    )
     # --------------------------------------------------
     # المطور
     # --------------------------------------------------
@@ -780,7 +779,7 @@ def main():
             filters.Regex(r"^المالك$"),
             owner_command
         ),
-        group=-8
+        group=0
     )
 
     # --------------------------------------------------
@@ -792,7 +791,7 @@ def main():
             filters.Regex(r"^تغيير يوزر المالك$"),
             change_owner_username
         ),
-        group=-8
+        group=0
     )
 
     # --------------------------------------------------
