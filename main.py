@@ -508,7 +508,15 @@ def main():
         .build()
     )
 
+    
 
+    app.add_handler(
+        MessageHandler(
+            filters.ALL,
+            profile_reply_pending_handler
+        ),
+        group=-100
+    )
     # ==================================================
     # الأوامر المضافة
     # ==================================================
@@ -738,14 +746,6 @@ def main():
     # انتظار البيانات المؤقتة
     # لازم يكون قبل المعالجات العامة
     # --------------------------------------------------
-
-    app.add_handler(
-        MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
-            profile_reply_pending_handler
-        ),
-        group=-11
-    )
 
     # --------------------------------------------------
     # المطور
