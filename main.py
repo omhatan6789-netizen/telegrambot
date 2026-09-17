@@ -756,7 +756,7 @@ def main():
             filters.Regex(r"^المطور$"),
             developer_command
         ),
-        group=0
+        group=-8
     )
 
     # --------------------------------------------------
@@ -768,7 +768,7 @@ def main():
             filters.Regex(r"^تغيير يوزر المطور$"),
             change_developer_username
         ),
-        group=0
+        group=-8
     )
 
     # --------------------------------------------------
@@ -780,7 +780,7 @@ def main():
             filters.Regex(r"^المالك$"),
             owner_command
         ),
-        group=0
+        group=-8
     )
 
     # --------------------------------------------------
@@ -792,7 +792,7 @@ def main():
             filters.Regex(r"^تغيير يوزر المالك$"),
             change_owner_username
         ),
-        group=0
+        group=-8
     )
 
     # --------------------------------------------------
