@@ -772,82 +772,72 @@ async def get_group_user_from_username(
     if not username.startswith("@"):
         return None
 
-    username_clean = username[1:].lower()
+    username_clean = username[1:].strip().lower()
 
     if not username_clean:
         return None
 
-    # ==============================================
-    # أولًا: الحصول على الحساب من Telegram
-    # ==============================================
+    # ==================================================
+    # البحث عن المستخدم في قاعدة بيانات البوت
+    # ==================================================
+
+    conn = connect()
+    cur = conn.cursor()
 
     try:
-        user = await context.bot.get_chat(username)
-    except Exception as e:
-        print(
-            f"⚠️ تعذر العثور على الحساب {username}: {e}"
+
+        cur.execute(
+            """
+            SELECT user_id
+            FROM users
+            WHERE LOWER(username) = ?
+            LIMIT 1
+            """,
+            (username_clean,)
         )
+
+        row = cur.fetchone()
+
+    finally:
+
+        cur.close()
+        conn.close()
+
+    if not row:
         return None
 
-    user_id = getattr(user, "id", None)
+    user_id = row[0]
 
-    if not user_id:
-        return None
-
-    # ==============================================
-    # ثانيًا: التحقق من وجوده في المجموعة
-    # ==============================================
+    # ==================================================
+    # التأكد أن المستخدم موجود حاليًا في المجموعة
+    # ==================================================
 
     try:
+
         member = await context.bot.get_chat_member(
             chat.id,
             user_id
         )
 
-        if member.status not in (
-            "left",
-            "kicked",
-        ):
-            return member.user
-
     except Exception as e:
+
         print(
             f"⚠️ تعذر التحقق من عضوية {username}: {e}"
         )
 
-    # ==============================================
-    # إذا فشل التحقق المباشر
-    # نتحقق من بيانات الحساب نفسها
-    # ==============================================
+        return None
 
-    account_username = getattr(
-        user,
-        "username",
-        None
-    )
+    if member.status in (
+        "left",
+        "kicked",
+    ):
+        return None
 
-    if account_username:
+    # ==================================================
+    # المستخدم موجود
+    # ==================================================
 
-        if account_username.lower() == username_clean:
-
-            # محاولة ثانية باستخدام ID
-            try:
-
-                member = await context.bot.get_chat_member(
-                    chat.id,
-                    user.id
-                )
-
-                if member.status not in (
-                    "left",
-                    "kicked",
-                ):
-                    return member.user
-
-            except Exception:
-                pass
-
-    return None
+    return member.user
 
 
 # ==================================================
