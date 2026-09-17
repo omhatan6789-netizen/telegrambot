@@ -762,7 +762,6 @@ async def get_group_user_from_username(
     context: ContextTypes.DEFAULT_TYPE,
     username: str,
 ):
-
     chat = update.effective_chat
 
     if not chat:
@@ -773,19 +772,21 @@ async def get_group_user_from_username(
     if not username.startswith("@"):
         return None
 
-    if len(username) <= 1:
+    username_clean = username[1:].lower()
+
+    if not username_clean:
         return None
 
+    # ==============================================
+    # أولًا: الحصول على الحساب من Telegram
+    # ==============================================
+
     try:
-
         user = await context.bot.get_chat(username)
-
     except Exception as e:
-
         print(
-            f"⚠️ تعذر العثور على اليوزر {username}: {e}"
+            f"⚠️ تعذر العثور على الحساب {username}: {e}"
         )
-
         return None
 
     user_id = getattr(user, "id", None)
@@ -793,28 +794,60 @@ async def get_group_user_from_username(
     if not user_id:
         return None
 
-    try:
+    # ==============================================
+    # ثانيًا: التحقق من وجوده في المجموعة
+    # ==============================================
 
+    try:
         member = await context.bot.get_chat_member(
             chat.id,
             user_id
         )
 
-    except Exception as e:
+        if member.status not in (
+            "left",
+            "kicked",
+        ):
+            return member.user
 
+    except Exception as e:
         print(
             f"⚠️ تعذر التحقق من عضوية {username}: {e}"
         )
 
-        return None
+    # ==============================================
+    # إذا فشل التحقق المباشر
+    # نتحقق من بيانات الحساب نفسها
+    # ==============================================
 
-    if member.status in (
-        "left",
-        "kicked",
-    ):
-        return None
+    account_username = getattr(
+        user,
+        "username",
+        None
+    )
 
-    return member.user
+    if account_username:
+
+        if account_username.lower() == username_clean:
+
+            # محاولة ثانية باستخدام ID
+            try:
+
+                member = await context.bot.get_chat_member(
+                    chat.id,
+                    user.id
+                )
+
+                if member.status not in (
+                    "left",
+                    "kicked",
+                ):
+                    return member.user
+
+            except Exception:
+                pass
+
+    return None
 
 
 # ==================================================
