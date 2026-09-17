@@ -328,7 +328,7 @@ def ensure_group_settings(chat_id):
                 chat_id,
                 None,
                 None,
-                False,
+                0,
             )
         )
 
@@ -405,7 +405,7 @@ def set_admin_replies_status(
             WHERE chat_id = ?
             """,
             (
-                enabled,
+                1 if enabled else 0,
                 chat_id,
             )
         )
