@@ -2,7 +2,7 @@
   {
     "id": "animal_001",
     "image": "images/animals/animal_001.jpg",
-    "answer": "أسد",
+    "answer": "اسد",
     "alternative_answers": ["الاسد", "الأسد"],
     "category": "animals"
   },
