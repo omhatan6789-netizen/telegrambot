@@ -756,7 +756,7 @@ def main():
             filters.Regex(r"^المطور$"),
             developer_command
         ),
-        group=-8
+        group=0
     )
 
     # --------------------------------------------------
@@ -768,7 +768,7 @@ def main():
             filters.Regex(r"^تغيير يوزر المطور$"),
             change_developer_username
         ),
-        group=-8
+        group=0
     )
 
     # --------------------------------------------------
