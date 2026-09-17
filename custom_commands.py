@@ -455,6 +455,8 @@ GENERIC_CALLBACK_NAMES = {
     "save_lock_rank",
 
     "stop_after_game",
+
+    "profile_reply_pending_handler",
 }
 
 
