@@ -60,6 +60,23 @@ from games.word_race import (
     WordRaceActiveFilter,
 )
 
+# ==================================================
+# 🖼️ توقع الصورة
+# ==================================================
+
+from games.image_quiz.image_quiz import (
+    start_image_quiz,
+    join_image_quiz,
+    leave_image_quiz,
+    add_image_quiz_player,
+    image_quiz_settings,
+    begin_image_quiz,
+    continue_image_quiz,
+    end_image_quiz,
+    check_image_quiz_message,
+    image_quiz_callback,
+)
+
 from games.liars_table import (
     start_liars_table,
     join_liars_table,
@@ -1704,7 +1721,147 @@ def main():
 
 
 
+    # ==================================================
+    # 🖼️ توقع الصورة
+    # ==================================================
 
+    # --------------------------------------------------
+    # بدء لعبة توقع الصورة
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(r"^توقع الصورة$"),
+            start_image_quiz
+        ),
+        group=-6
+    )
+
+    # --------------------------------------------------
+    # دخول توقع الصورة
+    #
+    # لازم يكون قبل join_big_game_router
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(r"^دخول$"),
+            join_image_quiz
+        ),
+        group=-6
+    )
+
+    # --------------------------------------------------
+    # خروج توقع الصورة
+    #
+    # يعمل قبل وبعد بدء القيم
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(r"^خروج$"),
+            leave_image_quiz
+        ),
+        group=-6
+    )
+
+    # --------------------------------------------------
+    # .اضافة
+    #
+    # يستخدم بالرد على رسالة الشخص
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(r"^\.اضافة$"),
+            add_image_quiz_player
+        ),
+        group=-6
+    )
+
+    # --------------------------------------------------
+    # .اعدادات
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(r"^\.اعدادات$"),
+            image_quiz_settings
+        ),
+        group=-6
+    )
+
+    # --------------------------------------------------
+    # .ابدا
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(r"^\.ابدا$"),
+            begin_image_quiz
+        ),
+        group=-6
+    )
+
+    # --------------------------------------------------
+    # .كمل
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(r"^\.كمل$"),
+            continue_image_quiz
+        ),
+        group=-6
+    )
+
+    # --------------------------------------------------
+    # .انهاء
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(r"^\.انهاء$"),
+            end_image_quiz
+        ),
+        group=-6
+    )
+
+    # --------------------------------------------------
+    # أزرار إعدادات توقع الصورة
+    # --------------------------------------------------
+
+    app.add_handler(
+        CallbackQueryHandler(
+            image_quiz_callback,
+            pattern=r"^iq:"
+        ),
+        group=-6
+    )
+
+    # --------------------------------------------------
+    # إجابات توقع الصورة
+    #
+    # لازم تكون قبل معالجات إجابات الألعاب الأخرى
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.TEXT
+            & ~filters.COMMAND,
+            check_image_quiz_message
+        ),
+        group=8
+    )
     # ==================================================
     # 🍻 طاولة الكذب
     # ==================================================
