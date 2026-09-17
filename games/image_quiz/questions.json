@@ -1,0 +1,3510 @@
+[
+  {
+    "id": "animal_001",
+    "image": "images/animals/animal_001.jpg",
+    "answer": "أسد",
+    "alternative_answers": ["الاسد", "الأسد"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_002",
+    "image": "images/animals/animal_002.jpg",
+    "answer": "نمر",
+    "alternative_answers": ["النمر"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_003",
+    "image": "images/animals/animal_003.jpg",
+    "answer": "فهد",
+    "alternative_answers": ["الفهد"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_004",
+    "image": "images/animals/animal_004.jpg",
+    "answer": "فيل",
+    "alternative_answers": ["الفيل"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_005",
+    "image": "images/animals/animal_005.jpg",
+    "answer": "زرافة",
+    "alternative_answers": ["الزرافة"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_006",
+    "image": "images/animals/animal_006.jpg",
+    "answer": "حصان",
+    "alternative_answers": ["الحصان"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_007",
+    "image": "images/animals/animal_007.jpg",
+    "answer": "حمار",
+    "alternative_answers": ["الحمار"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_008",
+    "image": "images/animals/animal_008.jpg",
+    "answer": "بقرة",
+    "alternative_answers": ["البقرة"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_009",
+    "image": "images/animals/animal_009.jpg",
+    "answer": "خروف",
+    "alternative_answers": ["الخروف", "غنم"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_010",
+    "image": "images/animals/animal_010.jpg",
+    "answer": "ماعز",
+    "alternative_answers": ["الماعز"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_011",
+    "image": "images/animals/animal_011.jpg",
+    "answer": "جمل",
+    "alternative_answers": ["الجمل", "ناقة"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_012",
+    "image": "images/animals/animal_012.jpg",
+    "answer": "كلب",
+    "alternative_answers": ["الكلب"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_013",
+    "image": "images/animals/animal_013.jpg",
+    "answer": "قطة",
+    "alternative_answers": ["قط", "بسة", "بسه"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_014",
+    "image": "images/animals/animal_014.jpg",
+    "answer": "أرنب",
+    "alternative_answers": ["ارنب", "الأرنب"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_015",
+    "image": "images/animals/animal_015.jpg",
+    "answer": "دب",
+    "alternative_answers": ["الدب"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_016",
+    "image": "images/animals/animal_016.jpg",
+    "answer": "باندا",
+    "alternative_answers": ["الباندا"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_017",
+    "image": "images/animals/animal_017.jpg",
+    "answer": "قرد",
+    "alternative_answers": ["القرد"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_018",
+    "image": "images/animals/animal_018.jpg",
+    "answer": "غوريلا",
+    "alternative_answers": ["الغوريلا"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_019",
+    "image": "images/animals/animal_019.jpg",
+    "answer": "كنغر",
+    "alternative_answers": ["الكنغر"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_020",
+    "image": "images/animals/animal_020.jpg",
+    "answer": "بطريق",
+    "alternative_answers": ["البطريق"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_021",
+    "image": "images/animals/animal_021.jpg",
+    "answer": "دلفين",
+    "alternative_answers": ["الدلفين"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_022",
+    "image": "images/animals/animal_022.jpg",
+    "answer": "حوت",
+    "alternative_answers": ["الحوت"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_023",
+    "image": "images/animals/animal_023.jpg",
+    "answer": "قرش",
+    "alternative_answers": ["القرش"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_024",
+    "image": "images/animals/animal_024.jpg",
+    "answer": "أخطبوط",
+    "alternative_answers": ["اخطبوط", "الأخطبوط"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_025",
+    "image": "images/animals/animal_025.jpg",
+    "answer": "سلحفاة",
+    "alternative_answers": ["السلحفاة"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_026",
+    "image": "images/animals/animal_026.jpg",
+    "answer": "تمساح",
+    "alternative_answers": ["التمساح"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_027",
+    "image": "images/animals/animal_027.jpg",
+    "answer": "ثعبان",
+    "alternative_answers": ["الثعبان", "حية"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_028",
+    "image": "images/animals/animal_028.jpg",
+    "answer": "سحلية",
+    "alternative_answers": ["السحلية"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_029",
+    "image": "images/animals/animal_029.jpg",
+    "answer": "ضفدع",
+    "alternative_answers": ["الضفدع"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_030",
+    "image": "images/animals/animal_030.jpg",
+    "answer": "نحلة",
+    "alternative_answers": ["النحلة"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_031",
+    "image": "images/animals/animal_031.jpg",
+    "answer": "فراشة",
+    "alternative_answers": ["الفراشة"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_032",
+    "image": "images/animals/animal_032.jpg",
+    "answer": "عنكبوت",
+    "alternative_answers": ["العنكبوت"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_033",
+    "image": "images/animals/animal_033.jpg",
+    "answer": "عقرب",
+    "alternative_answers": ["العقرب"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_034",
+    "image": "images/animals/animal_034.jpg",
+    "answer": "نسر",
+    "alternative_answers": ["النسر"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_035",
+    "image": "images/animals/animal_035.jpg",
+    "answer": "صقر",
+    "alternative_answers": ["الصقر"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_036",
+    "image": "images/animals/animal_036.jpg",
+    "answer": "بومة",
+    "alternative_answers": ["البومة"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_037",
+    "image": "images/animals/animal_037.jpg",
+    "answer": "ببغاء",
+    "alternative_answers": ["الببغاء"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_038",
+    "image": "images/animals/animal_038.jpg",
+    "answer": "حمامة",
+    "alternative_answers": ["الحمامة"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_039",
+    "image": "images/animals/animal_039.jpg",
+    "answer": "دجاجة",
+    "alternative_answers": ["الدجاجة", "دجاج"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_040",
+    "image": "images/animals/animal_040.jpg",
+    "answer": "ديك",
+    "alternative_answers": ["الديك"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_041",
+    "image": "images/animals/animal_041.jpg",
+    "answer": "بط",
+    "alternative_answers": ["بطة", "البطة"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_042",
+    "image": "images/animals/animal_042.jpg",
+    "answer": "إوزة",
+    "alternative_answers": ["اوزة", "الإوزة"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_043",
+    "image": "images/animals/animal_043.jpg",
+    "answer": "طاووس",
+    "alternative_answers": ["الطاووس"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_044",
+    "image": "images/animals/animal_044.jpg",
+    "answer": "نعامة",
+    "alternative_answers": ["النعامة"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_045",
+    "image": "images/animals/animal_045.jpg",
+    "answer": "وحيد القرن",
+    "alternative_answers": ["وحيد القرن"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_046",
+    "image": "images/animals/animal_046.jpg",
+    "answer": "فرس النهر",
+    "alternative_answers": ["فرس النهر"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_047",
+    "image": "images/animals/animal_047.jpg",
+    "answer": "غزال",
+    "alternative_answers": ["الغزال"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_048",
+    "image": "images/animals/animal_048.jpg",
+    "answer": "ذئب",
+    "alternative_answers": ["الذئب"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_049",
+    "image": "images/animals/animal_049.jpg",
+    "answer": "ثعلب",
+    "alternative_answers": ["الثعلب"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_050",
+    "image": "images/animals/animal_050.jpg",
+    "answer": "ضبع",
+    "alternative_answers": ["الضبع"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_051",
+    "image": "images/animals/animal_051.jpg",
+    "answer": "وشق",
+    "alternative_answers": ["الوشق"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_052",
+    "image": "images/animals/animal_052.jpg",
+    "answer": "راكون",
+    "alternative_answers": ["الراكون"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_053",
+    "image": "images/animals/animal_053.jpg",
+    "answer": "قنفذ",
+    "alternative_answers": ["القنفذ"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_054",
+    "image": "images/animals/animal_054.jpg",
+    "answer": "سنجاب",
+    "alternative_answers": ["السنجاب"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_055",
+    "image": "images/animals/animal_055.jpg",
+    "answer": "خفاش",
+    "alternative_answers": ["الخفاش"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_056",
+    "image": "images/animals/animal_056.jpg",
+    "answer": "باندا أحمر",
+    "alternative_answers": ["الباندا الأحمر"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_057",
+    "image": "images/animals/animal_057.jpg",
+    "answer": "كوالا",
+    "alternative_answers": ["الكوالا"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_058",
+    "image": "images/animals/animal_058.jpg",
+    "answer": "كسلان",
+    "alternative_answers": ["حيوان الكسلان"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_059",
+    "image": "images/animals/animal_059.jpg",
+    "answer": "قندس",
+    "alternative_answers": ["القندس"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_060",
+    "image": "images/animals/animal_060.jpg",
+    "answer": "سمور",
+    "alternative_answers": ["السمور"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_061",
+    "image": "images/animals/animal_061.jpg",
+    "answer": "بطريق إمبراطور",
+    "alternative_answers": ["امبراطور"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_062",
+    "image": "images/animals/animal_062.jpg",
+    "answer": "نجم البحر",
+    "alternative_answers": ["نجمة البحر"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_063",
+    "image": "images/animals/animal_063.jpg",
+    "answer": "قنديل البحر",
+    "alternative_answers": ["قنديل"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_064",
+    "image": "images/animals/animal_064.jpg",
+    "answer": "سرطان البحر",
+    "alternative_answers": ["سلطعون", "السلطعون"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_065",
+    "image": "images/animals/animal_065.jpg",
+    "answer": "فرس البحر",
+    "alternative_answers": ["فرس البحر"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_066",
+    "image": "images/animals/animal_066.jpg",
+    "answer": "سمكة",
+    "alternative_answers": ["سمك", "السمكة"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_067",
+    "image": "images/animals/animal_067.jpg",
+    "answer": "تونة",
+    "alternative_answers": ["سمك التونة"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_068",
+    "image": "images/animals/animal_068.jpg",
+    "answer": "سلمون",
+    "alternative_answers": ["سمك السلمون"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_069",
+    "image": "images/animals/animal_069.jpg",
+    "answer": "بط بري",
+    "alternative_answers": ["بطة برية"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_070",
+    "image": "images/animals/animal_070.jpg",
+    "answer": "لاما",
+    "alternative_answers": ["اللاما"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_071",
+    "image": "images/animals/animal_071.jpg",
+    "answer": "ألبكة",
+    "alternative_answers": ["البكة", "الألبكة"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_072",
+    "image": "images/animals/animal_072.jpg",
+    "answer": "جاموس",
+    "alternative_answers": ["الجاموس"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_073",
+    "image": "images/animals/animal_073.jpg",
+    "answer": "ثور",
+    "alternative_answers": ["الثور"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_074",
+    "image": "images/animals/animal_074.jpg",
+    "answer": "خنزير",
+    "alternative_answers": ["الخنزير"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_075",
+    "image": "images/animals/animal_075.jpg",
+    "answer": "فأر",
+    "alternative_answers": ["الفأر"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_076",
+    "image": "images/animals/animal_076.jpg",
+    "answer": "جرذ",
+    "alternative_answers": ["الجرذ"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_077",
+    "image": "images/animals/animal_077.jpg",
+    "answer": "نمس",
+    "alternative_answers": ["النمس"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_078",
+    "image": "images/animals/animal_078.jpg",
+    "answer": "ابن عرس",
+    "alternative_answers": ["ابن عرس"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_079",
+    "image": "images/animals/animal_079.jpg",
+    "answer": "سمكة قرش المطرقة",
+    "alternative_answers": ["قرش المطرقة"],
+    "category": "animals"
+  },
+  {
+    "id": "animal_080",
+    "image": "images/animals/animal_080.jpg",
+    "answer": "حوت قاتل",
+    "alternative_answers": ["أوركا", "اوركا"],
+    "category": "animals"
+  },
+
+  {
+    "id": "vehicle_001",
+    "image": "images/vehicles/vehicle_001.jpg",
+    "answer": "سيارة",
+    "alternative_answers": ["سياره"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_002",
+    "image": "images/vehicles/vehicle_002.jpg",
+    "answer": "شاحنة",
+    "alternative_answers": ["شاحنه"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_003",
+    "image": "images/vehicles/vehicle_003.jpg",
+    "answer": "حافلة",
+    "alternative_answers": ["باص", "باصات"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_004",
+    "image": "images/vehicles/vehicle_004.jpg",
+    "answer": "دراجة",
+    "alternative_answers": ["دراجه"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_005",
+    "image": "images/vehicles/vehicle_005.jpg",
+    "answer": "دراجة نارية",
+    "alternative_answers": ["دباب", "دراجة ناريه"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_006",
+    "image": "images/vehicles/vehicle_006.jpg",
+    "answer": "قطار",
+    "alternative_answers": ["القطار"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_007",
+    "image": "images/vehicles/vehicle_007.jpg",
+    "answer": "طائرة",
+    "alternative_answers": ["طياره"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_008",
+    "image": "images/vehicles/vehicle_008.jpg",
+    "answer": "مروحية",
+    "alternative_answers": ["هليكوبتر", "هيلكوبتر"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_009",
+    "image": "images/vehicles/vehicle_009.jpg",
+    "answer": "سفينة",
+    "alternative_answers": ["سفينه"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_010",
+    "image": "images/vehicles/vehicle_010.jpg",
+    "answer": "قارب",
+    "alternative_answers": ["القارب"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_011",
+    "image": "images/vehicles/vehicle_011.jpg",
+    "answer": "سيارة سباق",
+    "alternative_answers": ["سياره سباق"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_012",
+    "image": "images/vehicles/vehicle_012.jpg",
+    "answer": "سيارة شرطة",
+    "alternative_answers": ["دورية", "دوريه"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_013",
+    "image": "images/vehicles/vehicle_013.jpg",
+    "answer": "سيارة إسعاف",
+    "alternative_answers": ["اسعاف", "إسعاف"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_014",
+    "image": "images/vehicles/vehicle_014.jpg",
+    "answer": "سيارة إطفاء",
+    "alternative_answers": ["اطفاء", "إطفاء"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_015",
+    "image": "images/vehicles/vehicle_015.jpg",
+    "answer": "جرار",
+    "alternative_answers": ["تراكتور"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_016",
+    "image": "images/vehicles/vehicle_016.jpg",
+    "answer": "رافعة",
+    "alternative_answers": ["كرين", "ونش"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_017",
+    "image": "images/vehicles/vehicle_017.jpg",
+    "answer": "مترو",
+    "alternative_answers": ["قطار مترو"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_018",
+    "image": "images/vehicles/vehicle_018.jpg",
+    "answer": "ترام",
+    "alternative_answers": ["الترام"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_019",
+    "image": "images/vehicles/vehicle_019.jpg",
+    "answer": "غواصة",
+    "alternative_answers": ["الغواصة"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_020",
+    "image": "images/vehicles/vehicle_020.jpg",
+    "answer": "طائرة شراعية",
+    "alternative_answers": ["شراعية"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_021",
+    "image": "images/vehicles/vehicle_021.jpg",
+    "answer": "سكوتر",
+    "alternative_answers": ["سكوتر كهربائي"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_022",
+    "image": "images/vehicles/vehicle_022.jpg",
+    "answer": "دراجة هوائية",
+    "alternative_answers": ["بسكليت", "دراجة"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_023",
+    "image": "images/vehicles/vehicle_023.jpg",
+    "answer": "تاكسي",
+    "alternative_answers": ["تكسي"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_024",
+    "image": "images/vehicles/vehicle_024.jpg",
+    "answer": "ليموزين",
+    "alternative_answers": ["ليموزين"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_025",
+    "image": "images/vehicles/vehicle_025.jpg",
+    "answer": "سيارة دفع رباعي",
+    "alternative_answers": ["دفع رباعي", "جيب"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_026",
+    "image": "images/vehicles/vehicle_026.jpg",
+    "answer": "بيك أب",
+    "alternative_answers": ["بيكاب", "وانيت"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_027",
+    "image": "images/vehicles/vehicle_027.jpg",
+    "answer": "حافلة مدرسية",
+    "alternative_answers": ["باص مدرسي"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_028",
+    "image": "images/vehicles/vehicle_028.jpg",
+    "answer": "عربة قطار",
+    "alternative_answers": ["عربة"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_029",
+    "image": "images/vehicles/vehicle_029.jpg",
+    "answer": "توك توك",
+    "alternative_answers": ["تكتك"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_030",
+    "image": "images/vehicles/vehicle_030.jpg",
+    "answer": "عربة غولف",
+    "alternative_answers": ["قولف"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_031",
+    "image": "images/vehicles/vehicle_031.jpg",
+    "answer": "سيارة كهربائية",
+    "alternative_answers": ["سياره كهربائية"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_032",
+    "image": "images/vehicles/vehicle_032.jpg",
+    "answer": "سيارة كلاسيكية",
+    "alternative_answers": ["سياره كلاسيكية"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_033",
+    "image": "images/vehicles/vehicle_033.jpg",
+    "answer": "سيارة رياضية",
+    "alternative_answers": ["سياره رياضيه"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_034",
+    "image": "images/vehicles/vehicle_034.jpg",
+    "answer": "سيارة مكشوفة",
+    "alternative_answers": ["مكشوفة"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_035",
+    "image": "images/vehicles/vehicle_035.jpg",
+    "answer": "دراجة جبلية",
+    "alternative_answers": ["دراجة جبليه"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_036",
+    "image": "images/vehicles/vehicle_036.jpg",
+    "answer": "دراجة سباق",
+    "alternative_answers": ["دراجة سباق"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_037",
+    "image": "images/vehicles/vehicle_037.jpg",
+    "answer": "شاحنة نقل",
+    "alternative_answers": ["شاحنه نقل"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_038",
+    "image": "images/vehicles/vehicle_038.jpg",
+    "answer": "شاحنة إطفاء",
+    "alternative_answers": ["شاحنه اطفاء"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_039",
+    "image": "images/vehicles/vehicle_039.jpg",
+    "answer": "حافلة سياحية",
+    "alternative_answers": ["باص سياحي"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_040",
+    "image": "images/vehicles/vehicle_040.jpg",
+    "answer": "طائرة ركاب",
+    "alternative_answers": ["طائره ركاب"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_041",
+    "image": "images/vehicles/vehicle_041.jpg",
+    "answer": "طائرة مقاتلة",
+    "alternative_answers": ["مقاتلة", "طياره حربيه"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_042",
+    "image": "images/vehicles/vehicle_042.jpg",
+    "answer": "طائرة شحن",
+    "alternative_answers": ["طائره شحن"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_043",
+    "image": "images/vehicles/vehicle_043.jpg",
+    "answer": "يخت",
+    "alternative_answers": ["اليخت"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_044",
+    "image": "images/vehicles/vehicle_044.jpg",
+    "answer": "سفينة حاويات",
+    "alternative_answers": ["سفينه حاويات"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_045",
+    "image": "images/vehicles/vehicle_045.jpg",
+    "answer": "ناقلة نفط",
+    "alternative_answers": ["ناقله نفط"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_046",
+    "image": "images/vehicles/vehicle_046.jpg",
+    "answer": "عبّارة",
+    "alternative_answers": ["عباره"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_047",
+    "image": "images/vehicles/vehicle_047.jpg",
+    "answer": "دراجة مائية",
+    "alternative_answers": ["جت سكي", "جتسكي"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_048",
+    "image": "images/vehicles/vehicle_048.jpg",
+    "answer": "عربة مدرعة",
+    "alternative_answers": ["مدرعة"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_049",
+    "image": "images/vehicles/vehicle_049.jpg",
+    "answer": "دبابة",
+    "alternative_answers": ["الدبابة"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_050",
+    "image": "images/vehicles/vehicle_050.jpg",
+    "answer": "مركبة فضائية",
+    "alternative_answers": ["صاروخ فضائي", "مركبه فضائيه"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_051",
+    "image": "images/vehicles/vehicle_051.jpg",
+    "answer": "صاروخ",
+    "alternative_answers": ["الصاروخ"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_052",
+    "image": "images/vehicles/vehicle_052.jpg",
+    "answer": "عربة إسمنت",
+    "alternative_answers": ["خلاطة اسمنت"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_053",
+    "image": "images/vehicles/vehicle_053.jpg",
+    "answer": "جرافة",
+    "alternative_answers": ["بلدوزر"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_054",
+    "image": "images/vehicles/vehicle_054.jpg",
+    "answer": "حفارة",
+    "alternative_answers": ["حفاره"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_055",
+    "image": "images/vehicles/vehicle_055.jpg",
+    "answer": "رافعة شوكية",
+    "alternative_answers": ["فوركلفت", "فورك لفت"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_056",
+    "image": "images/vehicles/vehicle_056.jpg",
+    "answer": "عربة قمامة",
+    "alternative_answers": ["شاحنة قمامة"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_057",
+    "image": "images/vehicles/vehicle_057.jpg",
+    "answer": "عربة إسعاف جوية",
+    "alternative_answers": ["هليكوبتر إسعاف"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_058",
+    "image": "images/vehicles/vehicle_058.jpg",
+    "answer": "ترام كهربائي",
+    "alternative_answers": ["ترام"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_059",
+    "image": "images/vehicles/vehicle_059.jpg",
+    "answer": "قطار سريع",
+    "alternative_answers": ["قطار سريع"],
+    "category": "vehicles"
+  },
+  {
+    "id": "vehicle_060",
+    "image": "images/vehicles/vehicle_060.jpg",
+    "answer": "قطار بخاري",
+    "alternative_answers": ["قطار بخار"],
+    "category": "vehicles"
+  },
+
+  {
+    "id": "food_001",
+    "image": "images/food/food_001.jpg",
+    "answer": "بيتزا",
+    "alternative_answers": [],
+    "category": "food"
+  },
+  {
+    "id": "food_002",
+    "image": "images/food/food_002.jpg",
+    "answer": "برجر",
+    "alternative_answers": ["همبرجر"],
+    "category": "food"
+  },
+  {
+    "id": "food_003",
+    "image": "images/food/food_003.jpg",
+    "answer": "بطاطس مقلية",
+    "alternative_answers": ["بطاطس", "فرايز"],
+    "category": "food"
+  },
+  {
+    "id": "food_004",
+    "image": "images/food/food_004.jpg",
+    "answer": "دجاج مقلي",
+    "alternative_answers": ["دجاج", "فرايد تشكن"],
+    "category": "food"
+  },
+  {
+    "id": "food_005",
+    "image": "images/food/food_005.jpg",
+    "answer": "كبسة",
+    "alternative_answers": [],
+    "category": "food"
+  },
+  {
+    "id": "food_006",
+    "image": "images/food/food_006.jpg",
+    "answer": "مندي",
+    "alternative_answers": [],
+    "category": "food"
+  },
+  {
+    "id": "food_007",
+    "image": "images/food/food_007.jpg",
+    "answer": "شاورما",
+    "alternative_answers": [],
+    "category": "food"
+  },
+  {
+    "id": "food_008",
+    "image": "images/food/food_008.jpg",
+    "answer": "فلافل",
+    "alternative_answers": ["طعمية"],
+    "category": "food"
+  },
+  {
+    "id": "food_009",
+    "image": "images/food/food_009.jpg",
+    "answer": "حمص",
+    "alternative_answers": [],
+    "category": "food"
+  },
+  {
+    "id": "food_010",
+    "image": "images/food/food_010.jpg",
+    "answer": "كبسة دجاج",
+    "alternative_answers": ["كبسه دجاج"],
+    "category": "food"
+  },
+  {
+    "id": "food_011",
+    "image": "images/food/food_011.jpg",
+    "answer": "مكرونة",
+    "alternative_answers": ["معكرونة", "باستا"],
+    "category": "food"
+  },
+  {
+    "id": "food_012",
+    "image": "images/food/food_012.jpg",
+    "answer": "لازانيا",
+    "alternative_answers": [],
+    "category": "food"
+  },
+  {
+    "id": "food_013",
+    "image": "images/food/food_013.jpg",
+    "answer": "سوشي",
+    "alternative_answers": [],
+    "category": "food"
+  },
+  {
+    "id": "food_014",
+    "image": "images/food/food_014.jpg",
+    "answer": "رامن",
+    "alternative_answers": [],
+    "category": "food"
+  },
+  {
+    "id": "food_015",
+    "image": "images/food/food_015.jpg",
+    "answer": "تاكو",
+    "alternative_answers": [],
+    "category": "food"
+  },
+  {
+    "id": "food_016",
+    "image": "images/food/food_016.jpg",
+    "answer": "بوريتو",
+    "alternative_answers": [],
+    "category": "food"
+  },
+  {
+    "id": "food_017",
+    "image": "images/food/food_017.jpg",
+    "answer": "ناتشوز",
+    "alternative_answers": [],
+    "category": "food"
+  },
+  {
+    "id": "food_018",
+    "image": "images/food/food_018.jpg",
+    "answer": "هوت دوغ",
+    "alternative_answers": ["هوت دوج"],
+    "category": "food"
+  },
+  {
+    "id": "food_019",
+    "image": "images/food/food_019.jpg",
+    "answer": "دونات",
+    "alternative_answers": ["دونت"],
+    "category": "food"
+  },
+  {
+    "id": "food_020",
+    "image": "images/food/food_020.jpg",
+    "answer": "كيك",
+    "alternative_answers": ["كيكة"],
+    "category": "food"
+  },
+  {
+    "id": "food_021",
+    "image": "images/food/food_021.jpg",
+    "answer": "آيس كريم",
+    "alternative_answers": ["ايس كريم", "بوظة"],
+    "category": "food"
+  },
+  {
+    "id": "food_022",
+    "image": "images/food/food_022.jpg",
+    "answer": "شوكولاتة",
+    "alternative_answers": ["شوكولاته"],
+    "category": "food"
+  },
+  {
+    "id": "food_023",
+    "image": "images/food/food_023.jpg",
+    "answer": "تفاحة",
+    "alternative_answers": ["تفاح"],
+    "category": "food"
+  },
+  {
+    "id": "food_024",
+    "image": "images/food/food_024.jpg",
+    "answer": "موز",
+    "alternative_answers": ["موزة"],
+    "category": "food"
+  },
+  {
+    "id": "food_025",
+    "image": "images/food/food_025.jpg",
+    "answer": "برتقال",
+    "alternative_answers": ["برتقالة"],
+    "category": "food"
+  },
+  {
+    "id": "food_026",
+    "image": "images/food/food_026.jpg",
+    "answer": "فراولة",
+    "alternative_answers": ["فراوله"],
+    "category": "food"
+  },
+  {
+    "id": "food_027",
+    "image": "images/food/food_027.jpg",
+    "answer": "بطيخ",
+    "alternative_answers": ["بطيخه"],
+    "category": "food"
+  },
+  {
+    "id": "food_028",
+    "image": "images/food/food_028.jpg",
+    "answer": "عنب",
+    "alternative_answers": [],
+    "category": "food"
+  },
+  {
+    "id": "food_029",
+    "image": "images/food/food_029.jpg",
+    "answer": "مانجو",
+    "alternative_answers": ["مانجا"],
+    "category": "food"
+  },
+  {
+    "id": "food_030",
+    "image": "images/food/food_030.jpg",
+    "answer": "أناناس",
+    "alternative_answers": ["اناناس"],
+    "category": "food"
+  },
+  {
+    "id": "food_031",
+    "image": "images/food/food_031.jpg",
+    "answer": "قهوة",
+    "alternative_answers": ["كوفي"],
+    "category": "food"
+  },
+  {
+    "id": "food_032",
+    "image": "images/food/food_032.jpg",
+    "answer": "شاي",
+    "alternative_answers": [],
+    "category": "food"
+  },
+  {
+    "id": "food_033",
+    "image": "images/food/food_033.jpg",
+    "answer": "عصير برتقال",
+    "alternative_answers": ["عصير"],
+    "category": "food"
+  },
+  {
+    "id": "food_034",
+    "image": "images/food/food_034.jpg",
+    "answer": "حليب",
+    "alternative_answers": ["لبن"],
+    "category": "food"
+  },
+  {
+    "id": "food_035",
+    "image": "images/food/food_035.jpg",
+    "answer": "ميلك شيك",
+    "alternative_answers": ["ميلكشك"],
+    "category": "food"
+  },
+  {
+    "id": "food_036",
+    "image": "images/food/food_036.jpg",
+    "answer": "كولا",
+    "alternative_answers": ["كوكاكولا", "بيبسي"],
+    "category": "food"
+  },
+  {
+    "id": "food_037",
+    "image": "images/food/food_037.jpg",
+    "answer": "كب كيك",
+    "alternative_answers": ["كب كيك"],
+    "category": "food"
+  },
+  {
+    "id": "food_038",
+    "image": "images/food/food_038.jpg",
+    "answer": "كرواسون",
+    "alternative_answers": [],
+    "category": "food"
+  },
+  {
+    "id": "food_039",
+    "image": "images/food/food_039.jpg",
+    "answer": "بان كيك",
+    "alternative_answers": ["بانكيك"],
+    "category": "food"
+  },
+  {
+    "id": "food_040",
+    "image": "images/food/food_040.jpg",
+    "answer": "وافل",
+    "alternative_answers": ["وافل"],
+    "category": "food"
+  },
+  {
+    "id": "food_041",
+    "image": "images/food/food_041.jpg",
+    "answer": "تشيز كيك",
+    "alternative_answers": ["تشيزكيك"],
+    "category": "food"
+  },
+  {
+    "id": "food_042",
+    "image": "images/food/food_042.jpg",
+    "answer": "كوكيز",
+    "alternative_answers": ["كوكي"],
+    "category": "food"
+  },
+  {
+    "id": "food_043",
+    "image": "images/food/food_043.jpg",
+    "answer": "بسبوسة",
+    "alternative_answers": [],
+    "category": "food"
+  },
+  {
+    "id": "food_044",
+    "image": "images/food/food_044.jpg",
+    "answer": "كنافة",
+    "alternative_answers": [],
+    "category": "food"
+  },
+  {
+    "id": "food_045",
+    "image": "images/food/food_045.jpg",
+    "answer": "لقيمات",
+    "alternative_answers": ["لقمه القاضي"],
+    "category": "food"
+  },
+  {
+    "id": "food_046",
+    "image": "images/food/food_046.jpg",
+    "answer": "تمر",
+    "alternative_answers": ["تمور"],
+    "category": "food"
+  },
+  {
+    "id": "food_047",
+    "image": "images/food/food_047.jpg",
+    "answer": "سمبوسة",
+    "alternative_answers": ["سمبوسك"],
+    "category": "food"
+  },
+  {
+    "id": "food_048",
+    "image": "images/food/food_048.jpg",
+    "answer": "فطيرة",
+    "alternative_answers": ["فطيره"],
+    "category": "food"
+  },
+  {
+    "id": "food_049",
+    "image": "images/food/food_049.jpg",
+    "answer": "بيض",
+    "alternative_answers": ["بيضة"],
+    "category": "food"
+  },
+  {
+    "id": "food_050",
+    "image": "images/food/food_050.jpg",
+    "answer": "أرز",
+    "alternative_answers": ["رز"],
+    "category": "food"
+  },
+  {
+    "id": "food_051",
+    "image": "images/food/food_051.jpg",
+    "answer": "شوربة",
+    "alternative_answers": ["شوربه"],
+    "category": "food"
+  },
+  {
+    "id": "food_052",
+    "image": "images/food/food_052.jpg",
+    "answer": "سلطة",
+    "alternative_answers": ["سلطه"],
+    "category": "food"
+  },
+  {
+    "id": "food_053",
+    "image": "images/food/food_053.jpg",
+    "answer": "ساندويتش",
+    "alternative_answers": ["سندوتش", "ساندوتش"],
+    "category": "food"
+  },
+  {
+    "id": "food_054",
+    "image": "images/food/food_054.jpg",
+    "answer": "جبنة",
+    "alternative_answers": ["جبن", "جبنه"],
+    "category": "food"
+  },
+  {
+    "id": "food_055",
+    "image": "images/food/food_055.jpg",
+    "answer": "خبز",
+    "alternative_answers": ["عيش"],
+    "category": "food"
+  },
+  {
+    "id": "food_056",
+    "image": "images/food/food_056.jpg",
+    "answer": "مربى",
+    "alternative_answers": ["مربا"],
+    "category": "food"
+  },
+  {
+    "id": "food_057",
+    "image": "images/food/food_057.jpg",
+    "answer": "عسل",
+    "alternative_answers": [],
+    "category": "food"
+  },
+  {
+    "id": "food_058",
+    "image": "images/food/food_058.jpg",
+    "answer": "ذرة",
+    "alternative_answers": ["ذره"],
+    "category": "food"
+  },
+  {
+    "id": "food_059",
+    "image": "images/food/food_059.jpg",
+    "answer": "مكسرات",
+    "alternative_answers": ["مكسرات"],
+    "category": "food"
+  },
+  {
+    "id": "food_060",
+    "image": "images/food/food_060.jpg",
+    "answer": "شيبس",
+    "alternative_answers": ["تشيبس", "بطاطس"],
+    "category": "food"
+  },
+
+  {
+    "id": "football_001",
+    "image": "images/football/football_001.jpg",
+    "answer": "ليونيل ميسي",
+    "alternative_answers": ["ميسي"],
+    "category": "football"
+  },
+  {
+    "id": "football_002",
+    "image": "images/football/football_002.jpg",
+    "answer": "كريستيانو رونالدو",
+    "alternative_answers": ["رونالدو", "كريستيانو"],
+    "category": "football"
+  },
+  {
+    "id": "football_003",
+    "image": "images/football/football_003.jpg",
+    "answer": "نيمار",
+    "alternative_answers": ["نيمار جونيور"],
+    "category": "football"
+  },
+  {
+    "id": "football_004",
+    "image": "images/football/football_004.jpg",
+    "answer": "كيليان مبابي",
+    "alternative_answers": ["مبابي"],
+    "category": "football"
+  },
+  {
+    "id": "football_005",
+    "image": "images/football/football_005.jpg",
+    "answer": "محمد صلاح",
+    "alternative_answers": ["صلاح"],
+    "category": "football"
+  },
+  {
+    "id": "football_006",
+    "image": "images/football/football_006.jpg",
+    "answer": "سيرجيو راموس",
+    "alternative_answers": ["راموس"],
+    "category": "football"
+  },
+  {
+    "id": "football_007",
+    "image": "images/football/football_007.jpg",
+    "answer": "لوكا مودريتش",
+    "alternative_answers": ["مودريتش"],
+    "category": "football"
+  },
+  {
+    "id": "football_008",
+    "image": "images/football/football_008.jpg",
+    "answer": "كيفن دي بروين",
+    "alternative_answers": ["دي بروين"],
+    "category": "football"
+  },
+  {
+    "id": "football_009",
+    "image": "images/football/football_009.jpg",
+    "answer": "روبرت ليفاندوفسكي",
+    "alternative_answers": ["ليفاندوفسكي"],
+    "category": "football"
+  },
+  {
+    "id": "football_010",
+    "image": "images/football/football_010.jpg",
+    "answer": "كريم بنزيما",
+    "alternative_answers": ["بنزيما"],
+    "category": "football"
+  },
+  {
+    "id": "football_011",
+    "image": "images/football/football_011.jpg",
+    "answer": "إيرلينغ هالاند",
+    "alternative_answers": ["هالاند", "هالند"],
+    "category": "football"
+  },
+  {
+    "id": "football_012",
+    "image": "images/football/football_012.jpg",
+    "answer": "فينيسيوس جونيور",
+    "alternative_answers": ["فينيسيوس"],
+    "category": "football"
+  },
+  {
+    "id": "football_013",
+    "image": "images/football/football_013.jpg",
+    "answer": "جود بيلينغهام",
+    "alternative_answers": ["بيلينغهام", "بيلينجهام"],
+    "category": "football"
+  },
+  {
+    "id": "football_014",
+    "image": "images/football/football_014.jpg",
+    "answer": "أنطوان غريزمان",
+    "alternative_answers": ["غريزمان", "جريزمان"],
+    "category": "football"
+  },
+  {
+    "id": "football_015",
+    "image": "images/football/football_015.jpg",
+    "answer": "لويس سواريز",
+    "alternative_answers": ["سواريز"],
+    "category": "football"
+  },
+  {
+    "id": "football_016",
+    "image": "images/football/football_016.jpg",
+    "answer": "إدينسون كافاني",
+    "alternative_answers": ["كافاني"],
+    "category": "football"
+  },
+  {
+    "id": "football_017",
+    "image": "images/football/football_017.jpg",
+    "answer": "سيرجيو أغويرو",
+    "alternative_answers": ["أغويرو", "اجويرو"],
+    "category": "football"
+  },
+  {
+    "id": "football_018",
+    "image": "images/football/football_018.jpg",
+    "answer": "تييري هنري",
+    "alternative_answers": ["هنري"],
+    "category": "football"
+  },
+  {
+    "id": "football_019",
+    "image": "images/football/football_019.jpg",
+    "answer": "رونالدينيو",
+    "alternative_answers": ["رونالدينيو"],
+    "category": "football"
+  },
+  {
+    "id": "football_020",
+    "image": "images/football/football_020.jpg",
+    "answer": "كاكا",
+    "alternative_answers": ["كاكا"],
+    "category": "football"
+  },
+  {
+    "id": "football_021",
+    "image": "images/football/football_021.jpg",
+    "answer": "زين الدين زيدان",
+    "alternative_answers": ["زيدان"],
+    "category": "football"
+  },
+  {
+    "id": "football_022",
+    "image": "images/football/football_022.jpg",
+    "answer": "ديفيد بيكهام",
+    "alternative_answers": ["بيكهام"],
+    "category": "football"
+  },
+  {
+    "id": "football_023",
+    "image": "images/football/football_023.jpg",
+    "answer": "أندريس إنييستا",
+    "alternative_answers": ["إنييستا", "انييستا"],
+    "category": "football"
+  },
+  {
+    "id": "football_024",
+    "image": "images/football/football_024.jpg",
+    "answer": "تشافي",
+    "alternative_answers": ["تشافي هيرنانديز"],
+    "category": "football"
+  },
+  {
+    "id": "football_025",
+    "image": "images/football/football_025.jpg",
+    "answer": "كارليس بويول",
+    "alternative_answers": ["بويول"],
+    "category": "football"
+  },
+  {
+    "id": "football_026",
+    "image": "images/football/football_026.jpg",
+    "answer": "إيكر كاسياس",
+    "alternative_answers": ["كاسياس"],
+    "category": "football"
+  },
+  {
+    "id": "football_027",
+    "image": "images/football/football_027.jpg",
+    "answer": "مانويل نوير",
+    "alternative_answers": ["نوير"],
+    "category": "football"
+  },
+  {
+    "id": "football_028",
+    "image": "images/football/football_028.jpg",
+    "answer": "جانلويجي بوفون",
+    "alternative_answers": ["بوفون"],
+    "category": "football"
+  },
+  {
+    "id": "football_029",
+    "image": "images/football/football_029.jpg",
+    "answer": "محمد الشلهوب",
+    "alternative_answers": ["الشلهوب"],
+    "category": "football"
+  },
+  {
+    "id": "football_030",
+    "image": "images/football/football_030.jpg",
+    "answer": "سالم الدوسري",
+    "alternative_answers": ["سالم"],
+    "category": "football"
+  },
+  {
+    "id": "football_031",
+    "image": "images/football/football_031.jpg",
+    "answer": "ياسر القحطاني",
+    "alternative_answers": ["ياسر"],
+    "category": "football"
+  },
+  {
+    "id": "football_032",
+    "image": "images/football/football_032.jpg",
+    "answer": "سامي الجابر",
+    "alternative_answers": ["سامي"],
+    "category": "football"
+  },
+  {
+    "id": "football_033",
+    "image": "images/football/football_033.jpg",
+    "answer": "ماجد عبدالله",
+    "alternative_answers": ["ماجد"],
+    "category": "football"
+  },
+  {
+    "id": "football_034",
+    "image": "images/football/football_034.jpg",
+    "answer": "سلمان الفرج",
+    "alternative_answers": ["الفرج"],
+    "category": "football"
+  },
+  {
+    "id": "football_035",
+    "image": "images/football/football_035.jpg",
+    "answer": "عبدالرزاق حمدالله",
+    "alternative_answers": ["حمدالله", "حمد الله"],
+    "category": "football"
+  },
+  {
+    "id": "football_036",
+    "image": "images/football/football_036.jpg",
+    "answer": "رياض محرز",
+    "alternative_answers": ["محرز"],
+    "category": "football"
+  },
+  {
+    "id": "football_037",
+    "image": "images/football/football_037.jpg",
+    "answer": "ساديو ماني",
+    "alternative_answers": ["ماني"],
+    "category": "football"
+  },
+  {
+    "id": "football_038",
+    "image": "images/football/football_038.jpg",
+    "answer": "سون هيونغ مين",
+    "alternative_answers": ["سون"],
+    "category": "football"
+  },
+  {
+    "id": "football_039",
+    "image": "images/football/football_039.jpg",
+    "answer": "هاري كين",
+    "alternative_answers": ["كين"],
+    "category": "football"
+  },
+  {
+    "id": "football_040",
+    "image": "images/football/football_040.jpg",
+    "answer": "نغولو كانتي",
+    "alternative_answers": ["كانتي"],
+    "category": "football"
+  },
+  {
+    "id": "football_041",
+    "image": "images/football/football_041.jpg",
+    "answer": "بول بوغبا",
+    "alternative_answers": ["بوغبا"],
+    "category": "football"
+  },
+  {
+    "id": "football_042",
+    "image": "images/football/football_042.jpg",
+    "answer": "عثمان ديمبيلي",
+    "alternative_answers": ["ديمبيلي"],
+    "category": "football"
+  },
+  {
+    "id": "football_043",
+    "image": "images/football/football_043.jpg",
+    "answer": "أنخيل دي ماريا",
+    "alternative_answers": ["دي ماريا"],
+    "category": "football"
+  },
+  {
+    "id": "football_044",
+    "image": "images/football/football_044.jpg",
+    "answer": "توني كروس",
+    "alternative_answers": ["كروس"],
+    "category": "football"
+  },
+  {
+    "id": "football_045",
+    "image": "images/football/football_045.jpg",
+    "answer": "مسعود أوزيل",
+    "alternative_answers": ["أوزيل", "اوزيل"],
+    "category": "football"
+  },
+  {
+    "id": "football_046",
+    "image": "images/football/football_046.jpg",
+    "answer": "فرانك ريبيري",
+    "alternative_answers": ["ريبيري"],
+    "category": "football"
+  },
+  {
+    "id": "football_047",
+    "image": "images/football/football_047.jpg",
+    "answer": "أريين روبن",
+    "alternative_answers": ["روبن"],
+    "category": "football"
+  },
+  {
+    "id": "football_048",
+    "image": "images/football/football_048.jpg",
+    "answer": "زلاتان إبراهيموفيتش",
+    "alternative_answers": ["زلاتان", "ابراهيموفيتش"],
+    "category": "football"
+  },
+  {
+    "id": "football_049",
+    "image": "images/football/football_049.jpg",
+    "answer": "ماركو رويس",
+    "alternative_answers": ["رويس"],
+    "category": "football"
+  },
+  {
+    "id": "football_050",
+    "image": "images/football/football_050.jpg",
+    "answer": "توماس مولر",
+    "alternative_answers": ["مولر"],
+    "category": "football"
+  },
+  {
+    "id": "football_051",
+    "image": "images/football/football_051.jpg",
+    "answer": "فيليب لام",
+    "alternative_answers": ["لام"],
+    "category": "football"
+  },
+  {
+    "id": "football_052",
+    "image": "images/football/football_052.jpg",
+    "answer": "تشابي ألونسو",
+    "alternative_answers": ["الونسو", "ألونسو"],
+    "category": "football"
+  },
+  {
+    "id": "football_053",
+    "image": "images/football/football_053.jpg",
+    "answer": "فرناندو توريس",
+    "alternative_answers": ["توريس"],
+    "category": "football"
+  },
+  {
+    "id": "football_054",
+    "image": "images/football/football_054.jpg",
+    "answer": "دافيد فيا",
+    "alternative_answers": ["فيا"],
+    "category": "football"
+  },
+  {
+    "id": "football_055",
+    "image": "images/football/football_055.jpg",
+    "answer": "إنييستا",
+    "alternative_answers": ["انييستا"],
+    "category": "football"
+  },
+  {
+    "id": "football_056",
+    "image": "images/football/football_056.jpg",
+    "answer": "مارسيلو",
+    "alternative_answers": ["مارسيلو فييرا"],
+    "category": "football"
+  },
+  {
+    "id": "football_057",
+    "image": "images/football/football_057.jpg",
+    "answer": "كاسيميرو",
+    "alternative_answers": ["كاسيميرو"],
+    "category": "football"
+  },
+  {
+    "id": "football_058",
+    "image": "images/football/football_058.jpg",
+    "answer": "فينالدوم",
+    "alternative_answers": ["جورجينيو فينالدوم"],
+    "category": "football"
+  },
+  {
+    "id": "football_059",
+    "image": "images/football/football_059.jpg",
+    "answer": "برونو فرنانديز",
+    "alternative_answers": ["برونو"],
+    "category": "football"
+  },
+  {
+    "id": "football_060",
+    "image": "images/football/football_060.jpg",
+    "answer": "لامين يامال",
+    "alternative_answers": ["يامال"],
+    "category": "football"
+  },
+
+  {
+    "id": "gaming_001",
+    "image": "images/gaming/gaming_001.jpg",
+    "answer": "بلايستيشن 5",
+    "alternative_answers": ["PS5", "بلايستيشن ٥"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_002",
+    "image": "images/gaming/gaming_002.jpg",
+    "answer": "بلايستيشن 4",
+    "alternative_answers": ["PS4", "بلايستيشن ٤"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_003",
+    "image": "images/gaming/gaming_003.jpg",
+    "answer": "إكس بوكس",
+    "alternative_answers": ["Xbox", "اكس بوكس"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_004",
+    "image": "images/gaming/gaming_004.jpg",
+    "answer": "نينتندو سويتش",
+    "alternative_answers": ["سويتش", "Nintendo Switch"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_005",
+    "image": "images/gaming/gaming_005.jpg",
+    "answer": "بي سي",
+    "alternative_answers": ["PC", "كمبيوتر"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_006",
+    "image": "images/gaming/gaming_006.jpg",
+    "answer": "يد بلايستيشن",
+    "alternative_answers": ["يد", "يد تحكم"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_007",
+    "image": "images/gaming/gaming_007.jpg",
+    "answer": "يد إكس بوكس",
+    "alternative_answers": ["يد اكس بوكس"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_008",
+    "image": "images/gaming/gaming_008.jpg",
+    "answer": "سماعة ألعاب",
+    "alternative_answers": ["هيدسيت", "سماعة"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_009",
+    "image": "images/gaming/gaming_009.jpg",
+    "answer": "كيبورد",
+    "alternative_answers": ["لوحة مفاتيح"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_010",
+    "image": "images/gaming/gaming_010.jpg",
+    "answer": "ماوس",
+    "alternative_answers": ["فأرة"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_011",
+    "image": "images/gaming/gaming_011.jpg",
+    "answer": "شاشة",
+    "alternative_answers": ["مونيتور"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_012",
+    "image": "images/gaming/gaming_012.jpg",
+    "answer": "جهاز ألعاب محمول",
+    "alternative_answers": ["هاند هيلد"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_013",
+    "image": "images/gaming/gaming_013.jpg",
+    "answer": "ستيم ديك",
+    "alternative_answers": ["Steam Deck"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_014",
+    "image": "images/gaming/gaming_014.jpg",
+    "answer": "نينتندو",
+    "alternative_answers": ["Nintendo"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_015",
+    "image": "images/gaming/gaming_015.jpg",
+    "answer": "بلايستيشن",
+    "alternative_answers": ["PlayStation"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_016",
+    "image": "images/gaming/gaming_016.jpg",
+    "answer": "إكس بوكس سيريس إكس",
+    "alternative_answers": ["Xbox Series X"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_017",
+    "image": "images/gaming/gaming_017.jpg",
+    "answer": "إكس بوكس سيريس إس",
+    "alternative_answers": ["Xbox Series S"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_018",
+    "image": "images/gaming/gaming_018.jpg",
+    "answer": "بلايستيشن بورتابل",
+    "alternative_answers": ["PSP"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_019",
+    "image": "images/gaming/gaming_019.jpg",
+    "answer": "نينتندو 3DS",
+    "alternative_answers": ["3DS"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_020",
+    "image": "images/gaming/gaming_020.jpg",
+    "answer": "جهاز واقع افتراضي",
+    "alternative_answers": ["VR", "نظارة VR"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_021",
+    "image": "images/gaming/gaming_021.jpg",
+    "answer": "مايكروفون",
+    "alternative_answers": ["مايك"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_022",
+    "image": "images/gaming/gaming_022.jpg",
+    "answer": "كاميرا ويب",
+    "alternative_answers": ["ويب كام"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_023",
+    "image": "images/gaming/gaming_023.jpg",
+    "answer": "كرسي ألعاب",
+    "alternative_answers": ["كرسي قيمنق"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_024",
+    "image": "images/gaming/gaming_024.jpg",
+    "answer": "طاولة ألعاب",
+    "alternative_answers": ["مكتب قيمنق"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_025",
+    "image": "images/gaming/gaming_025.jpg",
+    "answer": "فأرة ألعاب",
+    "alternative_answers": ["ماوس قيمنق"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_026",
+    "image": "images/gaming/gaming_026.jpg",
+    "answer": "لوحة مفاتيح ميكانيكية",
+    "alternative_answers": ["كيبورد ميكانيكي"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_027",
+    "image": "images/gaming/gaming_027.jpg",
+    "answer": "يد تحكم",
+    "alternative_answers": ["كنترولر", "Controller"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_028",
+    "image": "images/gaming/gaming_028.jpg",
+    "answer": "بطاقة رسومية",
+    "alternative_answers": ["كرت شاشة", "GPU"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_029",
+    "image": "images/gaming/gaming_029.jpg",
+    "answer": "معالج",
+    "alternative_answers": ["CPU"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_030",
+    "image": "images/gaming/gaming_030.jpg",
+    "answer": "ذاكرة رام",
+    "alternative_answers": ["رام", "RAM"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_031",
+    "image": "images/gaming/gaming_031.jpg",
+    "answer": "قرص SSD",
+    "alternative_answers": ["SSD"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_032",
+    "image": "images/gaming/gaming_032.jpg",
+    "answer": "قرص HDD",
+    "alternative_answers": ["هارد"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_033",
+    "image": "images/gaming/gaming_033.jpg",
+    "answer": "راوتر",
+    "alternative_answers": ["Router"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_034",
+    "image": "images/gaming/gaming_034.jpg",
+    "answer": "شاحن",
+    "alternative_answers": ["شاحن جهاز"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_035",
+    "image": "images/gaming/gaming_035.jpg",
+    "answer": "كابل HDMI",
+    "alternative_answers": ["HDMI"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_036",
+    "image": "images/gaming/gaming_036.jpg",
+    "answer": "باور بانك",
+    "alternative_answers": ["Power Bank"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_037",
+    "image": "images/gaming/gaming_037.jpg",
+    "answer": "هاتف",
+    "alternative_answers": ["جوال", "موبايل"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_038",
+    "image": "images/gaming/gaming_038.jpg",
+    "answer": "آيفون",
+    "alternative_answers": ["iPhone"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_039",
+    "image": "images/gaming/gaming_039.jpg",
+    "answer": "آيباد",
+    "alternative_answers": ["iPad"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_040",
+    "image": "images/gaming/gaming_040.jpg",
+    "answer": "لابتوب",
+    "alternative_answers": ["حاسوب محمول"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_041",
+    "image": "images/gaming/gaming_041.jpg",
+    "answer": "نينتندو وي",
+    "alternative_answers": ["Wii"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_042",
+    "image": "images/gaming/gaming_042.jpg",
+    "answer": "نينتندو DS",
+    "alternative_answers": ["DS"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_043",
+    "image": "images/gaming/gaming_043.jpg",
+    "answer": "جهاز أتاري",
+    "alternative_answers": ["Atari"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_044",
+    "image": "images/gaming/gaming_044.jpg",
+    "answer": "جهاز سيجا",
+    "alternative_answers": ["Sega"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_045",
+    "image": "images/gaming/gaming_045.jpg",
+    "answer": "غيم بوي",
+    "alternative_answers": ["Game Boy"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_046",
+    "image": "images/gaming/gaming_046.jpg",
+    "answer": "نينتندو 64",
+    "alternative_answers": ["N64"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_047",
+    "image": "images/gaming/gaming_047.jpg",
+    "answer": "بلايستيشن 2",
+    "alternative_answers": ["PS2"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_048",
+    "image": "images/gaming/gaming_048.jpg",
+    "answer": "بلايستيشن 3",
+    "alternative_answers": ["PS3"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_049",
+    "image": "images/gaming/gaming_049.jpg",
+    "answer": "بلايستيشن 1",
+    "alternative_answers": ["PS1"],
+    "category": "gaming"
+  },
+  {
+    "id": "gaming_050",
+    "image": "images/gaming/gaming_050.jpg",
+    "answer": "جهاز ألعاب",
+    "alternative_answers": ["كونسول", "Console"],
+    "category": "gaming"
+  },
+
+  {
+    "id": "household_001",
+    "image": "images/household/household_001.jpg",
+    "answer": "ثلاجة",
+    "alternative_answers": ["الثلاجة"],
+    "category": "household"
+  },
+  {
+    "id": "household_002",
+    "image": "images/household/household_002.jpg",
+    "answer": "غسالة",
+    "alternative_answers": ["الغسالة"],
+    "category": "household"
+  },
+  {
+    "id": "household_003",
+    "image": "images/household/household_003.jpg",
+    "answer": "فرن",
+    "alternative_answers": ["الفرن"],
+    "category": "household"
+  },
+  {
+    "id": "household_004",
+    "image": "images/household/household_004.jpg",
+    "answer": "ميكروويف",
+    "alternative_answers": ["مايكرويف"],
+    "category": "household"
+  },
+  {
+    "id": "household_005",
+    "image": "images/household/household_005.jpg",
+    "answer": "مكنسة كهربائية",
+    "alternative_answers": ["مكنسة"],
+    "category": "household"
+  },
+  {
+    "id": "household_006",
+    "image": "images/household/household_006.jpg",
+    "answer": "تلفزيون",
+    "alternative_answers": ["تلفاز", "شاشة"],
+    "category": "household"
+  },
+  {
+    "id": "household_007",
+    "image": "images/household/household_007.jpg",
+    "answer": "مروحة",
+    "alternative_answers": [],
+    "category": "household"
+  },
+  {
+    "id": "household_008",
+    "image": "images/household/household_008.jpg",
+    "answer": "مكيف",
+    "alternative_answers": ["مكيف هواء"],
+    "category": "household"
+  },
+  {
+    "id": "household_009",
+    "image": "images/household/household_009.jpg",
+    "answer": "مصباح",
+    "alternative_answers": ["لمبة", "لامب"],
+    "category": "household"
+  },
+  {
+    "id": "household_010",
+    "image": "images/household/household_010.jpg",
+    "answer": "ساعة حائط",
+    "alternative_answers": ["ساعة"],
+    "category": "household"
+  },
+  {
+    "id": "household_011",
+    "image": "images/household/household_011.jpg",
+    "answer": "كنبة",
+    "alternative_answers": ["أريكة", "صوفا"],
+    "category": "household"
+  },
+  {
+    "id": "household_012",
+    "image": "images/household/household_012.jpg",
+    "answer": "كرسي",
+    "alternative_answers": [],
+    "category": "household"
+  },
+  {
+    "id": "household_013",
+    "image": "images/household/household_013.jpg",
+    "answer": "طاولة",
+    "alternative_answers": ["طاوله"],
+    "category": "household"
+  },
+  {
+    "id": "household_014",
+    "image": "images/household/household_014.jpg",
+    "answer": "سرير",
+    "alternative_answers": [],
+    "category": "household"
+  },
+  {
+    "id": "household_015",
+    "image": "images/household/household_015.jpg",
+    "answer": "خزانة",
+    "alternative_answers": ["دولاب", "خزانه"],
+    "category": "household"
+  },
+  {
+    "id": "household_016",
+    "image": "images/household/household_016.jpg",
+    "answer": "مرآة",
+    "alternative_answers": ["مراية", "مرايه"],
+    "category": "household"
+  },
+  {
+    "id": "household_017",
+    "image": "images/household/household_017.jpg",
+    "answer": "ستارة",
+    "alternative_answers": ["ستاره"],
+    "category": "household"
+  },
+  {
+    "id": "household_018",
+    "image": "images/household/household_018.jpg",
+    "answer": "سجادة",
+    "alternative_answers": ["سجاده", "بساط"],
+    "category": "household"
+  },
+  {
+    "id": "household_019",
+    "image": "images/household/household_019.jpg",
+    "answer": "وسادة",
+    "alternative_answers": ["مخدة", "مخده"],
+    "category": "household"
+  },
+  {
+    "id": "household_020",
+    "image": "images/household/household_020.jpg",
+    "answer": "بطانية",
+    "alternative_answers": ["بطانيه"],
+    "category": "household"
+  },
+  {
+    "id": "household_021",
+    "image": "images/household/household_021.jpg",
+    "answer": "منشفة",
+    "alternative_answers": ["منشفة حمام", "فوطه"],
+    "category": "household"
+  },
+  {
+    "id": "household_022",
+    "image": "images/household/household_022.jpg",
+    "answer": "مغسلة",
+    "alternative_answers": ["حوض"],
+    "category": "household"
+  },
+  {
+    "id": "household_023",
+    "image": "images/household/household_023.jpg",
+    "answer": "مرحاض",
+    "alternative_answers": ["حمام", "كرسي الحمام"],
+    "category": "household"
+  },
+  {
+    "id": "household_024",
+    "image": "images/household/household_024.jpg",
+    "answer": "دش",
+    "alternative_answers": ["شاور"],
+    "category": "household"
+  },
+  {
+    "id": "household_025",
+    "image": "images/household/household_025.jpg",
+    "answer": "حوض استحمام",
+    "alternative_answers": ["بانيو"],
+    "category": "household"
+  },
+  {
+    "id": "household_026",
+    "image": "images/household/household_026.jpg",
+    "answer": "غلاية",
+    "alternative_answers": ["غلاية ماء"],
+    "category": "household"
+  },
+  {
+    "id": "household_027",
+    "image": "images/household/household_027.jpg",
+    "answer": "خلاط",
+    "alternative_answers": ["خلاط كهربائي"],
+    "category": "household"
+  },
+  {
+    "id": "household_028",
+    "image": "images/household/household_028.jpg",
+    "answer": "محضرة طعام",
+    "alternative_answers": ["محضرة الطعام"],
+    "category": "household"
+  },
+  {
+    "id": "household_029",
+    "image": "images/household/household_029.jpg",
+    "answer": "محمصة خبز",
+    "alternative_answers": ["توستر", "تستر"],
+    "category": "household"
+  },
+  {
+    "id": "household_030",
+    "image": "images/household/household_030.jpg",
+    "answer": "غسالة صحون",
+    "alternative_answers": ["جلاية"],
+    "category": "household"
+  },
+  {
+    "id": "household_031",
+    "image": "images/household/household_031.jpg",
+    "answer": "مكنسة روبوت",
+    "alternative_answers": ["روبوت تنظيف"],
+    "category": "household"
+  },
+  {
+    "id": "household_032",
+    "image": "images/household/household_032.jpg",
+    "answer": "مكواة",
+    "alternative_answers": [],
+    "category": "household"
+  },
+  {
+    "id": "household_033",
+    "image": "images/household/household_033.jpg",
+    "answer": "طاولة كي",
+    "alternative_answers": ["لوح كي"],
+    "category": "household"
+  },
+  {
+    "id": "household_034",
+    "image": "images/household/household_034.jpg",
+    "answer": "مجفف شعر",
+    "alternative_answers": ["استشوار"],
+    "category": "household"
+  },
+  {
+    "id": "household_035",
+    "image": "images/household/household_035.jpg",
+    "answer": "فرشاة أسنان",
+    "alternative_answers": ["فرشاه اسنان"],
+    "category": "household"
+  },
+  {
+    "id": "household_036",
+    "image": "images/household/household_036.jpg",
+    "answer": "معجون أسنان",
+    "alternative_answers": ["معجون"],
+    "category": "household"
+  },
+  {
+    "id": "household_037",
+    "image": "images/household/household_037.jpg",
+    "answer": "مشط",
+    "alternative_answers": [],
+    "category": "household"
+  },
+  {
+    "id": "household_038",
+    "image": "images/household/household_038.jpg",
+    "answer": "مقلاة",
+    "alternative_answers": ["طاسة"],
+    "category": "household"
+  },
+  {
+    "id": "household_039",
+    "image": "images/household/household_039.jpg",
+    "answer": "قدر",
+    "alternative_answers": ["طنجرة"],
+    "category": "household"
+  },
+  {
+    "id": "household_040",
+    "image": "images/household/household_040.jpg",
+    "answer": "سكين",
+    "alternative_answers": ["سكينه"],
+    "category": "household"
+  },
+  {
+    "id": "household_041",
+    "image": "images/household/household_041.jpg",
+    "answer": "شوكة",
+    "alternative_answers": ["شوكه"],
+    "category": "household"
+  },
+  {
+    "id": "household_042",
+    "image": "images/household/household_042.jpg",
+    "answer": "ملعقة",
+    "alternative_answers": ["ملعقه"],
+    "category": "household"
+  },
+  {
+    "id": "household_043",
+    "image": "images/household/household_043.jpg",
+    "answer": "صحن",
+    "alternative_answers": ["طبق"],
+    "category": "household"
+  },
+  {
+    "id": "household_044",
+    "image": "images/household/household_044.jpg",
+    "answer": "كوب",
+    "alternative_answers": ["كاس", "كأس"],
+    "category": "household"
+  },
+  {
+    "id": "household_045",
+    "image": "images/household/household_045.jpg",
+    "answer": "إبريق",
+    "alternative_answers": ["ابريق"],
+    "category": "household"
+  },
+  {
+    "id": "household_046",
+    "image": "images/household/household_046.jpg",
+    "answer": "سلة مهملات",
+    "alternative_answers": ["زبالة", "سلة نفايات"],
+    "category": "household"
+  },
+  {
+    "id": "household_047",
+    "image": "images/household/household_047.jpg",
+    "answer": "مكنسة يدوية",
+    "alternative_answers": ["مكنسة"],
+    "category": "household"
+  },
+  {
+    "id": "household_048",
+    "image": "images/household/household_048.jpg",
+    "answer": "ممسحة",
+    "alternative_answers": ["مساحة", "ممسحه"],
+    "category": "household"
+  },
+  {
+    "id": "household_049",
+    "image": "images/household/household_049.jpg",
+    "answer": "دلو",
+    "alternative_answers": ["سطل"],
+    "category": "household"
+  },
+  {
+    "id": "household_050",
+    "image": "images/household/household_050.jpg",
+    "answer": "منظف",
+    "alternative_answers": ["منظف منزلي"],
+    "category": "household"
+  },
+  {
+    "id": "household_051",
+    "image": "images/household/household_051.jpg",
+    "answer": "شمعة",
+    "alternative_answers": ["شمعه"],
+    "category": "household"
+  },
+  {
+    "id": "household_052",
+    "image": "images/household/household_052.jpg",
+    "answer": "مزهرية",
+    "alternative_answers": ["فازة", "فازه"],
+    "category": "household"
+  },
+  {
+    "id": "household_053",
+    "image": "images/household/household_053.jpg",
+    "answer": "نبات منزلي",
+    "alternative_answers": ["نبتة", "نبات"],
+    "category": "household"
+  },
+  {
+    "id": "household_054",
+    "image": "images/household/household_054.jpg",
+    "answer": "لوحة",
+    "alternative_answers": ["برواز"],
+    "category": "household"
+  },
+  {
+    "id": "household_055",
+    "image": "images/household/household_055.jpg",
+    "answer": "مكتبة",
+    "alternative_answers": ["رف كتب"],
+    "category": "household"
+  },
+  {
+    "id": "household_056",
+    "image": "images/household/household_056.jpg",
+    "answer": "كتاب",
+    "alternative_answers": ["الكتاب"],
+    "category": "household"
+  },
+  {
+    "id": "household_057",
+    "image": "images/household/household_057.jpg",
+    "answer": "قلم",
+    "alternative_answers": ["قلم حبر"],
+    "category": "household"
+  },
+  {
+    "id": "household_058",
+    "image": "images/household/household_058.jpg",
+    "answer": "دفتر",
+    "alternative_answers": ["كراسة"],
+    "category": "household"
+  },
+  {
+    "id": "household_059",
+    "image": "images/household/household_059.jpg",
+    "answer": "مقص",
+    "alternative_answers": [],
+    "category": "household"
+  },
+  {
+    "id": "household_060",
+    "image": "images/household/household_060.jpg",
+    "answer": "مصباح مكتبي",
+    "alternative_answers": ["لمبة مكتب"],
+    "category": "household"
+  },
+
+  {
+    "id": "technology_001",
+    "image": "images/technology/technology_001.jpg",
+    "answer": "حاسوب",
+    "alternative_answers": ["كمبيوتر", "كمبيوتر مكتبي"],
+    "category": "technology"
+  },
+  {
+    "id": "technology_002",
+    "image": "images/technology/technology_002.jpg",
+    "answer": "هاتف ذكي",
+    "alternative_answers": ["جوال", "موبايل"],
+    "category": "technology"
+  },
+  {
+    "id": "technology_003",
+    "image": "images/technology/technology_003.jpg",
+    "answer": "ساعة ذكية",
+    "alternative_answers": ["سمارت ووتش"],
+    "category": "technology"
+  },
+  {
+    "id": "technology_004",
+    "image": "images/technology/technology_004.jpg",
+    "answer": "سماعات لاسلكية",
+    "alternative_answers": ["ايربودز", "سماعات"],
+    "category": "technology"
+  },
+  {
+    "id": "technology_005",
+    "image": "images/technology/technology_005.jpg",
+    "answer": "طابعة",
+    "alternative_answers": [],
+    "category": "technology"
+  },
+  {
+    "id": "technology_006",
+    "image": "images/technology/technology_006.jpg",
+    "answer": "كاميرا",
+    "alternative_answers": [],
+    "category": "technology"
+  },
+  {
+    "id": "technology_007",
+    "image": "images/technology/technology_007.jpg",
+    "answer": "روبوت",
+    "alternative_answers": ["روبوت آلي"],
+    "category": "technology"
+  },
+  {
+    "id": "technology_008",
+    "image": "images/technology/technology_008.jpg",
+    "answer": "درون",
+    "alternative_answers": ["طائرة بدون طيار", "درون"],
+    "category": "technology"
+  },
+  {
+    "id": "technology_009",
+    "image": "images/technology/technology_009.jpg",
+    "answer": "نظارة واقع افتراضي",
+    "alternative_answers": ["VR"],
+    "category": "technology"
+  },
+  {
+    "id": "technology_010",
+    "image": "images/technology/technology_010.jpg",
+    "answer": "نظارة ذكية",
+    "alternative_answers": ["نظارات ذكية"],
+    "category": "technology"
+  },
+  {
+    "id": "technology_011",
+    "image": "images/technology/technology_011.jpg",
+    "answer": "لوحة مفاتيح",
+    "alternative_answers": ["كيبورد"],
+    "category": "technology"
+  },
+  {
+    "id": "technology_012",
+    "image": "images/technology/technology_012.jpg",
+    "answer": "فأرة حاسوب",
+    "alternative_answers": ["ماوس"],
+    "category": "technology"
+  },
+  {
+    "id": "technology_013",
+    "image": "images/technology/technology_013.jpg",
+    "answer": "شاشة كمبيوتر",
+    "alternative_answers": ["مونيتور"],
+    "category": "technology"
+  },
+  {
+    "id": "technology_014",
+    "image": "images/technology/technology_014.jpg",
+    "answer": "راوتر",
+    "alternative_answers": ["موجه شبكة"],
+    "category": "technology"
+  },
+  {
+    "id": "technology_015",
+    "image": "images/technology/technology_015.jpg",
+    "answer": "مودم",
+    "alternative_answers": [],
+    "category": "technology"
+  },
+  {
+    "id": "technology_016",
+    "image": "images/technology/technology_016.jpg",
+    "answer": "فلاش USB",
+    "alternative_answers": ["فلاش", "USB"],
+    "category": "technology"
+  },
+  {
+    "id": "technology_017",
+    "image": "images/technology/technology_017.jpg",
+    "answer": "قرص صلب",
+    "alternative_answers": ["هارد", "Hard Disk"],
+    "category": "technology"
+  },
+  {
+    "id": "technology_018",
+    "image": "images/technology/technology_018.jpg",
+    "answer": "بطارية",
+    "alternative_answers": [],
+    "category": "technology"
+  },
+  {
+    "id": "technology_019",
+    "image": "images/technology/technology_019.jpg",
+    "answer": "شاحن لاسلكي",
+    "alternative_answers": ["شاحن وايرلس"],
+    "category": "technology"
+  },
+  {
+    "id": "technology_020",
+    "image": "images/technology/technology_020.jpg",
+    "answer": "كابل USB",
+    "alternative_answers": ["USB"],
+    "category": "technology"
+  },
+  {
+    "id": "technology_021",
+    "image": "images/technology/technology_021.jpg",
+    "answer": "سيرفر",
+    "alternative_answers": ["خادم"],
+    "category": "technology"
+  },
+  {
+    "id": "technology_022",
+    "image": "images/technology/technology_022.jpg",
+    "answer": "شريحة إلكترونية",
+    "alternative_answers": ["شيب", "رقاقة"],
+    "category": "technology"
+  },
+  {
+    "id": "technology_023",
+    "image": "images/technology/technology_023.jpg",
+    "answer": "معالج",
+    "alternative_answers": ["بروسيسور", "CPU"],
+    "category": "technology"
+  },
+  {
+    "id": "technology_024",
+    "image": "images/technology/technology_024.jpg",
+    "answer": "كرت شاشة",
+    "alternative_answers": ["GPU", "بطاقة رسومية"],
+    "category": "technology"
+  },
+  {
+    "id": "technology_025",
+    "image": "images/technology/technology_025.jpg",
+    "answer": "ذاكرة RAM",
+    "alternative_answers": ["رام"],
+    "category": "technology"
+  },
+  {
+    "id": "technology_026",
+    "image": "images/technology/technology_026.jpg",
+    "answer": "طابعة ثلاثية الأبعاد",
+    "alternative_answers": ["3D Printer", "طابعة 3D"],
+    "category": "technology"
+  },
+  {
+    "id": "technology_027",
+    "image": "images/technology/technology_027.jpg",
+    "answer": "نظارة واقع معزز",
+    "alternative_answers": ["AR"],
+    "category": "technology"
+  },
+  {
+    "id": "technology_028",
+    "image": "images/technology/technology_028.jpg",
+    "answer": "لوح شمسي",
+    "alternative_answers": ["ألواح شمسية", "طاقة شمسية"],
+    "category": "technology"
+  },
+  {
+    "id": "technology_029",
+    "image": "images/technology/technology_029.jpg",
+    "answer": "شاشة لمس",
+    "alternative_answers": ["تاتش"],
+    "category": "technology"
+  },
+  {
+    "id": "technology_030",
+    "image": "images/technology/technology_030.jpg",
+    "answer": "كاميرا مراقبة",
+    "alternative_answers": ["كاميرا أمنية"],
+    "category": "technology"
+  },
+
+  {
+    "id": "everyday_001",
+    "image": "images/everyday/everyday_001.jpg",
+    "answer": "مفتاح",
+    "alternative_answers": [],
+    "category": "everyday"
+  },
+  {
+    "id": "everyday_002",
+    "image": "images/everyday/everyday_002.jpg",
+    "answer": "محفظة",
+    "alternative_answers": ["محفظه"],
+    "category": "everyday"
+  },
+  {
+    "id": "everyday_003",
+    "image": "images/everyday/everyday_003.jpg",
+    "answer": "نظارة",
+    "alternative_answers": ["نظارات"],
+    "category": "everyday"
+  },
+  {
+    "id": "everyday_004",
+    "image": "images/everyday/everyday_004.jpg",
+    "answer": "مظلة",
+    "alternative_answers": ["شمسية", "مظله"],
+    "category": "everyday"
+  },
+  {
+    "id": "everyday_005",
+    "image": "images/everyday/everyday_005.jpg",
+    "answer": "حقيبة",
+    "alternative_answers": ["شنطة"],
+    "category": "everyday"
+  },
+  {
+    "id": "everyday_006",
+    "image": "images/everyday/everyday_006.jpg",
+    "answer": "حقيبة ظهر",
+    "alternative_answers": ["شنطة ظهر"],
+    "category": "everyday"
+  },
+  {
+    "id": "everyday_007",
+    "image": "images/everyday/everyday_007.jpg",
+    "answer": "حذاء",
+    "alternative_answers": ["جزمة"],
+    "category": "everyday"
+  },
+  {
+    "id": "everyday_008",
+    "image": "images/everyday/everyday_008.jpg",
+    "answer": "قبعة",
+    "alternative_answers": ["كاب"],
+    "category": "everyday"
+  },
+  {
+    "id": "everyday_009",
+    "image": "images/everyday/everyday_009.jpg",
+    "answer": "ساعة يد",
+    "alternative_answers": ["ساعة"],
+    "category": "everyday"
+  },
+  {
+    "id": "everyday_010",
+    "image": "images/everyday/everyday_010.jpg",
+    "answer": "زجاجة ماء",
+    "alternative_answers": ["قارورة", "موية"],
+    "category": "everyday"
+  },
+  {
+    "id": "everyday_011",
+    "image": "images/everyday/everyday_011.jpg",
+    "answer": "مناديل",
+    "alternative_answers": ["منديل"],
+    "category": "everyday"
+  },
+  {
+    "id": "everyday_012",
+    "image": "images/everyday/everyday_012.jpg",
+    "answer": "مظروف",
+    "alternative_answers": ["ظرف"],
+    "category": "everyday"
+  },
+  {
+    "id": "everyday_013",
+    "image": "images/everyday/everyday_013.jpg",
+    "answer": "عملة",
+    "alternative_answers": ["فلوس", "نقود"],
+    "category": "everyday"
+  },
+  {
+    "id": "everyday_014",
+    "image": "images/everyday/everyday_014.jpg",
+    "answer": "بطاقة",
+    "alternative_answers": ["كرت"],
+    "category": "everyday"
+  },
+  {
+    "id": "everyday_015",
+    "image": "images/everyday/everyday_015.jpg",
+    "answer": "ريموت",
+    "alternative_answers": ["جهاز تحكم"],
+    "category": "everyday"
+  },
+  {
+    "id": "everyday_016",
+    "image": "images/everyday/everyday_016.jpg",
+    "answer": "مصباح يدوي",
+    "alternative_answers": ["كشاف"],
+    "category": "everyday"
+  },
+  {
+    "id": "everyday_017",
+    "image": "images/everyday/everyday_017.jpg",
+    "answer": "ولاعة",
+    "alternative_answers": [],
+    "category": "everyday"
+  },
+  {
+    "id": "everyday_018",
+    "image": "images/everyday/everyday_018.jpg",
+    "answer": "مظلة شمسية",
+    "alternative_answers": ["شمسية"],
+    "category": "everyday"
+  },
+  {
+    "id": "everyday_019",
+    "image": "images/everyday/everyday_019.jpg",
+    "answer": "فرشاة",
+    "alternative_answers": [],
+    "category": "everyday"
+  },
+  {
+    "id": "everyday_020",
+    "image": "images/everyday/everyday_020.jpg",
+    "answer": "منبه",
+    "alternative_answers": ["ساعة منبه"],
+    "category": "everyday"
+  },
+
+  {
+    "id": "anime_001",
+    "image": "images/anime/anime_001.jpg",
+    "answer": "لوفي",
+    "alternative_answers": ["مونكي دي لوفي", "لوفي ون بيس"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_002",
+    "image": "images/anime/anime_002.jpg",
+    "answer": "زورو",
+    "alternative_answers": ["رورونوا زورو"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_003",
+    "image": "images/anime/anime_003.jpg",
+    "answer": "سانجي",
+    "alternative_answers": ["فينسموك سانجي"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_004",
+    "image": "images/anime/anime_004.jpg",
+    "answer": "نامي",
+    "alternative_answers": [],
+    "category": "anime"
+  },
+  {
+    "id": "anime_005",
+    "image": "images/anime/anime_005.jpg",
+    "answer": "روبين",
+    "alternative_answers": ["نيكو روبين"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_006",
+    "image": "images/anime/anime_006.jpg",
+    "answer": "تشوبر",
+    "alternative_answers": ["توني توني تشوبر"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_007",
+    "image": "images/anime/anime_007.jpg",
+    "answer": "أوسوب",
+    "alternative_answers": ["يوسوب"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_008",
+    "image": "images/anime/anime_008.jpg",
+    "answer": "فرانكي",
+    "alternative_answers": [],
+    "category": "anime"
+  },
+  {
+    "id": "anime_009",
+    "image": "images/anime/anime_009.jpg",
+    "answer": "بروك",
+    "alternative_answers": [],
+    "category": "anime"
+  },
+  {
+    "id": "anime_010",
+    "image": "images/anime/anime_010.jpg",
+    "answer": "جينبي",
+    "alternative_answers": ["جيمبي"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_011",
+    "image": "images/anime/anime_011.jpg",
+    "answer": "غوكو",
+    "alternative_answers": ["سون غوكو"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_012",
+    "image": "images/anime/anime_012.jpg",
+    "answer": "فيجيتا",
+    "alternative_answers": ["فيغيتا"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_013",
+    "image": "images/anime/anime_013.jpg",
+    "answer": "غوهان",
+    "alternative_answers": ["سون غوهان"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_014",
+    "image": "images/anime/anime_014.jpg",
+    "answer": "فريزا",
+    "alternative_answers": ["فريزر"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_015",
+    "image": "images/anime/anime_015.jpg",
+    "answer": "بيكولو",
+    "alternative_answers": [],
+    "category": "anime"
+  },
+  {
+    "id": "anime_016",
+    "image": "images/anime/anime_016.jpg",
+    "answer": "تانجيرو",
+    "alternative_answers": ["كامادو تانجيرو"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_017",
+    "image": "images/anime/anime_017.jpg",
+    "answer": "نيزوكو",
+    "alternative_answers": ["كامادو نيزوكو"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_018",
+    "image": "images/anime/anime_018.jpg",
+    "answer": "زينيتسو",
+    "alternative_answers": ["أغاستوما زينيتسو"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_019",
+    "image": "images/anime/anime_019.jpg",
+    "answer": "إينوسكي",
+    "alternative_answers": ["هاشيبيرا إينوسكي"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_020",
+    "image": "images/anime/anime_020.jpg",
+    "answer": "غيو",
+    "alternative_answers": ["غيو توميوكا"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_021",
+    "image": "images/anime/anime_021.jpg",
+    "answer": "إيرين",
+    "alternative_answers": ["إيرين ييغر", "ايرين"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_022",
+    "image": "images/anime/anime_022.jpg",
+    "answer": "ليفاي",
+    "alternative_answers": ["ليفاي أكرمان"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_023",
+    "image": "images/anime/anime_023.jpg",
+    "answer": "ميكاسا",
+    "alternative_answers": ["ميكاسا أكرمان"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_024",
+    "image": "images/anime/anime_024.jpg",
+    "answer": "أرمين",
+    "alternative_answers": ["أرمين أرليرت"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_025",
+    "image": "images/anime/anime_025.jpg",
+    "answer": "إدوارد إلريك",
+    "alternative_answers": ["إدوارد", "ايدوارد"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_026",
+    "image": "images/anime/anime_026.jpg",
+    "answer": "ألفونس إلريك",
+    "alternative_answers": ["ألفونس"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_027",
+    "image": "images/anime/anime_027.jpg",
+    "answer": "غون",
+    "alternative_answers": ["غون فريكس"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_028",
+    "image": "images/anime/anime_028.jpg",
+    "answer": "كيلوا",
+    "alternative_answers": ["كيلوا زولديك"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_029",
+    "image": "images/anime/anime_029.jpg",
+    "answer": "كورابيكا",
+    "alternative_answers": [],
+    "category": "anime"
+  },
+  {
+    "id": "anime_030",
+    "image": "images/anime/anime_030.jpg",
+    "answer": "هيسوكا",
+    "alternative_answers": [],
+    "category": "anime"
+  },
+  {
+    "id": "anime_031",
+    "image": "images/anime/anime_031.jpg",
+    "answer": "ناروتو",
+    "alternative_answers": ["ناروتو أوزوماكي"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_032",
+    "image": "images/anime/anime_032.jpg",
+    "answer": "ساسكي",
+    "alternative_answers": ["ساسكي أوتشيها"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_033",
+    "image": "images/anime/anime_033.jpg",
+    "answer": "ساكورا",
+    "alternative_answers": ["ساكورا هارونو"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_034",
+    "image": "images/anime/anime_034.jpg",
+    "answer": "كاكاشي",
+    "alternative_answers": ["كاكاشي هاتاكي"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_035",
+    "image": "images/anime/anime_035.jpg",
+    "answer": "إيتاتشي",
+    "alternative_answers": ["إيتاتشي أوتشيها"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_036",
+    "image": "images/anime/anime_036.jpg",
+    "answer": "مادارا",
+    "alternative_answers": ["مادارا أوتشيها"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_037",
+    "image": "images/anime/anime_037.jpg",
+    "answer": "غوجو",
+    "alternative_answers": ["ساتورو غوجو"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_038",
+    "image": "images/anime/anime_038.jpg",
+    "answer": "يوجي",
+    "alternative_answers": ["يوجي إيتادوري"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_039",
+    "image": "images/anime/anime_039.jpg",
+    "answer": "سوكونا",
+    "alternative_answers": ["ريومن سوكونا"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_040",
+    "image": "images/anime/anime_040.jpg",
+    "answer": "ميغومي",
+    "alternative_answers": ["ميغومي فوشيغورو"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_041",
+    "image": "images/anime/anime_041.jpg",
+    "answer": "إيتشيغو",
+    "alternative_answers": ["إيتشيغو كوروساكي"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_042",
+    "image": "images/anime/anime_042.jpg",
+    "answer": "روكيا",
+    "alternative_answers": ["روكيا كوتشيكي"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_043",
+    "image": "images/anime/anime_043.jpg",
+    "answer": "أيزن",
+    "alternative_answers": ["سوسكي أيزن"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_044",
+    "image": "images/anime/anime_044.jpg",
+    "answer": "إدوارد نيوغيت",
+    "alternative_answers": ["اللحية البيضاء", "وايت بيرد"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_045",
+    "image": "images/anime/anime_045.jpg",
+    "answer": "شانكس",
+    "alternative_answers": ["شانكس ذو الشعر الأحمر"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_046",
+    "image": "images/anime/anime_046.jpg",
+    "answer": "ترافالغار لو",
+    "alternative_answers": ["لو", "ترفالجار لو"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_047",
+    "image": "images/anime/anime_047.jpg",
+    "answer": "دوفلامينغو",
+    "alternative_answers": ["دوفلامينغو"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_048",
+    "image": "images/anime/anime_048.jpg",
+    "answer": "كايدو",
+    "alternative_answers": [],
+    "category": "anime"
+  },
+  {
+    "id": "anime_049",
+    "image": "images/anime/anime_049.jpg",
+    "answer": "بيغ مام",
+    "alternative_answers": ["بيغ مام"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_050",
+    "image": "images/anime/anime_050.jpg",
+    "answer": "إسكانور",
+    "alternative_answers": ["إسكانور الخطايا السبع"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_051",
+    "image": "images/anime/anime_051.jpg",
+    "answer": "ميليوداس",
+    "alternative_answers": [],
+    "category": "anime"
+  },
+  {
+    "id": "anime_052",
+    "image": "images/anime/anime_052.jpg",
+    "answer": "إيرزا",
+    "alternative_answers": ["إيرزا سكارليت"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_053",
+    "image": "images/anime/anime_053.jpg",
+    "answer": "ناتسو",
+    "alternative_answers": ["ناتسو دراغنيل"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_054",
+    "image": "images/anime/anime_054.jpg",
+    "answer": "غراي",
+    "alternative_answers": ["غراي فولباستر"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_055",
+    "image": "images/anime/anime_055.jpg",
+    "answer": "لوسي",
+    "alternative_answers": ["لوسي هارتفيليا"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_056",
+    "image": "images/anime/anime_056.jpg",
+    "answer": "كيلوا",
+    "alternative_answers": ["كيلوا زولديك"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_057",
+    "image": "images/anime/anime_057.jpg",
+    "answer": "أستا",
+    "alternative_answers": ["أستا بلاك كلوفر"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_058",
+    "image": "images/anime/anime_058.jpg",
+    "answer": "يونو",
+    "alternative_answers": ["يونو بلاك كلوفر"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_059",
+    "image": "images/anime/anime_059.jpg",
+    "answer": "لايت",
+    "alternative_answers": ["لايت ياغامي"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_060",
+    "image": "images/anime/anime_060.jpg",
+    "answer": "إل",
+    "alternative_answers": ["L", "إل لولايت"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_061",
+    "image": "images/anime/anime_061.jpg",
+    "answer": "ليفاي",
+    "alternative_answers": ["ليفاي أكرمان"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_062",
+    "image": "images/anime/anime_062.jpg",
+    "answer": "ريوك",
+    "alternative_answers": ["Ryuk", "ريوك دياث نوت"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_063",
+    "image": "images/anime/anime_063.jpg",
+    "answer": "كايتو كيد",
+    "alternative_answers": ["كايتو", "اللص الشبح"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_064",
+    "image": "images/anime/anime_064.jpg",
+    "answer": "كونان",
+    "alternative_answers": ["كونان إيدوغاوا"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_065",
+    "image": "images/anime/anime_065.jpg",
+    "answer": "إدوغاوا كونان",
+    "alternative_answers": ["كونان"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_066",
+    "image": "images/anime/anime_066.jpg",
+    "answer": "سينكو",
+    "alternative_answers": ["سينكو إشيغامي"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_067",
+    "image": "images/anime/anime_067.jpg",
+    "answer": "ريوكو",
+    "alternative_answers": ["ريوكو ماتوي"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_068",
+    "image": "images/anime/anime_068.jpg",
+    "answer": "سايتاما",
+    "alternative_answers": ["الرجل الأصلع"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_069",
+    "image": "images/anime/anime_069.jpg",
+    "answer": "جينوس",
+    "alternative_answers": [],
+    "category": "anime"
+  },
+  {
+    "id": "anime_070",
+    "image": "images/anime/anime_070.jpg",
+    "answer": "ثورفين",
+    "alternative_answers": ["ثورفين كارلسفني"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_071",
+    "image": "images/anime/anime_071.jpg",
+    "answer": "أسكلاد",
+    "alternative_answers": ["أسكيلاد", "آسكيلاد"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_072",
+    "image": "images/anime/anime_072.jpg",
+    "answer": "كانكي",
+    "alternative_answers": ["كينتو كانكي"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_073",
+    "image": "images/anime/anime_073.jpg",
+    "answer": "كيرا",
+    "alternative_answers": ["كيرا ديث نوت"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_074",
+    "image": "images/anime/anime_074.jpg",
+    "answer": "هوتارو",
+    "alternative_answers": ["هوتارو أوريكي"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_075",
+    "image": "images/anime/anime_075.jpg",
+    "answer": "أوسكار",
+    "alternative_answers": ["أوسكار فرانسوا"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_076",
+    "image": "images/anime/anime_076.jpg",
+    "answer": "ألين ووكر",
+    "alternative_answers": ["ألين"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_077",
+    "image": "images/anime/anime_077.jpg",
+    "answer": "سينشي",
+    "alternative_answers": ["شينيتشي كودو"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_078",
+    "image": "images/anime/anime_078.jpg",
+    "answer": "أكيرا",
+    "alternative_answers": ["أكيرا توريا"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_079",
+    "image": "images/anime/anime_079.jpg",
+    "answer": "كيلوا",
+    "alternative_answers": ["كيلوا زولديك"],
+    "category": "anime"
+  },
+  {
+    "id": "anime_080",
+    "image": "images/anime/anime_080.jpg",
+    "answer": "غريفيث",
+    "alternative_answers": ["Griffith", "غريفث"],
+    "category": "anime"
+  }
+]
