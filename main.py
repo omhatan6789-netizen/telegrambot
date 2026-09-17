@@ -153,6 +153,32 @@ from custom_commands import (
 
 
 # ==================================================
+# الملفات الشخصية وردود الادمن
+# ==================================================
+
+from handlers.profile_replies import (
+    create_profile_reply_tables,
+
+    developer_command,
+    change_developer_username,
+
+    owner_command,
+    change_owner_username,
+
+    add_my_admin_reply,
+    delete_my_admin_reply,
+    delete_other_admin_reply,
+
+    admin_replies_list,
+    enable_admin_replies,
+    disable_admin_replies,
+    delete_all_admin_replies_command,
+
+    check_admin_profile_reply,
+    profile_reply_pending_handler,
+)
+
+# ==================================================
 # الحظر والكتم
 # ==================================================
 
@@ -390,7 +416,8 @@ def main():
     # ==================================================
 
     create_tables()
-
+    create_profile_reply_tables()
+    
     patch_inline_keyboard_buttons()
     register_existing_panel_buttons()
 
@@ -704,6 +731,169 @@ def main():
 
 
     # ==================================================
+    # الملفات الشخصية وردود الادمن
+    # ==================================================
+
+    # --------------------------------------------------
+    # انتظار البيانات المؤقتة
+    # لازم يكون قبل المعالجات العامة
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            profile_reply_pending_handler
+        ),
+        group=-11
+    )
+
+    # --------------------------------------------------
+    # المطور
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^المطور$"),
+            developer_command
+        ),
+        group=0
+    )
+
+    # --------------------------------------------------
+    # تغيير يوزر المطور
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^تغيير يوزر المطور$"),
+            change_developer_username
+        ),
+        group=0
+    )
+
+    # --------------------------------------------------
+    # المالك
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^المالك$"),
+            owner_command
+        ),
+        group=0
+    )
+
+    # --------------------------------------------------
+    # تغيير يوزر المالك
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^تغيير يوزر المالك$"),
+            change_owner_username
+        ),
+        group=0
+    )
+
+    # --------------------------------------------------
+    # إضافة ردي
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^اضف ردي$"),
+            add_my_admin_reply
+        ),
+        group=0
+    )
+
+    # --------------------------------------------------
+    # حذف ردي
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^حذف ردي$"),
+            delete_my_admin_reply
+        ),
+        group=0
+    )
+
+    # --------------------------------------------------
+    # حذف رده
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^حذف رده$"),
+            delete_other_admin_reply
+        ),
+        group=0
+    )
+
+    # --------------------------------------------------
+    # قائمة ردود الادمن
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^ردود الادمن$"),
+            admin_replies_list
+        ),
+        group=0
+    )
+
+    # --------------------------------------------------
+    # تفعيل ردود الادمن
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^تفعيل ردود الادمن$"),
+            enable_admin_replies
+        ),
+        group=0
+    )
+
+    # --------------------------------------------------
+    # تعطيل ردود الادمن
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^تعطيل ردود الادمن$"),
+            disable_admin_replies
+        ),
+        group=0
+    )
+
+    # --------------------------------------------------
+    # حذف جميع ردود الادمن
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^حذف ردود الادمن$"),
+            delete_all_admin_replies_command
+        ),
+        group=0
+    )
+
+    # --------------------------------------------------
+    # تشغيل ردود الادمن
+    # بعد أوامر النظام وقبل الردود العادية
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.TEXT
+            & ~filters.COMMAND,
+            check_admin_profile_reply
+        ),
+        group=39
+    )
+    # ==================================================
     # كشف المجموعة
     # ==================================================
 
@@ -809,7 +999,6 @@ def main():
             change_rank
         )
     )
-
 
     # ==================================================
     # الردود المميزة
