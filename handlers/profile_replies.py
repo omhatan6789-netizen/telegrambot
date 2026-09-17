@@ -1796,6 +1796,11 @@ async def profile_reply_pending_handler(
     context: ContextTypes.DEFAULT_TYPE,
 ):
 
+    print(
+        f"🔥 RECEIVED: "
+        f"text={update.effective_message.text if update.effective_message else None} "
+        f"pending={context.user_data.get('profile_waiting_type')}"
+    )
     if not update.message:
         return
 
