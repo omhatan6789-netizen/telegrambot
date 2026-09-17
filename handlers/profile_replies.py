@@ -1,28 +1,114 @@
 from datetime import datetime
-from html import escape
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ContextTypes, ApplicationHandlerStop
 
 from database import connect
-from handlers.roles import get_rank
-from handlers.users import get_id_target_user
 
+
+# ==================================================
+# الإعدادات
+# ==================================================
 
 OWNER_ID = 8453977662
 
 
-# =========================================================
-# الحالات المؤقتة
-# =========================================================
+# ==================================================
+# أدوات عامة
+# ==================================================
 
-DEVELOPER_USERNAME_WAIT = "profile_developer_username"
-OWNER_USERNAME_WAIT = "profile_owner_username"
-ADMIN_REPLY_NAME_WAIT = "profile_admin_reply_name"
+def is_group(update: Update):
+    chat = update.effective_chat
+
+    if not chat:
+        return False
+
+    return chat.type in ("group", "supergroup")
 
 
-# =========================================================
-# إنشاء جداول النظام
-# =========================================================
+def html_mention(user):
+    if not user:
+        return ""
+
+    name = getattr(user, "first_name", None) or "المستخدم"
+
+    return f'<a href="tg://user?id={user.id}">{name}</a>'
+
+
+async def send_profile(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    user,
+    caption: str,
+):
+    """
+    إرسال صورة الحساب إن وجدت.
+    وإذا لم توجد صورة يرسل النص فقط.
+    """
+
+    if not user:
+        return
+
+    keyboard = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    user.first_name or "الحساب",
+                    url=f"tg://user?id={user.id}",
+                )
+            ]
+        ]
+    )
+
+    photo_file_id = None
+
+    try:
+        photos = await context.bot.get_user_profile_photos(
+            user.id,
+            limit=1
+        )
+
+        if photos.total_count > 0:
+            photo_file_id = photos.photos[0][-1].file_id
+
+    except Exception as e:
+        print(f"⚠️ تعذر جلب صورة المستخدم: {e}")
+
+    if photo_file_id:
+
+        await update.effective_message.reply_photo(
+            photo=photo_file_id,
+            caption=caption,
+            parse_mode="HTML",
+            reply_markup=keyboard,
+        )
+
+    else:
+
+        await update.effective_message.reply_text(
+            caption,
+            parse_mode="HTML",
+            reply_markup=keyboard,
+        )
+
+
+async def get_user_info(
+    context: ContextTypes.DEFAULT_TYPE,
+    user_id: int,
+):
+    """
+    جلب أحدث معلومات الحساب من Telegram.
+    """
+
+    try:
+        return await context.bot.get_chat(user_id)
+    except Exception:
+        return None
+
+
+# ==================================================
+# إنشاء الجداول
+# ==================================================
 
 def create_profile_reply_tables():
 
@@ -31,69 +117,72 @@ def create_profile_reply_tables():
 
     try:
 
-        # =================================================
-        # بيانات المطور - عالمية لكل القروبات
-        # =================================================
+        # --------------------------------------------------
+        # إعدادات المطور العامة
+        # --------------------------------------------------
 
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS bot_profile_settings
-            (
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS bot_profile_settings (
                 profile_type TEXT PRIMARY KEY,
-                user_id BIGINT,
+                user_id BIGINT NOT NULL,
                 username TEXT
             )
-        """)
+            """
+        )
 
-        # =================================================
-        # إعدادات الملف الشخصي لكل قروب
-        # =================================================
+        # --------------------------------------------------
+        # إعدادات المجموعة
+        # --------------------------------------------------
 
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS group_profile_settings
-            (
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS group_profile_settings (
                 chat_id BIGINT PRIMARY KEY,
                 owner_user_id BIGINT,
                 owner_username TEXT,
-                admin_replies_enabled INTEGER DEFAULT 0
+                admin_replies_enabled BOOLEAN DEFAULT FALSE
             )
-        """)
+            """
+        )
 
-        # =================================================
-        # ردود الأدمن
-        # كل أدمن له رد واحد فقط في كل قروب
-        # =================================================
+        # --------------------------------------------------
+        # ردود الادمن
+        # --------------------------------------------------
 
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS admin_replies
-            (
-                chat_id BIGINT,
-                admin_user_id BIGINT,
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS admin_replies (
+                chat_id BIGINT NOT NULL,
+                admin_user_id BIGINT NOT NULL,
                 reply_name TEXT NOT NULL,
-                created_date TEXT,
+                created_date TEXT NOT NULL,
                 PRIMARY KEY (chat_id, admin_user_id),
                 UNIQUE (chat_id, reply_name)
             )
-        """)
+            """
+        )
 
-        # =================================================
-        # المطور الأساسي الافتراضي
-        # =================================================
+        # --------------------------------------------------
+        # المطور الأساسي
+        # --------------------------------------------------
 
-        cur.execute("""
-            INSERT INTO bot_profile_settings
-            (
+        cur.execute(
+            """
+            INSERT INTO bot_profile_settings (
                 profile_type,
                 user_id,
                 username
             )
-            VALUES (?, ?, NULL)
-
-            ON CONFLICT (profile_type)
-            DO NOTHING
-        """, (
-            "developer",
-            OWNER_ID
-        ))
+            VALUES (?, ?, ?)
+            ON CONFLICT (profile_type) DO NOTHING
+            """,
+            (
+                "developer",
+                OWNER_ID,
+                None,
+            )
+        )
 
         conn.commit()
 
@@ -104,17 +193,13 @@ def create_profile_reply_tables():
 
     finally:
 
-        try:
-            cur.close()
-        except Exception:
-            pass
-
+        cur.close()
         conn.close()
 
 
-# =========================================================
-# جلب المطور المحفوظ
-# =========================================================
+# ==================================================
+# المطور
+# ==================================================
 
 def get_saved_developer():
 
@@ -123,35 +208,31 @@ def get_saved_developer():
 
     try:
 
-        cur.execute("""
-            SELECT
-                user_id,
-                username
+        cur.execute(
+            """
+            SELECT user_id, username
             FROM bot_profile_settings
-            WHERE profile_type=?
-        """, (
-            "developer",
-        ))
+            WHERE profile_type = ?
+            """,
+            ("developer",)
+        )
 
-        return cur.fetchone()
+        row = cur.fetchone()
+
+        if not row:
+            return OWNER_ID, None
+
+        return row[0], row[1]
 
     finally:
 
-        try:
-            cur.close()
-        except Exception:
-            pass
-
+        cur.close()
         conn.close()
 
 
-# =========================================================
-# حفظ المطور
-# =========================================================
-
 def save_developer(
-    user_id,
-    username
+    user_id: int,
+    username: str | None,
 ):
 
     conn = connect()
@@ -159,24 +240,25 @@ def save_developer(
 
     try:
 
-        cur.execute("""
-            INSERT INTO bot_profile_settings
-            (
+        cur.execute(
+            """
+            INSERT INTO bot_profile_settings (
                 profile_type,
                 user_id,
                 username
             )
             VALUES (?, ?, ?)
-
             ON CONFLICT (profile_type)
             DO UPDATE SET
                 user_id = EXCLUDED.user_id,
                 username = EXCLUDED.username
-        """, (
-            "developer",
-            user_id,
-            username
-        ))
+            """,
+            (
+                "developer",
+                user_id,
+                username,
+            )
+        )
 
         conn.commit()
 
@@ -187,17 +269,13 @@ def save_developer(
 
     finally:
 
-        try:
-            cur.close()
-        except Exception:
-            pass
-
+        cur.close()
         conn.close()
 
 
-# =========================================================
-# جلب إعدادات القروب
-# =========================================================
+# ==================================================
+# إعدادات المجموعة
+# ==================================================
 
 def get_group_settings(chat_id):
 
@@ -206,32 +284,27 @@ def get_group_settings(chat_id):
 
     try:
 
-        cur.execute("""
+        cur.execute(
+            """
             SELECT
                 owner_user_id,
                 owner_username,
                 admin_replies_enabled
             FROM group_profile_settings
-            WHERE chat_id=?
-        """, (
-            chat_id,
-        ))
+            WHERE chat_id = ?
+            """,
+            (chat_id,)
+        )
 
-        return cur.fetchone()
+        row = cur.fetchone()
+
+        return row
 
     finally:
 
-        try:
-            cur.close()
-        except Exception:
-            pass
-
+        cur.close()
         conn.close()
 
-
-# =========================================================
-# إنشاء إعدادات القروب إذا لم تكن موجودة
-# =========================================================
 
 def ensure_group_settings(chat_id):
 
@@ -240,157 +313,24 @@ def ensure_group_settings(chat_id):
 
     try:
 
-        cur.execute("""
-            INSERT INTO group_profile_settings
-            (
+        cur.execute(
+            """
+            INSERT INTO group_profile_settings (
                 chat_id,
                 owner_user_id,
                 owner_username,
                 admin_replies_enabled
-            )
-            VALUES (?, NULL, NULL, 0)
-
-            ON CONFLICT (chat_id)
-            DO NOTHING
-        """, (
-            chat_id,
-        ))
-
-        conn.commit()
-
-    finally:
-
-        try:
-            cur.close()
-        except Exception:
-            pass
-
-        conn.close()
-
-
-# =========================================================
-# حفظ مالك القروب
-# =========================================================
-
-def save_group_owner(
-    chat_id,
-    user_id,
-    username
-):
-
-    conn = connect()
-    cur = conn.cursor()
-
-    try:
-
-        cur.execute("""
-            INSERT INTO group_profile_settings
-            (
-                chat_id,
-                owner_user_id,
-                owner_username,
-                admin_replies_enabled
-            )
-            VALUES (?, ?, ?, 0)
-
-            ON CONFLICT (chat_id)
-            DO UPDATE SET
-                owner_user_id = EXCLUDED.owner_user_id,
-                owner_username = EXCLUDED.owner_username
-        """, (
-            chat_id,
-            user_id,
-            username
-        ))
-
-        conn.commit()
-
-    finally:
-
-        try:
-            cur.close()
-        except Exception:
-            pass
-
-        conn.close()
-
-
-# =========================================================
-# تفعيل / تعطيل ردود الأدمن
-# =========================================================
-
-def set_admin_replies_status(
-    chat_id,
-    enabled
-):
-
-    conn = connect()
-    cur = conn.cursor()
-
-    try:
-
-        cur.execute("""
-            INSERT INTO group_profile_settings
-            (
-                chat_id,
-                owner_user_id,
-                owner_username,
-                admin_replies_enabled
-            )
-            VALUES (?, NULL, NULL, ?)
-
-            ON CONFLICT (chat_id)
-            DO UPDATE SET
-                admin_replies_enabled = EXCLUDED.admin_replies_enabled
-        """, (
-            chat_id,
-            1 if enabled else 0
-        ))
-
-        conn.commit()
-
-    finally:
-
-        try:
-            cur.close()
-        except Exception:
-            pass
-
-        conn.close()
-
-
-# =========================================================
-# حفظ رد الأدمن
-# =========================================================
-
-def save_admin_reply(
-    chat_id,
-    user_id,
-    reply_name
-):
-
-    conn = connect()
-    cur = conn.cursor()
-
-    try:
-
-        cur.execute("""
-            INSERT INTO admin_replies
-            (
-                chat_id,
-                admin_user_id,
-                reply_name,
-                created_date
             )
             VALUES (?, ?, ?, ?)
-        """, (
-            chat_id,
-            user_id,
-            reply_name,
-            datetime.now().strftime(
-                "%Y/%m/%d %H:%M:%S"
+            ON CONFLICT (chat_id) DO NOTHING
+            """,
+            (
+                chat_id,
+                None,
+                None,
+                False,
             )
-        ))
+        )
 
         conn.commit()
 
@@ -401,21 +341,141 @@ def save_admin_reply(
 
     finally:
 
-        try:
-            cur.close()
-        except Exception:
-            pass
-
+        cur.close()
         conn.close()
 
 
-# =========================================================
-# جلب رد الأدمن الخاص بالشخص
-# =========================================================
+def save_group_owner(
+    chat_id: int,
+    user_id: int,
+    username: str | None,
+):
+
+    ensure_group_settings(chat_id)
+
+    conn = connect()
+    cur = conn.cursor()
+
+    try:
+
+        cur.execute(
+            """
+            UPDATE group_profile_settings
+            SET
+                owner_user_id = ?,
+                owner_username = ?
+            WHERE chat_id = ?
+            """,
+            (
+                user_id,
+                username,
+                chat_id,
+            )
+        )
+
+        conn.commit()
+
+    except Exception:
+
+        conn.rollback()
+        raise
+
+    finally:
+
+        cur.close()
+        conn.close()
+
+
+def set_admin_replies_status(
+    chat_id: int,
+    enabled: bool,
+):
+
+    ensure_group_settings(chat_id)
+
+    conn = connect()
+    cur = conn.cursor()
+
+    try:
+
+        cur.execute(
+            """
+            UPDATE group_profile_settings
+            SET admin_replies_enabled = ?
+            WHERE chat_id = ?
+            """,
+            (
+                enabled,
+                chat_id,
+            )
+        )
+
+        conn.commit()
+
+    except Exception:
+
+        conn.rollback()
+        raise
+
+    finally:
+
+        cur.close()
+        conn.close()
+
+
+# ==================================================
+# ردود الادمن - قاعدة البيانات
+# ==================================================
+
+def save_admin_reply(
+    chat_id: int,
+    admin_user_id: int,
+    reply_name: str,
+):
+
+    conn = connect()
+    cur = conn.cursor()
+
+    try:
+
+        created_date = datetime.now().strftime(
+            "%Y/%m/%d %H:%M:%S"
+        )
+
+        cur.execute(
+            """
+            INSERT INTO admin_replies (
+                chat_id,
+                admin_user_id,
+                reply_name,
+                created_date
+            )
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                chat_id,
+                admin_user_id,
+                reply_name,
+                created_date,
+            )
+        )
+
+        conn.commit()
+
+    except Exception:
+
+        conn.rollback()
+        raise
+
+    finally:
+
+        cur.close()
+        conn.close()
+
 
 def get_admin_reply_by_user(
-    chat_id,
-    user_id
+    chat_id: int,
+    admin_user_id: int,
 ):
 
     conn = connect()
@@ -423,36 +483,32 @@ def get_admin_reply_by_user(
 
     try:
 
-        cur.execute("""
-            SELECT
-                reply_name
+        cur.execute(
+            """
+            SELECT reply_name
             FROM admin_replies
-            WHERE chat_id=?
-            AND admin_user_id=?
-        """, (
-            chat_id,
-            user_id
-        ))
+            WHERE chat_id = ?
+              AND admin_user_id = ?
+            """,
+            (
+                chat_id,
+                admin_user_id,
+            )
+        )
 
-        return cur.fetchone()
+        row = cur.fetchone()
+
+        return row[0] if row else None
 
     finally:
 
-        try:
-            cur.close()
-        except Exception:
-            pass
-
+        cur.close()
         conn.close()
 
-
-# =========================================================
-# جلب رد باسم معين
-# =========================================================
 
 def get_admin_reply_by_name(
-    chat_id,
-    reply_name
+    chat_id: int,
+    reply_name: str,
 ):
 
     conn = connect()
@@ -460,37 +516,30 @@ def get_admin_reply_by_name(
 
     try:
 
-        cur.execute("""
-            SELECT
-                admin_user_id,
-                reply_name
+        cur.execute(
+            """
+            SELECT admin_user_id, reply_name
             FROM admin_replies
-            WHERE chat_id=?
-            AND reply_name=?
-        """, (
-            chat_id,
-            reply_name
-        ))
+            WHERE chat_id = ?
+              AND reply_name = ?
+            """,
+            (
+                chat_id,
+                reply_name,
+            )
+        )
 
         return cur.fetchone()
 
     finally:
 
-        try:
-            cur.close()
-        except Exception:
-            pass
-
+        cur.close()
         conn.close()
 
-
-# =========================================================
-# حذف رد شخص
-# =========================================================
 
 def delete_admin_reply(
-    chat_id,
-    user_id
+    chat_id: int,
+    admin_user_id: int,
 ):
 
     conn = connect()
@@ -498,111 +547,132 @@ def delete_admin_reply(
 
     try:
 
-        cur.execute("""
+        cur.execute(
+            """
             DELETE FROM admin_replies
-            WHERE chat_id=?
-            AND admin_user_id=?
-        """, (
-            chat_id,
-            user_id
-        ))
-
-        deleted = cur.rowcount
-
-        conn.commit()
-
-        return deleted > 0
-
-    finally:
-
-        try:
-            cur.close()
-        except Exception:
-            pass
-
-        conn.close()
-
-
-# =========================================================
-# حذف جميع الردود في القروب
-# =========================================================
-
-def delete_all_admin_replies(
-    chat_id
-):
-
-    conn = connect()
-    cur = conn.cursor()
-
-    try:
-
-        cur.execute("""
-            DELETE FROM admin_replies
-            WHERE chat_id=?
-        """, (
-            chat_id,
-        ))
-
-        deleted = cur.rowcount
-
-        conn.commit()
-
-        return deleted
-
-    finally:
-
-        try:
-            cur.close()
-        except Exception:
-            pass
-
-        conn.close()
-
-
-# =========================================================
-# جلب جميع ردود الأدمن للقروب
-# =========================================================
-
-def get_all_admin_replies(
-    chat_id
-):
-
-    conn = connect()
-    cur = conn.cursor()
-
-    try:
-
-        cur.execute("""
-            SELECT
+            WHERE chat_id = ?
+              AND admin_user_id = ?
+            """,
+            (
+                chat_id,
                 admin_user_id,
-                reply_name
+            )
+        )
+
+        conn.commit()
+
+    except Exception:
+
+        conn.rollback()
+        raise
+
+    finally:
+
+        cur.close()
+        conn.close()
+
+
+def delete_all_admin_replies(chat_id: int):
+
+    conn = connect()
+    cur = conn.cursor()
+
+    try:
+
+        cur.execute(
+            """
+            DELETE FROM admin_replies
+            WHERE chat_id = ?
+            """,
+            (chat_id,)
+        )
+
+        conn.commit()
+
+    except Exception:
+
+        conn.rollback()
+        raise
+
+    finally:
+
+        cur.close()
+        conn.close()
+
+
+def get_all_admin_replies(chat_id: int):
+
+    conn = connect()
+    cur = conn.cursor()
+
+    try:
+
+        cur.execute(
+            """
+            SELECT admin_user_id, reply_name
             FROM admin_replies
-            WHERE chat_id=?
-            ORDER BY created_date ASC,
-                     admin_user_id ASC
-        """, (
-            chat_id,
-        ))
+            WHERE chat_id = ?
+            ORDER BY created_date ASC, admin_user_id ASC
+            """,
+            (chat_id,)
+        )
 
         return cur.fetchall()
 
     finally:
 
-        try:
-            cur.close()
-        except Exception:
-            pass
-
+        cur.close()
         conn.close()
 
 
-# =========================================================
-# صلاحية الأدمن وفوق
-# =========================================================
+# ==================================================
+# الصلاحيات
+# ==================================================
+
+def get_user_rank(user_id: int):
+
+    conn = connect()
+    cur = conn.cursor()
+
+    try:
+
+        cur.execute(
+            """
+            SELECT rank
+            FROM users
+            WHERE user_id = ?
+            """,
+            (user_id,)
+        )
+
+        row = cur.fetchone()
+
+        return row[0] if row else "عضو"
+
+    finally:
+
+        cur.close()
+        conn.close()
+
+
+def get_rank_level(rank):
+
+    levels = {
+        "عضو": 0,
+        "مميز": 1,
+        "ادمن": 2,
+        "ادمن اساسي": 3,
+        "نائب المالك": 4,
+        "المالك": 5,
+        "Dev": 6,
+    }
+
+    return levels.get(rank, 0)
+
 
 async def is_group_admin_or_above(
-    update,
-    context
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
 ):
 
     user = update.effective_user
@@ -611,28 +681,19 @@ async def is_group_admin_or_above(
     if not user or not chat:
         return False
 
-    # المطور الأساسي
     if user.id == OWNER_ID:
         return True
 
-    # الرتبة الموجودة في نظام البوت
     try:
 
-        rank = get_rank(user.id)
+        rank = get_user_rank(user.id)
 
-        if rank in (
-            "ادمن",
-            "ادمن اساسي",
-            "نائب المالك",
-            "المالك",
-            "Dev"
-        ):
+        if get_rank_level(rank) >= 2:
             return True
 
     except Exception:
         pass
 
-    # صلاحية Telegram
     try:
 
         member = await context.bot.get_chat_member(
@@ -640,40 +701,9 @@ async def is_group_admin_or_above(
             user.id
         )
 
-        return member.status in (
+        if member.status in (
             "administrator",
-            "creator"
-        )
-
-    except Exception:
-
-        return False
-
-
-# =========================================================
-# صلاحية المالك وفوق
-# =========================================================
-
-async def is_owner_or_above(
-    update,
-    context
-):
-
-    user = update.effective_user
-
-    if not user:
-        return False
-
-    if user.id == OWNER_ID:
-        return True
-
-    try:
-
-        rank = get_rank(user.id)
-
-        if rank in (
-            "المالك",
-            "Dev"
+            "creator",
         ):
             return True
 
@@ -683,20 +713,54 @@ async def is_owner_or_above(
     return False
 
 
-# =========================================================
-# جلب يوزر بنفس طريقة أمر ايدي
-# =========================================================
-#
-# نستخدم get_id_target_user الموجودة أصلًا عندك.
-#
-# بعدها نتحقق فقط أن الشخص موجود في القروب الحالي.
-#
-# =========================================================
+async def is_owner_or_above(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    user = update.effective_user
+    chat = update.effective_chat
+
+    if not user or not chat:
+        return False
+
+    if user.id == OWNER_ID:
+        return True
+
+    try:
+
+        rank = get_user_rank(user.id)
+
+        if get_rank_level(rank) >= 5:
+            return True
+
+    except Exception:
+        pass
+
+    try:
+
+        member = await context.bot.get_chat_member(
+            chat.id,
+            user.id
+        )
+
+        if member.status == "creator":
+            return True
+
+    except Exception:
+        pass
+
+    return False
+
+
+# ==================================================
+# البحث عن مستخدم باليوزر
+# ==================================================
 
 async def get_group_user_from_username(
-    update,
-    context,
-    username
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    username: str,
 ):
 
     chat = update.effective_chat
@@ -704,58 +768,30 @@ async def get_group_user_from_username(
     if not chat:
         return None
 
-    username = (
-        username or ""
-    ).strip()
+    username = (username or "").strip()
 
     if not username.startswith("@"):
         return None
 
-    # =====================================================
-    # إنشاء Update مؤقت بنفس طريقة أمر ايدي
-    # =====================================================
-    #
-    # get_id_target_user يعتمد على:
-    #
-    # message.text
-    #
-    # لذلك نستخدم نفس الرسالة الحالية ونمررها له.
-    #
-    # لا نعدل users.py.
-    # =====================================================
-
-    original_text = update.message.text
+    if len(username) <= 1:
+        return None
 
     try:
 
-        update.message.text = (
-            f"ايدي {username}"
+        user = await context.bot.get_chat(username)
+
+    except Exception as e:
+
+        print(
+            f"⚠️ تعذر العثور على اليوزر {username}: {e}"
         )
 
-        target = await get_id_target_user(
-            update,
-            context
-        )
-
-    finally:
-
-        update.message.text = original_text
-
-    if not target:
         return None
 
-    user_id = getattr(
-        target,
-        "id",
-        None
-    )
+    user_id = getattr(user, "id", None)
 
     if not user_id:
         return None
-
-    # =====================================================
-    # التأكد أن الشخص موجود في القروب الحالي
-    # =====================================================
 
     try:
 
@@ -764,630 +800,562 @@ async def get_group_user_from_username(
             user_id
         )
 
-    except Exception:
+    except Exception as e:
+
+        print(
+            f"⚠️ تعذر التحقق من عضوية {username}: {e}"
+        )
 
         return None
 
     if member.status in (
         "left",
-        "kicked"
+        "kicked",
     ):
         return None
 
     return member.user
 
 
-# =========================================================
+# ==================================================
+# تنظيف حالات الانتظار
+# ==================================================
+
+PENDING_KEYS = (
+    "profile_waiting",
+    "profile_waiting_type",
+)
+
+
+def clear_profile_pending(context):
+
+    for key in PENDING_KEYS:
+
+        context.user_data.pop(
+            key,
+            None
+        )
+
+
+def set_profile_pending(
+    context,
+    pending_type: str,
+):
+
+    clear_profile_pending(context)
+
+    context.user_data["profile_waiting"] = True
+    context.user_data["profile_waiting_type"] = pending_type
+
+
+def get_profile_pending(context):
+
+    if not context.user_data.get(
+        "profile_waiting"
+    ):
+        return None
+
+    return context.user_data.get(
+        "profile_waiting_type"
+    )
+
+
+# ==================================================
 # المطور
-# =========================================================
+# ==================================================
 
 async def developer_command(
-    update,
-    context
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
 ):
 
     if not update.message:
         return
 
-    saved = get_saved_developer()
+    developer_id, developer_username = get_saved_developer()
 
-    if saved:
+    developer = await get_user_info(
+        context,
+        developer_id
+    )
 
-        developer_id = (
-            saved[0]
-            or OWNER_ID
-        )
-
-    else:
-
-        developer_id = OWNER_ID
-
-    # =====================================================
-    # جلب معلومات المطور المحفوظ
-    # =====================================================
-
-    try:
-
-        user = await context.bot.get_chat(
-            developer_id
-        )
-
-    except Exception:
-
-        await update.message.reply_text(
-            "❌ تعذر جلب معلومات المطور."
-        )
-
-        return
+    if not developer:
+        developer = update.effective_user
 
     bot = await context.bot.get_me()
 
-    bot_name = escape(
-        bot.first_name or "البوت"
+    bot_name = bot.first_name or "البوت"
+
+    developer_name = (
+        developer.first_name
+        or "المطور"
     )
 
-    name = escape(
-        user.first_name or "غير معروف"
-    )
+    bio = getattr(
+        developer,
+        "bio",
+        None
+    ) or "لا يوجد بايو."
 
-    bio = escape(
-        user.bio or "لا يوجد"
-    )
-
-    text = (
+    caption = (
         f"Dev Bot ↦ {bot_name}\n"
         f"━━━━━━━━━━━━━━\n"
-        f"Dev ↦ "
-        f'<a href="tg://user?id={developer_id}">'
-        f"{name}"
-        f"</a>\n"
+        f"Dev ↦ {html_mention(developer)}\n"
         f"Bio ↦ {bio}"
     )
 
-    keyboard = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton(
-                user.first_name or "المطور",
-                url=f"tg://user?id={developer_id}"
-            )
-        ]
-    ])
-
-    # =====================================================
-    # صورة المطور
-    # =====================================================
-
-    try:
-
-        photos = await context.bot.get_user_profile_photos(
-            developer_id,
-            limit=1
-        )
-
-        if photos.total_count > 0:
-
-            photo = photos.photos[0][-1].file_id
-
-            await update.message.reply_photo(
-                photo=photo,
-                caption=text,
-                parse_mode="HTML",
-                reply_markup=keyboard
-            )
-
-            return
-
-    except Exception:
-        pass
-
-    await update.message.reply_text(
-        text,
-        parse_mode="HTML",
-        reply_markup=keyboard
+    await send_profile(
+        update,
+        context,
+        developer,
+        caption
     )
 
+    raise ApplicationHandlerStop()
 
-# =========================================================
+
+# ==================================================
 # تغيير يوزر المطور
-# =========================================================
+# ==================================================
 
 async def change_developer_username(
-    update,
-    context
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
 ):
 
     if not update.message:
         return
 
-    if not update.effective_user:
+    user = update.effective_user
+
+    if not user:
         return
 
-    if update.effective_user.id != OWNER_ID:
+    if user.id != OWNER_ID:
 
         await update.message.reply_text(
-            "❌ هذا الأمر للمطور الأساسي فقط."
+            "• هذا الأمر للمطور الأساسي فقط."
         )
 
-        return
+        raise ApplicationHandlerStop()
 
-    context.user_data[
-        DEVELOPER_USERNAME_WAIT
-    ] = True
+    if not is_group(update):
+
+        await update.message.reply_text(
+            "• هذا الأمر يستخدم داخل المجموعة."
+        )
+
+        raise ApplicationHandlerStop()
+
+    set_profile_pending(
+        context,
+        "developer_username"
+    )
 
     await update.message.reply_text(
         "حسنًا، ارسل يوزر المطور الجديد."
     )
 
+    raise ApplicationHandlerStop()
 
-# =========================================================
-# استقبال يوزر المطور
-# =========================================================
 
-async def receive_developer_username(
-    update,
-    context
-):
-
-    if not update.message:
-        return False
-
-    if not context.user_data.get(
-        DEVELOPER_USERNAME_WAIT
-    ):
-        return False
-
-    if not update.effective_user:
-        return False
-
-    if update.effective_user.id != OWNER_ID:
-
-        context.user_data.pop(
-            DEVELOPER_USERNAME_WAIT,
-            None
-        )
-
-        return False
-
-    username = (
-        update.message.text or ""
-    ).strip()
-
-    if not username.startswith("@"):
-
-        await update.message.reply_text(
-            "❌ ارسل اليوزر بهذا الشكل:\n"
-            "@username"
-        )
-
-        return True
-
-    # =====================================================
-    # جلب بنفس طريقة ايدي + التحقق من وجوده بالقروب
-    # =====================================================
-
-    target = await get_group_user_from_username(
-        update,
-        context,
-        username
-    )
-
-    if not target:
-
-        await update.message.reply_text(
-            "❌ هذا اليوزر غير موجود في القروب الحالي."
-        )
-
-        return True
-
-    save_developer(
-        target.id,
-        target.username
-    )
-
-    context.user_data.pop(
-        DEVELOPER_USERNAME_WAIT,
-        None
-    )
-
-    await update.message.reply_text(
-        "✅ تم تغيير المطور بنجاح."
-    )
-
-    return True
-
-
-# =========================================================
-# المالك
-# =========================================================
-
-async def owner_command(
-    update,
-    context
-):
-
-    if not update.message:
-        return
-
-    chat = update.effective_chat
-
-    if not chat:
-        return
-
-    if chat.type not in (
-        "group",
-        "supergroup"
-    ):
-
-        await update.message.reply_text(
-            "❌ هذا الأمر داخل القروبات فقط."
-        )
-
-        return
-
-    ensure_group_settings(
-        chat.id
-    )
-
-    settings = get_group_settings(
-        chat.id
-    )
-
-    owner_id = None
-
-    if settings:
-        owner_id = settings[0]
-
-    # =====================================================
-    # إذا ما فيه مالك محفوظ:
-    # نجيب المنشئ الحقيقي للقروب
-    # =====================================================
-
-    if not owner_id:
-
-        try:
-
-            admins = await context.bot.get_chat_administrators(
-                chat.id
-            )
-
-            for member in admins:
-
-                if member.status == "creator":
-
-                    owner_id = member.user.id
-
-                    save_group_owner(
-                        chat.id,
-                        owner_id,
-                        member.user.username
-                    )
-
-                    break
-
-        except Exception:
-            pass
-
-    if not owner_id:
-
-        await update.message.reply_text(
-            "❌ تعذر معرفة مالك القروب."
-        )
-
-        return
-
-    # =====================================================
-    # جلب معلومات المالك
-    # =====================================================
-
-    try:
-
-        user = await context.bot.get_chat(
-            owner_id
-        )
-
-    except Exception:
-
-        await update.message.reply_text(
-            "❌ تعذر جلب معلومات مالك القروب."
-        )
-
-        return
-
-    group_name = escape(
-        chat.title or "القروب"
-    )
-
-    name = escape(
-        user.first_name or "غير معروف"
-    )
-
-    bio = escape(
-        user.bio or "لا يوجد"
-    )
-
-    text = (
-        f"Owner group ↦ {group_name}\n"
-        f"━━━━━━━━━━━━━━\n"
-        f"USE ↤ "
-        f'<a href="tg://user?id={owner_id}">'
-        f"{name}"
-        f"</a>\n"
-        f"bio ↤ {bio}"
-    )
-
-    keyboard = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton(
-                user.first_name or "المالك",
-                url=f"tg://user?id={owner_id}"
-            )
-        ]
-    ])
-
-    # =====================================================
-    # صورة المالك
-    # =====================================================
-
-    try:
-
-        photos = await context.bot.get_user_profile_photos(
-            owner_id,
-            limit=1
-        )
-
-        if photos.total_count > 0:
-
-            photo = photos.photos[0][-1].file_id
-
-            await update.message.reply_photo(
-                photo=photo,
-                caption=text,
-                parse_mode="HTML",
-                reply_markup=keyboard
-            )
-
-            return
-
-    except Exception:
-        pass
-
-    await update.message.reply_text(
-        text,
-        parse_mode="HTML",
-        reply_markup=keyboard
-    )
-
-
-# =========================================================
+# ==================================================
 # تغيير يوزر المالك
-# =========================================================
+# ==================================================
 
 async def change_owner_username(
-    update,
-    context
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
 ):
 
     if not update.message:
         return
 
-    if not await is_owner_or_above(
-        update,
-        context
-    ):
+    if not is_group(update):
 
         await update.message.reply_text(
-            "❌ هذا الأمر للمالك وفوق فقط."
+            "• هذا الأمر يستخدم داخل المجموعة."
         )
 
-        return
+        raise ApplicationHandlerStop()
 
-    context.user_data[
-        OWNER_USERNAME_WAIT
-    ] = True
+    allowed = await is_owner_or_above(
+        update,
+        context
+    )
+
+    if not allowed:
+
+        await update.message.reply_text(
+            "• هذا الأمر للمالك ومن فوق."
+        )
+
+        raise ApplicationHandlerStop()
+
+    set_profile_pending(
+        context,
+        "owner_username"
+    )
 
     await update.message.reply_text(
         "حسنًا، ارسل يوزر المالك الجديد."
     )
 
+    raise ApplicationHandlerStop()
 
-# =========================================================
-# استقبال يوزر المالك
-# =========================================================
 
-async def receive_owner_username(
-    update,
-    context
+# ==================================================
+# استقبال اليوزر الجديد
+# ==================================================
+
+async def receive_developer_username(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
 ):
 
     if not update.message:
-        return False
+        clear_profile_pending(context)
+        return
 
-    if not context.user_data.get(
-        OWNER_USERNAME_WAIT
-    ):
-        return False
-
-    if not await is_owner_or_above(
-        update,
-        context
-    ):
-
-        context.user_data.pop(
-            OWNER_USERNAME_WAIT,
-            None
-        )
-
-        return False
-
-    username = (
+    text = (
         update.message.text or ""
     ).strip()
 
-    if not username.startswith("@"):
+    # العملية تنتهي مهما كانت النتيجة
+    clear_profile_pending(context)
+
+    if not text.startswith("@"):
 
         await update.message.reply_text(
-            "❌ ارسل اليوزر بهذا الشكل:\n"
-            "@username"
+            "• اليوزر غير صحيح، تم إلغاء العملية."
         )
 
-        return True
+        raise ApplicationHandlerStop()
 
-    # =====================================================
-    # نفس طريقة ايدي + التحقق من القروب
-    # =====================================================
+    if " " in text:
+
+        await update.message.reply_text(
+            "• اليوزر غير صحيح، تم إلغاء العملية."
+        )
+
+        raise ApplicationHandlerStop()
 
     target = await get_group_user_from_username(
         update,
         context,
-        username
+        text
     )
 
     if not target:
 
         await update.message.reply_text(
-            "❌ هذا اليوزر غير موجود في القروب الحالي."
+            "• اليوزر غير موجود في المجموعة، تم إلغاء العملية."
         )
 
-        return True
+        raise ApplicationHandlerStop()
 
-    save_group_owner(
-        update.effective_chat.id,
+    save_developer(
         target.id,
-        target.username
-    )
-
-    context.user_data.pop(
-        OWNER_USERNAME_WAIT,
-        None
+        text
     )
 
     await update.message.reply_text(
-        "✅ تم تغيير مالك القروب بنجاح."
+        "• تم تغيير يوزر المطور بنجاح."
     )
 
-    return True
+    raise ApplicationHandlerStop()
 
 
-# =========================================================
-# إضافة ردي
-# =========================================================
+async def receive_owner_username(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
 
-async def add_my_admin_reply(
-    update,
-    context
+    if not update.message:
+        clear_profile_pending(context)
+        return
+
+    text = (
+        update.message.text or ""
+    ).strip()
+
+    # العملية تنتهي مهما كانت النتيجة
+    clear_profile_pending(context)
+
+    if not text.startswith("@"):
+
+        await update.message.reply_text(
+            "• اليوزر غير صحيح، تم إلغاء العملية."
+        )
+
+        raise ApplicationHandlerStop()
+
+    if " " in text:
+
+        await update.message.reply_text(
+            "• اليوزر غير صحيح، تم إلغاء العملية."
+        )
+
+        raise ApplicationHandlerStop()
+
+    target = await get_group_user_from_username(
+        update,
+        context,
+        text
+    )
+
+    if not target:
+
+        await update.message.reply_text(
+            "• اليوزر غير موجود في المجموعة، تم إلغاء العملية."
+        )
+
+        raise ApplicationHandlerStop()
+
+    chat_id = update.effective_chat.id
+
+    save_group_owner(
+        chat_id,
+        target.id,
+        text
+    )
+
+    await update.message.reply_text(
+        "• تم تغيير يوزر المالك بنجاح."
+    )
+
+    raise ApplicationHandlerStop()
+
+
+# ==================================================
+# المالك
+# ==================================================
+
+async def get_default_group_owner(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    chat = update.effective_chat
+
+    if not chat:
+        return None
+
+    try:
+
+        administrators = await context.bot.get_chat_administrators(
+            chat.id
+        )
+
+    except Exception:
+        return None
+
+    for member in administrators:
+
+        if member.status == "creator":
+            return member.user
+
+    return None
+
+
+async def owner_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
 ):
 
     if not update.message:
         return
 
-    if not await is_group_admin_or_above(
-        update,
-        context
-    ):
+    if not is_group(update):
 
         await update.message.reply_text(
-            "❌ هذا الأمر للادمن وفوق فقط."
+            "• هذا الأمر يستخدم داخل المجموعة."
         )
 
-        return
+        raise ApplicationHandlerStop()
 
-    chat_id = update.effective_chat.id
+    chat = update.effective_chat
 
-    ensure_group_settings(
-        chat_id
-    )
+    ensure_group_settings(chat.id)
 
     settings = get_group_settings(
-        chat_id
+        chat.id
     )
 
-    if not settings or not settings[2]:
+    owner = None
 
-        await update.message.reply_text(
-            "❌ ردود الادمن غير مفعلة في هذه المجموعة."
+    if settings:
+
+        owner_id = settings[0]
+
+        if owner_id:
+
+            owner = await get_user_info(
+                context,
+                owner_id
+            )
+
+    # إذا لا يوجد مالك مخصص
+    if not owner:
+
+        owner = await get_default_group_owner(
+            update,
+            context
         )
 
+    if not owner:
+
+        await update.message.reply_text(
+            "• تعذر العثور على مالك المجموعة."
+        )
+
+        raise ApplicationHandlerStop()
+
+    group_name = chat.title or "المجموعة"
+
+    owner_name = (
+        owner.first_name
+        or "المالك"
+    )
+
+    bio = getattr(
+        owner,
+        "bio",
+        None
+    ) or "لا يوجد بايو."
+
+    caption = (
+        f"Owner group ↦ {group_name}\n"
+        f"━━━━━━━━━━━━━━\n"
+        f"USE ↤ {html_mention(owner)}\n"
+        f"bio ↤ {bio}"
+    )
+
+    await send_profile(
+        update,
+        context,
+        owner,
+        caption
+    )
+
+    raise ApplicationHandlerStop()
+
+
+# ==================================================
+# إضافة ردي
+# ==================================================
+
+async def add_my_admin_reply(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    if not update.message:
         return
 
-    # =====================================================
-    # هل عنده رد سابق؟
-    # =====================================================
+    if not is_group(update):
+
+        await update.message.reply_text(
+            "• هذا الأمر يستخدم داخل المجموعة."
+        )
+
+        raise ApplicationHandlerStop()
+
+    allowed = await is_group_admin_or_above(
+        update,
+        context
+    )
+
+    if not allowed:
+
+        await update.message.reply_text(
+            "• هذا الأمر للادمن ومن فوق."
+        )
+
+        raise ApplicationHandlerStop()
+
+    settings = get_group_settings(
+        update.effective_chat.id
+    )
+
+    enabled = (
+        settings[2]
+        if settings
+        else False
+    )
+
+    if not enabled:
+
+        await update.message.reply_text(
+            "• ردود الادمن غير مفعلة في هذه المجموعة."
+        )
+
+        raise ApplicationHandlerStop()
 
     old_reply = get_admin_reply_by_user(
-        chat_id,
+        update.effective_chat.id,
         update.effective_user.id
     )
 
     if old_reply:
 
         await update.message.reply_text(
-            f"عندك رد قديم اسمه ({old_reply[0]}) "
+            f"عندك رد قديم اسمه ({old_reply}) "
             "اكتب حذف ردي لحذفه وإضافة رد جديد!"
         )
 
-        return
+        raise ApplicationHandlerStop()
 
-    context.user_data[
-        ADMIN_REPLY_NAME_WAIT
-    ] = True
+    set_profile_pending(
+        context,
+        "admin_reply_name"
+    )
 
     await update.message.reply_text(
         "حسنًا، ارسل كلمة الرد"
     )
 
+    raise ApplicationHandlerStop()
 
-# =========================================================
-# استقبال اسم رد الأدمن
-# =========================================================
+
+# ==================================================
+# استقبال اسم رد الادمن
+# ==================================================
 
 async def receive_my_admin_reply(
-    update,
-    context
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
 ):
 
     if not update.message:
-        return False
+        clear_profile_pending(context)
+        return
 
-    if not context.user_data.get(
-        ADMIN_REPLY_NAME_WAIT
-    ):
-        return False
+    text = (
+        update.message.text or ""
+    ).strip()
 
-    if not await is_group_admin_or_above(
-        update,
-        context
-    ):
+    # العملية تنتهي دائمًا بعد الرسالة
+    clear_profile_pending(context)
 
-        context.user_data.pop(
-            ADMIN_REPLY_NAME_WAIT,
-            None
+    if not text:
+
+        await update.message.reply_text(
+            "• اسم الرد غير صحيح، تم إلغاء العملية."
         )
 
-        return False
+        raise ApplicationHandlerStop()
+
+    if "\n" in text:
+
+        await update.message.reply_text(
+            "• اسم الرد غير صحيح، تم إلغاء العملية."
+        )
+
+        raise ApplicationHandlerStop()
 
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id
-
-    settings = get_group_settings(
-        chat_id
-    )
-
-    if not settings or not settings[2]:
-
-        context.user_data.pop(
-            ADMIN_REPLY_NAME_WAIT,
-            None
-        )
-
-        await update.message.reply_text(
-            "❌ ردود الادمن غير مفعلة في هذه المجموعة."
-        )
-
-        return True
-
-    # =====================================================
-    # منع وجود ردين لنفس الأدمن
-    # =====================================================
 
     old_reply = get_admin_reply_by_user(
         chat_id,
@@ -1396,268 +1364,249 @@ async def receive_my_admin_reply(
 
     if old_reply:
 
-        context.user_data.pop(
-            ADMIN_REPLY_NAME_WAIT,
-            None
-        )
-
         await update.message.reply_text(
-            f"عندك رد قديم اسمه ({old_reply[0]}) "
+            f"عندك رد قديم اسمه ({old_reply}) "
             "اكتب حذف ردي لحذفه وإضافة رد جديد!"
         )
 
-        return True
-
-    reply_name = (
-        update.message.text or ""
-    ).strip()
-
-    if not reply_name:
-
-        await update.message.reply_text(
-            "❌ ارسل كلمة الرد."
-        )
-
-        return True
-
-    # =====================================================
-    # التأكد أن الاسم غير مستخدم
-    # =====================================================
+        raise ApplicationHandlerStop()
 
     existing = get_admin_reply_by_name(
         chat_id,
-        reply_name
+        text
     )
 
     if existing:
 
         await update.message.reply_text(
-            "❌ اسم الرد هذا مستخدم من ادمن آخر."
+            "• اسم الرد مستخدم بالفعل، تم إلغاء العملية."
         )
 
-        return True
+        raise ApplicationHandlerStop()
 
     try:
 
         save_admin_reply(
             chat_id,
             user_id,
-            reply_name
-        )
-
-    except Exception:
-
-        await update.message.reply_text(
-            "❌ تعذر إضافة الرد، حاول مرة أخرى."
-        )
-
-        return True
-
-    context.user_data.pop(
-        ADMIN_REPLY_NAME_WAIT,
-        None
-    )
-
-    await update.message.reply_text(
-        "تم إضافة ردك الجديد!\n"
-        f"اكتب «{reply_name}» لتجربته."
-    )
-
-    return True
-
-
-# =========================================================
-# حذف ردي
-# =========================================================
-
-async def delete_my_admin_reply(
-    update,
-    context
-):
-
-    if not update.message:
-        return
-
-    if not await is_group_admin_or_above(
-        update,
-        context
-    ):
-        return
-
-    deleted = delete_admin_reply(
-        update.effective_chat.id,
-        update.effective_user.id
-    )
-
-    if deleted:
-
-        await update.message.reply_text(
-            "تم حذف ردك."
-        )
-
-    else:
-
-        await update.message.reply_text(
-            "❌ ما عندك رد."
-        )
-
-
-# =========================================================
-# حذف رده
-# =========================================================
-
-async def delete_other_admin_reply(
-    update,
-    context
-):
-
-    if not update.message:
-        return
-
-    if not await is_owner_or_above(
-        update,
-        context
-    ):
-        return
-
-    message = update.message
-
-    # لازم يكون الأمر ردًا على رسالة الشخص
-    if not message.reply_to_message:
-        return
-
-    target = message.reply_to_message.from_user
-
-    if not target:
-        return
-
-    deleted = delete_admin_reply(
-        message.chat.id,
-        target.id
-    )
-
-    # إذا ما عنده رد:
-    # تجاهل بدون أي رسالة
-    if deleted:
-
-        await message.reply_text(
-            "تم حذف رده."
-        )
-
-
-# =========================================================
-# قائمة ردود الأدمن
-# =========================================================
-
-async def admin_replies_list(
-    update,
-    context
-):
-
-    if not update.message:
-        return
-
-    chat = update.effective_chat
-
-    if not chat:
-        return
-
-    if chat.type not in (
-        "group",
-        "supergroup"
-    ):
-        return
-
-    rows = get_all_admin_replies(
-        chat.id
-    )
-
-    text = (
-        "• ردود الاعضاء في المجموعة :\n\n"
-    )
-
-    if not rows:
-
-        text += (
-            "لا توجد ردود ادمن حاليًا."
-        )
-
-        await update.message.reply_text(
             text
         )
 
+    except Exception as e:
+
+        print(
+            f"⚠️ خطأ في حفظ رد الادمن: {e}"
+        )
+
+        await update.message.reply_text(
+            "• حدث خطأ أثناء إضافة الرد، تم إلغاء العملية."
+        )
+
+        raise ApplicationHandlerStop()
+
+    await update.message.reply_text(
+        "تم إضافة ردك الجديد!\n"
+        "اكتب اسم الرد في المجموعة لتجربته."
+    )
+
+    raise ApplicationHandlerStop()
+
+
+# ==================================================
+# حذف ردي
+# ==================================================
+
+async def delete_my_admin_reply(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    if not update.message:
         return
 
-    for index, row in enumerate(
-        rows,
-        start=1
-    ):
+    if not is_group(update):
 
-        admin_id = row[0]
-        reply_name = row[1]
+        raise ApplicationHandlerStop()
 
-        try:
+    allowed = await is_group_admin_or_above(
+        update,
+        context
+    )
 
-            user = await context.bot.get_chat(
-                admin_id
-            )
+    if not allowed:
 
-            name = (
-                user.first_name
-                or "غير معروف"
-            )
+        raise ApplicationHandlerStop()
 
-        except Exception:
+    chat_id = update.effective_chat.id
+    user_id = update.effective_user.id
 
-            name = "غير معروف"
+    old_reply = get_admin_reply_by_user(
+        chat_id,
+        user_id
+    )
 
-        safe_name = escape(
-            name
+    if not old_reply:
+
+        await update.message.reply_text(
+            "• ما عندك رد ادمن."
         )
 
-        safe_reply_name = escape(
-            reply_name
+        raise ApplicationHandlerStop()
+
+    delete_admin_reply(
+        chat_id,
+        user_id
+    )
+
+    await update.message.reply_text(
+        "• تم حذف ردك."
+    )
+
+    raise ApplicationHandlerStop()
+
+
+# ==================================================
+# حذف رده
+# ==================================================
+
+async def delete_other_admin_reply(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    if not update.message:
+        return
+
+    if not is_group(update):
+        return
+
+    allowed = await is_owner_or_above(
+        update,
+        context
+    )
+
+    if not allowed:
+
+        raise ApplicationHandlerStop()
+
+    reply = update.message.reply_to_message
+
+    # إذا لم يكن Reply، تجاهل بصمت
+    if not reply:
+
+        raise ApplicationHandlerStop()
+
+    target = reply.from_user
+
+    if not target:
+
+        raise ApplicationHandlerStop()
+
+    delete_admin_reply(
+        update.effective_chat.id,
+        target.id
+    )
+
+    await update.message.reply_text(
+        "تم حذف رده."
+    )
+
+    raise ApplicationHandlerStop()
+
+
+# ==================================================
+# قائمة ردود الادمن
+# ==================================================
+
+async def admin_replies_list(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    if not update.message:
+        return
+
+    if not is_group(update):
+
+        raise ApplicationHandlerStop()
+
+    rows = get_all_admin_replies(
+        update.effective_chat.id
+    )
+
+    text = "• ردود الاعضاء في المجموعة :\n\n"
+
+    if not rows:
+
+        text += "لا يوجد ردود ادمن."
+
+        await update.message.reply_text(
+            text,
+            parse_mode="HTML"
         )
 
-        mention = (
-            f'<a href="tg://user?id={admin_id}">'
-            f"{safe_name}"
-            f"</a>"
+        raise ApplicationHandlerStop()
+
+    number = 1
+
+    for admin_id, reply_name in rows:
+
+        admin = await get_user_info(
+            context,
+            admin_id
         )
+
+        if admin:
+
+            mention = html_mention(admin)
+
+        else:
+
+            mention = f'<a href="tg://user?id={admin_id}">عضو</a>'
 
         text += (
-            f"{index} - 〖 {safe_reply_name} 〗- "
+            f"{number} - 〖 {reply_name} 〗- "
             f"{mention}\n"
         )
+
+        number += 1
 
     await update.message.reply_text(
         text,
         parse_mode="HTML"
     )
 
+    raise ApplicationHandlerStop()
 
-# =========================================================
-# تفعيل ردود الأدمن
-# =========================================================
+
+# ==================================================
+# تفعيل ردود الادمن
+# ==================================================
 
 async def enable_admin_replies(
-    update,
-    context
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
 ):
 
     if not update.message:
         return
 
-    if not await is_owner_or_above(
+    if not is_group(update):
+
+        raise ApplicationHandlerStop()
+
+    allowed = await is_owner_or_above(
         update,
         context
-    ):
+    )
+
+    if not allowed:
 
         await update.message.reply_text(
-            "❌ هذا الأمر للمالك وفوق فقط."
+            "• هذا الأمر للمالك ومن فوق."
         )
 
-        return
+        raise ApplicationHandlerStop()
 
     set_admin_replies_status(
         update.effective_chat.id,
@@ -1665,32 +1614,40 @@ async def enable_admin_replies(
     )
 
     await update.message.reply_text(
-        "✅ تم تفعيل ردود الادمن."
+        "• تم تفعيل ردود الادمن."
     )
 
+    raise ApplicationHandlerStop()
 
-# =========================================================
-# تعطيل ردود الأدمن
-# =========================================================
+
+# ==================================================
+# تعطيل ردود الادمن
+# ==================================================
 
 async def disable_admin_replies(
-    update,
-    context
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
 ):
 
     if not update.message:
         return
 
-    if not await is_owner_or_above(
+    if not is_group(update):
+
+        raise ApplicationHandlerStop()
+
+    allowed = await is_owner_or_above(
         update,
         context
-    ):
+    )
+
+    if not allowed:
 
         await update.message.reply_text(
-            "❌ هذا الأمر للمالك وفوق فقط."
+            "• هذا الأمر للمالك ومن فوق."
         )
 
-        return
+        raise ApplicationHandlerStop()
 
     set_admin_replies_status(
         update.effective_chat.id,
@@ -1698,50 +1655,59 @@ async def disable_admin_replies(
     )
 
     await update.message.reply_text(
-        "✅ تم تعطيل ردود الادمن.\n"
-        "الردود الموجودة مسبقًا ستبقى تعمل."
+        "• تم تعطيل ردود الادمن."
     )
 
+    raise ApplicationHandlerStop()
 
-# =========================================================
-# حذف جميع ردود الأدمن
-# =========================================================
+
+# ==================================================
+# حذف جميع ردود الادمن
+# ==================================================
 
 async def delete_all_admin_replies_command(
-    update,
-    context
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
 ):
 
     if not update.message:
         return
 
-    if not await is_owner_or_above(
+    if not is_group(update):
+
+        raise ApplicationHandlerStop()
+
+    allowed = await is_owner_or_above(
         update,
         context
-    ):
+    )
+
+    if not allowed:
 
         await update.message.reply_text(
-            "❌ هذا الأمر للمالك وفوق فقط."
+            "• هذا الأمر للمالك ومن فوق."
         )
 
-        return
+        raise ApplicationHandlerStop()
 
     delete_all_admin_replies(
         update.effective_chat.id
     )
 
     await update.message.reply_text(
-        "✅ تم حذف جميع ردود الادمن."
+        "• تم حذف جميع ردود الادمن."
     )
 
+    raise ApplicationHandlerStop()
 
-# =========================================================
-# تشغيل ردود الأدمن
-# =========================================================
+
+# ==================================================
+# عرض رد الادمن
+# ==================================================
 
 async def check_admin_profile_reply(
-    update,
-    context
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
 ):
 
     if not update.message:
@@ -1750,164 +1716,117 @@ async def check_admin_profile_reply(
     if not update.message.text:
         return
 
-    chat = update.effective_chat
-
-    if not chat:
+    if not is_group(update):
         return
 
-    if chat.type not in (
-        "group",
-        "supergroup"
-    ):
-        return
-
-    # لا نفحص أوامر /
-    if update.message.text.startswith("/"):
-        return
-
-    reply_name = (
-        update.message.text.strip()
-    )
+    reply_name = update.message.text.strip()
 
     if not reply_name:
         return
 
-    result = get_admin_reply_by_name(
-        chat.id,
+    row = get_admin_reply_by_name(
+        update.effective_chat.id,
         reply_name
     )
 
-    if not result:
+    if not row:
         return
 
-    admin_id = result[0]
+    admin_id = row[0]
 
-    # =====================================================
-    # جلب صاحب الرد الحقيقي
-    # =====================================================
+    admin = await get_user_info(
+        context,
+        admin_id
+    )
 
-    try:
-
-        user = await context.bot.get_chat(
-            admin_id
-        )
-
-    except Exception:
-
+    if not admin:
         return
 
-    name = escape(
-        user.first_name or "غير معروف"
-    )
+    bio = getattr(
+        admin,
+        "bio",
+        None
+    ) or "لا يوجد بايو."
 
-    bio = escape(
-        user.bio or "لا يوجد"
-    )
-
-    text = (
-        f"USE ↤ "
-        f'<a href="tg://user?id={admin_id}">'
-        f"{name}"
-        f"</a>\n"
+    caption = (
+        f"USE ↤ {html_mention(admin)}\n"
         f"Bio ↤ {bio}"
     )
 
-    keyboard = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton(
-                user.first_name or "الادمن",
-                url=f"tg://user?id={admin_id}"
-            )
-        ]
-    ])
-
-    # =====================================================
-    # صورة صاحب الرد
-    # =====================================================
-
-    try:
-
-        photos = await context.bot.get_user_profile_photos(
-            admin_id,
-            limit=1
-        )
-
-        if photos.total_count > 0:
-
-            photo = photos.photos[0][-1].file_id
-
-            await update.message.reply_photo(
-                photo=photo,
-                caption=text,
-                parse_mode="HTML",
-                reply_markup=keyboard
-            )
-
-            return
-
-    except Exception:
-        pass
-
-    await update.message.reply_text(
-        text,
-        parse_mode="HTML",
-        reply_markup=keyboard
+    await send_profile(
+        update,
+        context,
+        admin,
+        caption
     )
 
+    # مهم جدًا:
+    # يمنع check_replies وباقي المعالجات من تكرار الرد.
+    raise ApplicationHandlerStop()
 
-# =========================================================
-# معالج استقبال البيانات المؤقتة
-# =========================================================
+
+# ==================================================
+# استقبال العمليات المعلقة
+# ==================================================
 
 async def profile_reply_pending_handler(
-    update,
-    context
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
 ):
 
-    # =====================================================
-    # يوزر المطور
-    # =====================================================
+    if not update.message:
+        return
 
-    if context.user_data.get(
-        DEVELOPER_USERNAME_WAIT
-    ):
+    pending_type = get_profile_pending(
+        context
+    )
 
-        handled = await receive_developer_username(
+    if not pending_type:
+        return
+
+    # --------------------------------------------------
+    # تغيير يوزر المطور
+    # --------------------------------------------------
+
+    if pending_type == "developer_username":
+
+        await receive_developer_username(
             update,
             context
         )
 
-        if handled:
-            return
+        return
 
-    # =====================================================
-    # يوزر المالك
-    # =====================================================
+    # --------------------------------------------------
+    # تغيير يوزر المالك
+    # --------------------------------------------------
 
-    if context.user_data.get(
-        OWNER_USERNAME_WAIT
-    ):
+    if pending_type == "owner_username":
 
-        handled = await receive_owner_username(
+        await receive_owner_username(
             update,
             context
         )
 
-        if handled:
-            return
+        return
 
-    # =====================================================
-    # اسم رد الأدمن
-    # =====================================================
+    # --------------------------------------------------
+    # إضافة رد الادمن
+    # --------------------------------------------------
 
-    if context.user_data.get(
-        ADMIN_REPLY_NAME_WAIT
-    ):
+    if pending_type == "admin_reply_name":
 
-        handled = await receive_my_admin_reply(
+        await receive_my_admin_reply(
             update,
             context
         )
 
-        if handled:
-            return
+        return
+
+    # --------------------------------------------------
+    # حالة غير معروفة
+    # --------------------------------------------------
+
+    clear_profile_pending(context)
+
+    raise ApplicationHandlerStop()
