@@ -1186,10 +1186,15 @@ async def owner_command(
     context: ContextTypes.DEFAULT_TYPE,
 ):
 
+    print("🟢 OWNER COMMAND RECEIVED")
+
     if not update.message:
+        print("🔴 لا توجد message")
         return
 
     if not is_group(update):
+
+        print("🔴 الأمر ليس داخل مجموعة")
 
         await update.message.reply_text(
             "• هذا الأمر يستخدم داخل المجموعة."
@@ -1199,11 +1204,28 @@ async def owner_command(
 
     chat = update.effective_chat
 
-    ensure_group_settings(chat.id)
+    print(f"🟢 GROUP ID: {chat.id}")
+    print(f"🟢 GROUP NAME: {chat.title}")
 
-    settings = get_group_settings(
-        chat.id
-    )
+    try:
+
+        ensure_group_settings(chat.id)
+
+        print("🟢 ensure_group_settings OK")
+
+        settings = get_group_settings(chat.id)
+
+        print(f"🟢 SETTINGS: {settings}")
+
+    except Exception as e:
+
+        print(f"🔴 خطأ في إعدادات المالك: {e}")
+
+        await update.message.reply_text(
+            f"• حدث خطأ أثناء جلب بيانات المالك.\n\n{e}"
+        )
+
+        raise ApplicationHandlerStop()
 
     owner = None
 
@@ -1211,22 +1233,44 @@ async def owner_command(
 
         owner_id = settings[0]
 
+        print(f"🟢 SAVED OWNER ID: {owner_id}")
+
         if owner_id:
 
-            owner = await get_user_info(
-                context,
-                owner_id
-            )
+            try:
+
+                owner = await get_user_info(
+                    context,
+                    owner_id
+                )
+
+                print(f"🟢 SAVED OWNER: {owner}")
+
+            except Exception as e:
+
+                print(f"🔴 خطأ في جلب المالك المحفوظ: {e}")
 
     # إذا لا يوجد مالك مخصص
     if not owner:
 
-        owner = await get_default_group_owner(
-            update,
-            context
-        )
+        print("🟡 لا يوجد مالك مخصص، البحث عن منشئ المجموعة")
+
+        try:
+
+            owner = await get_default_group_owner(
+                update,
+                context
+            )
+
+            print(f"🟢 DEFAULT OWNER: {owner}")
+
+        except Exception as e:
+
+            print(f"🔴 خطأ في جلب منشئ المجموعة: {e}")
 
     if not owner:
+
+        print("🔴 لم يتم العثور على مالك المجموعة")
 
         await update.message.reply_text(
             "• تعذر العثور على مالك المجموعة."
@@ -1254,12 +1298,26 @@ async def owner_command(
         f"bio ↤ {bio}"
     )
 
-    await send_profile(
-        update,
-        context,
-        owner,
-        caption
-    )
+    print("🟢 سيتم إرسال بروفايل المالك")
+
+    try:
+
+        await send_profile(
+            update,
+            context,
+            owner,
+            caption
+        )
+
+        print("🟢 تم إرسال بروفايل المالك")
+
+    except Exception as e:
+
+        print(f"🔴 خطأ أثناء إرسال بروفايل المالك: {e}")
+
+        await update.message.reply_text(
+            f"• حدث خطأ أثناء إرسال بروفايل المالك.\n\n{e}"
+        )
 
     raise ApplicationHandlerStop()
 
