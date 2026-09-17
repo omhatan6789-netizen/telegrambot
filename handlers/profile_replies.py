@@ -1791,7 +1791,6 @@ async def check_admin_profile_reply(
 # ==================================================
 # استقبال العمليات المعلقة
 # ==================================================
-
 async def profile_reply_pending_handler(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
@@ -1800,17 +1799,19 @@ async def profile_reply_pending_handler(
     if not update.message:
         return
 
-    pending_type = get_profile_pending(
-        context
-    )
+    pending_type = get_profile_pending(context)
 
     if not pending_type:
         return
 
-    # --------------------------------------------------
-    # تغيير يوزر المطور
-    # --------------------------------------------------
+    print(
+        f"🔵 Profile pending: "
+        f"user={update.effective_user.id if update.effective_user else None} "
+        f"type={pending_type} "
+        f"text={update.message.text!r}"
+    )
 
+    # تغيير يوزر المطور
     if pending_type == "developer_username":
 
         await receive_developer_username(
@@ -1818,12 +1819,9 @@ async def profile_reply_pending_handler(
             context
         )
 
-        return
+        raise ApplicationHandlerStop()
 
-    # --------------------------------------------------
     # تغيير يوزر المالك
-    # --------------------------------------------------
-
     if pending_type == "owner_username":
 
         await receive_owner_username(
@@ -1831,12 +1829,9 @@ async def profile_reply_pending_handler(
             context
         )
 
-        return
+        raise ApplicationHandlerStop()
 
-    # --------------------------------------------------
     # إضافة رد الادمن
-    # --------------------------------------------------
-
     if pending_type == "admin_reply_name":
 
         await receive_my_admin_reply(
@@ -1844,11 +1839,7 @@ async def profile_reply_pending_handler(
             context
         )
 
-        return
-
-    # --------------------------------------------------
-    # حالة غير معروفة
-    # --------------------------------------------------
+        raise ApplicationHandlerStop()
 
     clear_profile_pending(context)
 
