@@ -6,7 +6,7 @@ import random
 import re
 import unicodedata
 from dataclasses import dataclass, field
-from typing import Dict, Optional, Set, List, Tuple
+from typing import Dict, Optional, Set, List
 
 from PIL import Image
 
@@ -30,23 +30,21 @@ MIN_PLAYERS = 2
 MIN_TARGET_POINTS = 5
 MAX_TARGET_POINTS = 15
 
-ROUND_FIRST_REWARD = 60
-ROUND_SECOND_REWARD = 45
-ROUND_THIRD_REWARD = 30
-ROUND_FINAL_REWARD = 15
+# نقاط البوت الأصلية حسب سرعة الإجابة
+ROUND_FIRST_REWARD = 60       # 0 - 20
+ROUND_SECOND_REWARD = 45      # 20 - 40
+ROUND_THIRD_REWARD = 30       # 40 - 60
+ROUND_FINAL_REWARD = 15       # آخر 5 ثواني
 
+REVEAL_INTERVAL = 20
 FINAL_GUESS_SECONDS = 5
 
-# كل 20 ثانية ننتقل لصورة أقرب/أبعد
-REVEAL_INTERVAL = 20
-
-# مكان ملف الأسئلة
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 QUESTIONS_FILE = os.path.join(BASE_DIR, "questions.json")
 
 
 # =========================================================
-# الصلاحيات
+# الاستيرادات الاختيارية
 # =========================================================
 
 try:
@@ -74,110 +72,122 @@ except Exception:
 
 
 # =========================================================
-# الحالات
+# بيانات اللاعب
 # =========================================================
 
 @dataclass
 class ImagePlayer:
     user_id: int
     name: str
+
+    # نقاط لعبة توقع الصورة
     game_points: int = 0
+
+    # نقاط البوت الأصلية المكتسبة داخل هذه اللعبة
     original_points: int = 0
 
+
+# =========================================================
+# حالة اللعبة
+# =========================================================
 
 @dataclass
 class ImageQuizState:
     chat_id: int
+
+    # الشخص الذي أنشأ القيم
     host_id: int
     host_name: str
 
+    # اللاعبين الموجودين حاليًا في القيم
     players: Dict[int, ImagePlayer] = field(default_factory=dict)
 
+    # الأشخاص الذين خرجوا من القيم
+    eliminated_players: Set[int] = field(default_factory=set)
+
+    # النقاط المطلوبة للفوز
     target_points: Optional[int] = None
 
     started: bool = False
     finished: bool = False
 
+    # رقم الجولة
     current_round: int = 0
 
+    # السؤال الحالي
     current_question: Optional[dict] = None
 
-    # رسالة اللوحة
+    # الرسائل
     board_message_id: Optional[int] = None
-
-    # رسالة الصورة
     image_message_id: Optional[int] = None
-
-    # رسالة النتائج بعد الجولة
     result_message_id: Optional[int] = None
 
-    # هل الجولة تنتظر .كمل؟
+    # حالة الجولة
     waiting_continue: bool = False
-
-    # هل تم العثور على الإجابة؟
     answer_locked: bool = False
 
-    # وقت بداية الجولة
     round_started_at: Optional[float] = None
 
-    # المرحلة الحالية:
-    # 0 = مقربة جدًا
+    # 0 = بداية
     # 1 = بعد 20 ثانية
     # 2 = بعد 40 ثانية
     # 3 = الصورة كاملة
     reveal_stage: int = 0
 
-    # مهمة التوقيت
-    round_task: Optional[asyncio.Task] = None
-
-    # هل نحن في آخر 5 ثواني؟
     final_guess_phase: bool = False
 
-    # اللاعبون الذين خرجوا أثناء القيم
-    eliminated_players: Set[int] = field(default_factory=set)
+    # مؤقت الجولة
+    round_task: Optional[asyncio.Task] = None
 
+    # الأسئلة المستخدمة
+    used_question_ids: Set[str] = field(default_factory=set)
+
+
+# =========================================================
+# الألعاب النشطة
+# =========================================================
 
 IMAGE_QUIZZES: Dict[int, ImageQuizState] = {}
 
 
 # =========================================================
-# أدوات عامة
+# الصلاحيات
 # =========================================================
 
 def _get_rank_level(user_id: int) -> int:
     """
-    يحاول استخدام نظام الصلاحيات الموجود في المشروع.
+    يحاول معرفة مستوى رتبة المستخدم من نظام المشروع الحالي.
     """
 
-    # Dev
+    # المطور الأساسي
     try:
         if is_primary_developer and is_primary_developer(user_id):
             return 6
     except Exception:
         pass
 
+    # المطور المساعد
     try:
         if is_secondary_developer and is_secondary_developer(user_id):
             return 6
     except Exception:
         pass
 
-    # permissions.py
+    # نظام الصلاحيات
     try:
         if get_permission_level:
-            result = get_permission_level(user_id)
+            level = get_permission_level(user_id)
 
-            if hasattr(result, "__await__"):
-                # الدالة المفترض أنها sync في مشروعك.
-                # لو كانت async لن نعتمد عليها هنا.
-                return 0
+            # إذا كانت الدالة async لا نستطيع انتظارها هنا
+            if asyncio.iscoroutine(level):
+                level = None
 
-            if isinstance(result, int):
-                return result
+            if isinstance(level, int):
+                return level
     except Exception:
         pass
 
-    # roles.py
+    # نظام الرتب
     try:
         if get_rank:
             rank = get_rank(user_id)
@@ -185,17 +195,19 @@ def _get_rank_level(user_id: int) -> int:
             if isinstance(rank, int):
                 return rank
 
-            rank_levels = {
-                "عضو": 0,
-                "مميز": 1,
-                "ادمن": 2,
-                "ادمن اساسي": 3,
-                "نائب المالك": 4,
-                "المالك": 5,
-                "Dev": 6,
-            }
+            if isinstance(rank, str):
+                ranks = {
+                    "عضو": 0,
+                    "مميز": 1,
+                    "ادمن": 2,
+                    "ادمن اساسي": 3,
+                    "نائب المالك": 4,
+                    "المالك": 5,
+                    "Dev": 6,
+                    "dev": 6,
+                }
 
-            return rank_levels.get(str(rank), 0)
+                return ranks.get(rank.strip(), 0)
     except Exception:
         pass
 
@@ -206,43 +218,49 @@ def _is_admin(user_id: int) -> bool:
     return _get_rank_level(user_id) >= 2
 
 
-def _is_developer(user_id: int) -> bool:
-    return _get_rank_level(user_id) >= 6
+# =========================================================
+# التأكد من القروب
+# =========================================================
+
+async def _ensure_group(update: Update) -> bool:
+    chat = update.effective_chat
+
+    if not chat:
+        return False
+
+    if chat.type not in ("group", "supergroup"):
+        if update.effective_message:
+            await update.effective_message.reply_text(
+                "❌ هذا الأمر يعمل داخل القروبات فقط."
+            )
+        return False
+
+    return True
 
 
-def _is_controller(user_id: int) -> bool:
-    """
-    في هذه اللعبة أي أدمن يقدر يتحكم.
-    """
-    return _is_admin(user_id)
-
-
-def _ensure_group(update: Update) -> bool:
-    return bool(update.effective_chat and update.effective_chat.type in (
-        "group",
-        "supergroup",
-    ))
-
+# =========================================================
+# اسم اللاعب
+# =========================================================
 
 def _player_name(user) -> str:
-    if getattr(user, "first_name", None):
+    if user.first_name:
         return user.first_name
 
-    if getattr(user, "username", None):
+    if user.username:
         return f"@{user.username}"
 
     return str(user.id)
 
 
-def _normalize_text(text: str) -> str:
-    """
-    تطبيع الإجابة حتى نتعامل مع اختلافات الكتابة.
-    """
+# =========================================================
+# تنظيف الإجابات
+# =========================================================
 
+def _normalize_text(text: str) -> str:
     if not text:
         return ""
 
-    text = str(text).strip().lower()
+    text = text.strip().lower()
 
     # إزالة التشكيل
     text = "".join(
@@ -251,6 +269,7 @@ def _normalize_text(text: str) -> str:
         if unicodedata.category(char) != "Mn"
     )
 
+    # توحيد بعض الحروف العربية
     replacements = {
         "أ": "ا",
         "إ": "ا",
@@ -265,44 +284,52 @@ def _normalize_text(text: str) -> str:
     for old, new in replacements.items():
         text = text.replace(old, new)
 
+    # إزالة التطويل
+    text = text.replace("ـ", "")
+
+    # إزالة الرموز وعلامات الترقيم
+    text = re.sub(r"[^\w\s]", " ", text)
+
     # توحيد المسافات
-    text = re.sub(r"\s+", " ", text)
-
-    # إزالة بعض علامات الترقيم
-    text = re.sub(r"[.!؟?,،:;؛\"'`_\-]+", " ", text)
-
     text = re.sub(r"\s+", " ", text).strip()
 
     return text
 
 
-def _question_answers(question: dict) -> Set[str]:
-    answers = set()
+# =========================================================
+# استخراج إجابات السؤال
+# =========================================================
+
+def _question_answers(question: dict) -> List[str]:
+    answers = []
 
     answer = question.get("answer")
 
-    if answer:
-        answers.add(_normalize_text(answer))
+    if isinstance(answer, str) and answer.strip():
+        answers.append(answer)
 
     alternatives = question.get("alternative_answers", [])
 
     if isinstance(alternatives, str):
         alternatives = [alternatives]
 
-    for alt in alternatives:
-        if alt:
-            answers.add(_normalize_text(alt))
+    if isinstance(alternatives, list):
+        for item in alternatives:
+            if isinstance(item, str) and item.strip():
+                answers.append(item)
 
-    return answers
+    # إزالة التكرار بعد التطبيع
+    result = []
+    seen = set()
 
+    for answer_text in answers:
+        normalized = _normalize_text(answer_text)
 
-def _is_correct_answer(question: dict, text: str) -> bool:
-    normalized = _normalize_text(text)
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            result.append(normalized)
 
-    if not normalized:
-        return False
-
-    return normalized in _question_answers(question)
+    return result
 
 
 # =========================================================
@@ -314,31 +341,31 @@ def load_questions() -> List[dict]:
         return []
 
     try:
-        with open(QUESTIONS_FILE, "r", encoding="utf-8") as file:
+        with open(
+            QUESTIONS_FILE,
+            "r",
+            encoding="utf-8"
+        ) as file:
             data = json.load(file)
 
-        if not isinstance(data, list):
-            return []
+        if isinstance(data, list):
+            return data
 
-        valid = []
+        if isinstance(data, dict):
+            questions = data.get("questions", [])
 
-        for question in data:
-            if not isinstance(question, dict):
-                continue
+            if isinstance(questions, list):
+                return questions
 
-            if not question.get("image"):
-                continue
+    except Exception as e:
+        print(f"[IMAGE QUIZ] Error loading questions: {e}")
 
-            if not question.get("answer"):
-                continue
+    return []
 
-            valid.append(question)
 
-        return valid
-
-    except Exception:
-        return []
-
+# =========================================================
+# اختيار سؤال
+# =========================================================
 
 def choose_question(state: ImageQuizState) -> Optional[dict]:
     questions = load_questions()
@@ -346,104 +373,41 @@ def choose_question(state: ImageQuizState) -> Optional[dict]:
     if not questions:
         return None
 
-    # نحاول عدم تكرار نفس الصورة في نفس القيم.
-    used_ids = set()
+    available = []
 
-    # نخزنها مؤقتًا في state إذا احتجنا.
-    used = getattr(state, "_used_questions", set())
+    for question in questions:
+        question_id = str(question.get("id", ""))
 
-    available = [
-        q for q in questions
-        if str(q.get("id", "")) not in used
-    ]
+        if question_id not in state.used_question_ids:
+            available.append(question)
+
+    # إذا انتهت جميع الأسئلة نعيد استخدام الأسئلة
+    if not available:
+        state.used_question_ids.clear()
+        available = questions.copy()
 
     if not available:
-        used.clear()
-        available = questions[:]
+        return None
 
     question = random.choice(available)
 
-    used.add(str(question.get("id", "")))
-    state._used_questions = used
+    question_id = str(question.get("id", ""))
+
+    if question_id:
+        state.used_question_ids.add(question_id)
 
     return question
 
 
 # =========================================================
-# بناء لوحة اللاعبين
+# مسار الصورة
 # =========================================================
 
-def build_board_text(state: ImageQuizState) -> str:
-    lines = [
-        f"🖼️ *{GAME_NAME}*",
-        "",
-    ]
-
-    if state.started:
-        lines.append(f"🎯 نقاط الفوز: *{state.target_points}*")
-    else:
-        if state.target_points:
-            lines.append(f"🎯 نقاط الفوز: *{state.target_points}*")
-        else:
-            lines.append("🎯 نقاط الفوز: *غير محددة*")
-
-    lines.append("")
-
-    if state.players:
-        lines.append("👥 *اللاعبون:*")
-
-        sorted_players = list(state.players.values())
-
-        # أثناء اللعب نرتب حسب نقاط القيم
-        if state.started:
-            sorted_players.sort(
-                key=lambda p: (-p.game_points, p.name)
-            )
-
-        for index, player in enumerate(sorted_players, 1):
-            lines.append(
-                f"{index}. {player.name} — {player.game_points} نقطة"
-            )
-    else:
-        lines.append("👥 *اللاعبون:* لا يوجد لاعبين")
-
-    lines.append("")
-
-    if not state.started:
-        lines.append("⏳ بانتظار بدء القيم...")
-    elif state.waiting_continue:
-        lines.append("⏸️ الأدمن يكتب `.كمل` للجولة التالية.")
-
-    return "\n".join(lines)
-
-
-async def update_board(
-    context: ContextTypes.DEFAULT_TYPE,
-    state: ImageQuizState,
-):
-    if not state.board_message_id:
-        return
-
-    try:
-        await context.bot.edit_message_text(
-            chat_id=state.chat_id,
-            message_id=state.board_message_id,
-            text=build_board_text(state),
-            parse_mode="Markdown",
-        )
-    except Exception:
-        pass
-
-
-# =========================================================
-# الصور
-# =========================================================
-
-def _get_image_path(question: dict) -> Optional[str]:
-    image_path = question.get("image")
-
+def _get_image_path(image_path: str) -> str:
     if not image_path:
-        return None
+        return ""
+
+    image_path = image_path.strip()
 
     if os.path.isabs(image_path):
         return image_path
@@ -451,25 +415,38 @@ def _get_image_path(question: dict) -> Optional[str]:
     return os.path.join(BASE_DIR, image_path)
 
 
+# =========================================================
+# قص الصورة حسب المرحلة
+# =========================================================
+
 def _crop_zoom_image(
     image_path: str,
-    stage: int,
+    stage: int
 ) -> Optional[io.BytesIO]:
-    """
-    stage:
-        0 = مقربة جدًا
-        1 = أقرب قليلًا
-        2 = أبعد
-        3 = كاملة
-    """
+
+    if not os.path.exists(image_path):
+        return None
 
     try:
-        image = Image.open(image_path).convert("RGB")
+        image = Image.open(image_path)
+
+        # تحويل للصورة العادية
+        if image.mode not in ("RGB", "RGBA"):
+            image = image.convert("RGB")
+
+        if image.mode == "RGBA":
+            background = Image.new("RGB", image.size, "white")
+            background.paste(
+                image,
+                mask=image.getchannel("A")
+            )
+            image = background
+        else:
+            image = image.convert("RGB")
 
         width, height = image.size
 
-        # النسب المقصودة:
-        # البداية جزء صغير جدًا من الصورة
+        # كل مرحلة تظهر مساحة أكبر من الصورة
         crop_ratios = {
             0: 0.30,
             1: 0.52,
@@ -477,9 +454,9 @@ def _crop_zoom_image(
             3: 1.00,
         }
 
-        ratio = crop_ratios.get(stage, 1.0)
+        ratio = crop_ratios.get(stage, 1.00)
 
-        if ratio < 1:
+        if ratio < 1.0:
             crop_width = int(width * ratio)
             crop_height = int(height * ratio)
 
@@ -493,99 +470,195 @@ def _crop_zoom_image(
                 (left, top, right, bottom)
             )
 
-        # نعيد تكبير الجزء المقصوص إلى حجم مناسب.
-        image.thumbnail((1280, 1280), Image.Resampling.LANCZOS)
+        # الحجم المناسب لتيليجرام
+        image.thumbnail(
+            (1280, 1280),
+            Image.Resampling.LANCZOS
+        )
 
         output = io.BytesIO()
-        output.name = "image.jpg"
 
         image.save(
             output,
             format="JPEG",
             quality=92,
+            optimize=True
         )
 
         output.seek(0)
 
         return output
 
-    except Exception:
+    except Exception as e:
+        print(f"[IMAGE QUIZ] Image processing error: {e}")
         return None
 
 
-async def send_or_edit_image(
+# =========================================================
+# نص مرحلة الصورة
+# =========================================================
+
+def _stage_text(state: ImageQuizState) -> str:
+    if state.reveal_stage == 0:
+        return "🔎 الصورة مخفية بشكل كبير"
+
+    if state.reveal_stage == 1:
+        return "👀 بدأت الصورة تتضح"
+
+    if state.reveal_stage == 2:
+        return "👁️ الصورة أصبحت أوضح"
+
+    return "🖼️ الصورة كاملة"
+
+
+# =========================================================
+# إرسال / تعديل الصورة
+# =========================================================
+
+async def _send_or_edit_image(
+    update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    state: ImageQuizState,
-    stage: int,
+    state: ImageQuizState
 ):
-    question = state.current_question
+    if not state.current_question:
+        return
 
-    if not question:
-        return False
+    image_path = state.current_question.get("image")
 
-    image_path = _get_image_path(question)
+    if not image_path:
+        return
 
-    if not image_path or not os.path.exists(image_path):
-        return False
+    image_path = _get_image_path(image_path)
 
-    image_bytes = _crop_zoom_image(
+    image_data = _crop_zoom_image(
         image_path,
-        stage,
+        state.reveal_stage
     )
 
-    if not image_bytes:
-        return False
+    if image_data is None:
+        await update.effective_chat.send_message(
+            "❌ تعذر تحميل صورة الجولة."
+        )
+        return
 
-    state.reveal_stage = stage
+    elapsed_text = ""
 
-    if stage == 0:
-        reward_text = "💰 الجائزة الحالية: +60 نقطة"
-        time_text = "⏱️ أول 20 ثانية"
-    elif stage == 1:
-        reward_text = "💰 الجائزة الحالية: +45 نقطة"
-        time_text = "⏱️ من 20 إلى 40 ثانية"
-    elif stage == 2:
-        reward_text = "💰 الجائزة الحالية: +30 نقطة"
-        time_text = "⏱️ من 40 إلى 60 ثانية"
+    if state.reveal_stage == 0:
+        elapsed_text = "⏱️ الوقت: 0 - 20 ثانية"
+    elif state.reveal_stage == 1:
+        elapsed_text = "⏱️ الوقت: 20 - 40 ثانية"
+    elif state.reveal_stage == 2:
+        elapsed_text = "⏱️ الوقت: 40 - 60 ثانية"
     else:
-        reward_text = "💰 الجائزة: +15 نقطة"
-        time_text = "⏱️ آخر 5 ثوانٍ"
-
-    category = question.get("category", "عام")
+        elapsed_text = "⏱️ آخر 5 ثواني"
 
     caption = (
-        f"🖼️ *{GAME_NAME}* — الجولة {state.current_round}\n\n"
-        f"🏷️ التصنيف: {category}\n"
-        f"{reward_text}\n"
-        f"{time_text}\n\n"
-        "✍️ اكتب إجابتك في القروب!"
+        f"🖼️ *الجولة {state.current_round}*\n\n"
+        f"{_stage_text(state)}\n"
+        f"{elapsed_text}\n\n"
+        f"🎯 كل إجابة صحيحة = +1 نقطة"
     )
 
-    try:
-        if state.image_message_id:
-            message = await context.bot.edit_message_media(
+    # إذا كانت هناك رسالة صورة سابقة نحاول تعديلها
+    if state.image_message_id:
+
+        try:
+            media = InputMediaPhoto(
+                media=image_data,
+                caption=caption,
+                parse_mode="Markdown"
+            )
+
+            await context.bot.edit_message_media(
                 chat_id=state.chat_id,
                 message_id=state.image_message_id,
-                media=InputMediaPhoto(
-                    media=image_bytes,
-                    caption=caption,
-                    parse_mode="Markdown",
-                ),
-            )
-        else:
-            message = await context.bot.send_photo(
-                chat_id=state.chat_id,
-                photo=image_bytes,
-                caption=caption,
-                parse_mode="Markdown",
+                media=media
             )
 
-            state.image_message_id = message.message_id
+            return
 
-        return True
+        except Exception as e:
+            print(
+                f"[IMAGE QUIZ] Failed to edit image: {e}"
+            )
 
+    # إرسال صورة جديدة
+    message = await update.effective_chat.send_photo(
+        photo=image_data,
+        caption=caption,
+        parse_mode="Markdown"
+    )
+
+    state.image_message_id = message.message_id
+
+
+# =========================================================
+# لوحة اللاعبين
+# =========================================================
+
+async def _update_board(
+    context: ContextTypes.DEFAULT_TYPE,
+    state: ImageQuizState
+):
+    if not state.board_message_id:
+        return
+
+    players = list(state.players.values())
+
+    players.sort(
+        key=lambda p: (
+            p.game_points,
+            p.original_points
+        ),
+        reverse=True
+    )
+
+    lines = [
+        "🖼️ *توقع الصورة*",
+        ""
+    ]
+
+    if state.target_points:
+        lines.append(
+            f"🎯 الهدف: *{state.target_points} نقاط*"
+        )
+        lines.append("")
+
+    if not players:
+        lines.append("👥 لا يوجد لاعبين.")
+    else:
+        for index, player in enumerate(players, start=1):
+            lines.append(
+                f"{index}. {player.name} — "
+                f"*{player.game_points}* نقطة"
+            )
+
+    lines.append("")
+
+    if not state.started:
+        lines.append("⏳ بانتظار بدء القيم…")
+    elif state.waiting_continue:
+        lines.append(
+            "⏸️ الجولة انتهت.\n"
+            "الأدمن يكتب `.كمل` للجولة التالية."
+        )
+    elif state.final_guess_phase:
+        lines.append(
+            "⏰ الصورة كاملة!\n"
+            "لديكم 5 ثوانٍ للإجابة."
+        )
+    else:
+        lines.append("🎮 الجولة جارية…")
+
+    try:
+        await context.bot.edit_message_text(
+            chat_id=state.chat_id,
+            message_id=state.board_message_id,
+            text="\n".join(lines),
+            parse_mode="Markdown"
+        )
     except Exception:
-        return False
+        pass
 
 
 # =========================================================
@@ -594,7 +667,7 @@ async def send_or_edit_image(
 
 async def start_round(
     context: ContextTypes.DEFAULT_TYPE,
-    state: ImageQuizState,
+    state: ImageQuizState
 ):
     if state.finished:
         return
@@ -605,9 +678,9 @@ async def start_round(
         await context.bot.send_message(
             chat_id=state.chat_id,
             text=(
-                f"⚠️ ما يمدي تبدأ الجولة.\n\n"
-                f"لازم يكون فيه {MIN_PLAYERS} لاعبين على الأقل."
-            ),
+                "❌ لا يمكن بدء الجولة.\n"
+                f"يجب أن يكون عدد اللاعبين {MIN_PLAYERS} على الأقل."
+            )
         )
 
         return
@@ -620,39 +693,96 @@ async def start_round(
         await context.bot.send_message(
             chat_id=state.chat_id,
             text=(
-                "❌ ما لقيت أسئلة صور في `questions.json`.\n\n"
-                "أضف الأسئلة والصور أولًا."
+                "❌ لا توجد أسئلة في مكتبة الصور.\n\n"
+                "تأكد من وجود ملف `questions.json`."
             ),
-            parse_mode="Markdown",
+            parse_mode="Markdown"
         )
 
         return
 
-    state.current_round += 1
     state.current_question = question
+    state.current_round += 1
+
     state.answer_locked = False
     state.waiting_continue = False
-    state.final_guess_phase = False
-    state.round_started_at = asyncio.get_running_loop().time()
-    state.image_message_id = None
 
-    await send_or_edit_image(
+    state.round_started_at = asyncio.get_running_loop().time()
+
+    state.reveal_stage = 0
+    state.final_guess_phase = False
+
+    # نرسل/نحدث اللوحة
+    await _update_board(
         context,
-        state,
-        0,
+        state
     )
 
-    # تحديث اللوحة
-    await update_board(context, state)
+    # الصورة الأولى
+    fake_update = Update(
+        update_id=0,
+        message=None
+    )
 
-    if state.round_task:
-        try:
-            state.round_task.cancel()
-        except Exception:
-            pass
+    # لا نستخدم fake_update فعليًا
+    image_path = question.get("image")
+
+    if image_path:
+        image_path = _get_image_path(image_path)
+
+        image_data = _crop_zoom_image(
+            image_path,
+            0
+        )
+
+        if image_data:
+            caption = (
+                f"🖼️ *الجولة {state.current_round}*\n\n"
+                "🔎 الصورة مخفية بشكل كبير\n"
+                "⏱️ الوقت: 0 - 20 ثانية\n\n"
+                "🎯 كل إجابة صحيحة = +1 نقطة"
+            )
+
+            try:
+                message = await context.bot.send_photo(
+                    chat_id=state.chat_id,
+                    photo=image_data,
+                    caption=caption,
+                    parse_mode="Markdown"
+                )
+
+                state.image_message_id = message.message_id
+
+            except Exception as e:
+                print(
+                    f"[IMAGE QUIZ] Failed sending first image: {e}"
+                )
+
+    # رسالة بداية الجولة
+    await context.bot.send_message(
+        chat_id=state.chat_id,
+        text=(
+            f"🎮 *الجولة {state.current_round} بدأت!*\n\n"
+            "🖼️ حاول معرفة الصورة.\n"
+            "⚡ كل إجابة صحيحة = +1 نقطة في القيم.\n\n"
+            "💰 نقاط البوت الأصلية:\n"
+            "• 0 - 20 ثانية: +60\n"
+            "• 20 - 40 ثانية: +45\n"
+            "• 40 - 60 ثانية: +30\n"
+            "• آخر 5 ثواني: +15"
+        ),
+        parse_mode="Markdown"
+    )
+
+    # إلغاء أي مؤقت سابق
+    if state.round_task and not state.round_task.done():
+        state.round_task.cancel()
 
     state.round_task = asyncio.create_task(
-        run_round_timer(context, state)
+        run_round_timer(
+            context,
+            state
+        )
     )
 
 
@@ -662,75 +792,179 @@ async def start_round(
 
 async def run_round_timer(
     context: ContextTypes.DEFAULT_TYPE,
-    state: ImageQuizState,
+    state: ImageQuizState
 ):
     try:
-        # أول 20 ثانية
+        # -------------------------------------------------
+        # 20 ثانية
+        # -------------------------------------------------
+
         await asyncio.sleep(20)
 
-        if state.answer_locked or state.finished:
+        if state.finished or state.answer_locked:
             return
 
-        await send_or_edit_image(
+        state.reveal_stage = 1
+
+        await _update_round_image(
             context,
-            state,
-            1,
+            state
         )
 
-        # 20 ثانية أخرى
+        # -------------------------------------------------
+        # 40 ثانية
+        # -------------------------------------------------
+
         await asyncio.sleep(20)
 
-        if state.answer_locked or state.finished:
+        if state.finished or state.answer_locked:
             return
 
-        await send_or_edit_image(
+        state.reveal_stage = 2
+
+        await _update_round_image(
             context,
-            state,
-            2,
+            state
         )
 
-        # 20 ثانية أخرى
+        # -------------------------------------------------
+        # 60 ثانية
+        # -------------------------------------------------
+
         await asyncio.sleep(20)
 
-        if state.answer_locked or state.finished:
+        if state.finished or state.answer_locked:
             return
 
-        # الصورة كاملة
+        state.reveal_stage = 3
         state.final_guess_phase = True
 
-        await send_or_edit_image(
+        await _update_round_image(
             context,
-            state,
-            3,
+            state
+        )
+
+        await _update_board(
+            context,
+            state
         )
 
         await context.bot.send_message(
             chat_id=state.chat_id,
             text=(
-                "⏱️ *آخر 5 ثواني!*\n"
-                "🖼️ الصورة كاملة الآن.\n\n"
-                "💰 الإجابة الصحيحة الآن = +15 نقطة أصلية."
+                "⏰ *انتهت الـ60 ثانية!*\n\n"
+                "🖼️ الصورة كاملة الآن.\n"
+                "⚡ أمامكم *5 ثوانٍ* للإجابة.\n"
+                "🎯 الإجابة الصحيحة الآن = +1 نقطة\n"
+                "💰 وتحصل على +15 نقطة أصلية."
             ),
-            parse_mode="Markdown",
+            parse_mode="Markdown"
         )
 
+        # -------------------------------------------------
         # آخر 5 ثواني
+        # -------------------------------------------------
+
         await asyncio.sleep(FINAL_GUESS_SECONDS)
 
-        if state.answer_locked or state.finished:
+        if state.finished or state.answer_locked:
             return
 
-        # لم يجب أحد
         await finish_round_without_answer(
             context,
-            state,
+            state
         )
 
     except asyncio.CancelledError:
         return
 
-    except Exception:
+    except Exception as e:
+        print(
+            f"[IMAGE QUIZ] Timer error: {e}"
+        )
+
+
+# =========================================================
+# تحديث صورة الجولة
+# =========================================================
+
+async def _update_round_image(
+    context: ContextTypes.DEFAULT_TYPE,
+    state: ImageQuizState
+):
+    if not state.current_question:
         return
+
+    image_path = state.current_question.get("image")
+
+    if not image_path:
+        return
+
+    image_path = _get_image_path(image_path)
+
+    image_data = _crop_zoom_image(
+        image_path,
+        state.reveal_stage
+    )
+
+    if image_data is None:
+        return
+
+    if state.reveal_stage == 1:
+        caption = (
+            f"🖼️ *الجولة {state.current_round}*\n\n"
+            "👀 الصورة أصبحت أوضح\n"
+            "⏱️ 20 - 40 ثانية\n\n"
+            "🎯 كل إجابة صحيحة = +1 نقطة"
+        )
+
+    elif state.reveal_stage == 2:
+        caption = (
+            f"🖼️ *الجولة {state.current_round}*\n\n"
+            "👁️ الصورة أصبحت أوضح أكثر\n"
+            "⏱️ 40 - 60 ثانية\n\n"
+            "🎯 كل إجابة صحيحة = +1 نقطة"
+        )
+
+    else:
+        caption = (
+            f"🖼️ *الجولة {state.current_round}*\n\n"
+            "🖼️ الصورة كاملة\n"
+            "⏰ آخر 5 ثواني!\n\n"
+            "🎯 كل إجابة صحيحة = +1 نقطة\n"
+            "💰 المكافأة الأصلية: +15"
+        )
+
+    try:
+        if state.image_message_id:
+
+            media = InputMediaPhoto(
+                media=image_data,
+                caption=caption,
+                parse_mode="Markdown"
+            )
+
+            await context.bot.edit_message_media(
+                chat_id=state.chat_id,
+                message_id=state.image_message_id,
+                media=media
+            )
+
+        else:
+
+            message = await context.bot.send_photo(
+                chat_id=state.chat_id,
+                photo=image_data,
+                caption=caption,
+                parse_mode="Markdown"
+            )
+
+            state.image_message_id = message.message_id
+
+    except Exception as e:
+        print(
+            f"[IMAGE QUIZ] Failed updating image: {e}"
+        )
 
 
 # =========================================================
@@ -739,224 +973,57 @@ async def run_round_timer(
 
 async def finish_round_without_answer(
     context: ContextTypes.DEFAULT_TYPE,
-    state: ImageQuizState,
+    state: ImageQuizState
 ):
-    if state.finished:
-        return
-
     state.answer_locked = True
+    state.final_guess_phase = False
     state.waiting_continue = True
-    state.final_guess_phase = False
 
-    question = state.current_question or {}
-
-    answer = question.get(
-        "answer",
-        "غير معروفة",
-    )
-
-    await context.bot.send_message(
-        chat_id=state.chat_id,
-        text=(
-            f"⏱️ انتهى وقت الجولة {state.current_round}.\n\n"
-            f"🎯 الإجابة: *{answer}*\n\n"
-            "❌ ما أحد جاوب بشكل صحيح.\n\n"
-            "⏸️ الأدمن يكتب `.كمل` للجولة التالية."
-        ),
-        parse_mode="Markdown",
-    )
-
-    await update_board(context, state)
-
-
-# =========================================================
-# معالجة الإجابة
-# =========================================================
-
-async def check_image_quiz_message(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-) -> bool:
-    """
-    ترجع True إذا تعاملت اللعبة مع الرسالة.
-    """
-
-    if not update.effective_message:
-        return False
-
-    if not update.effective_chat:
-        return False
-
-    if update.effective_chat.type not in (
-        "group",
-        "supergroup",
-    ):
-        return False
-
-    state = IMAGE_QUIZZES.get(update.effective_chat.id)
-
-    if not state:
-        return False
-
-    if not state.started:
-        return False
-
-    if state.finished:
-        return False
-
-    if state.answer_locked:
-        return False
-
-    if not state.current_question:
-        return False
-
-    user = update.effective_user
-
-    if not user:
-        return False
-
-    user_id = user.id
-
-    # اللاعب لازم يكون داخل القيم
-    player = state.players.get(user_id)
-
-    if not player:
-        return False
-
-    # لا نقبل إجابات اللاعبين الخارجين
-    if user_id in state.eliminated_players:
-        return False
-
-    text = update.effective_message.text
-
-    if not text:
-        return False
-
-    # لا نعترض على أوامر اللعبة
-    stripped = text.strip()
-
-    game_commands = {
-        "دخول",
-        "خروج",
-        ".ابدا",
-        ".كمل",
-        ".انهاء",
-        ".اعدادات",
-        ".اضافة",
-        "توقع الصورة",
-    }
-
-    if stripped in game_commands:
-        return False
-
-    if not _is_correct_answer(
-        state.current_question,
-        text,
-    ):
-        return False
-
-    # الإجابة صحيحة
-    state.answer_locked = True
-    state.final_guess_phase = False
-
-    # إلغاء المؤقت
     if state.round_task:
-        try:
-            state.round_task.cancel()
-        except Exception:
-            pass
+        current_task = asyncio.current_task()
 
-        state.round_task = None
-
-    # حساب الجائزة حسب الوقت
-    now = asyncio.get_running_loop().time()
-
-    elapsed = 0
-
-    if state.round_started_at:
-        elapsed = now - state.round_started_at
-
-    if elapsed < 20:
-        original_reward = ROUND_FIRST_REWARD
-    elif elapsed < 40:
-        original_reward = ROUND_SECOND_REWARD
-    elif elapsed < 60:
-        original_reward = ROUND_THIRD_REWARD
-    else:
-        original_reward = ROUND_FINAL_REWARD
-
-    # +1 نقطة قيم
-    player.game_points += 1
-
-    # النقاط الأصلية
-    player.original_points += original_reward
+        if state.round_task != current_task:
+            try:
+                state.round_task.cancel()
+            except Exception:
+                pass
 
     question = state.current_question
 
-    answer = question.get(
-        "answer",
-        "غير معروفة",
-    )
+    answer = "غير معروف"
 
-    # اسم الفائز في الجولة
-    winner_name = player.name
+    if question:
+        answer = question.get(
+            "answer",
+            "غير معروف"
+        )
 
     await context.bot.send_message(
         chat_id=state.chat_id,
         text=(
-            f"✅ *إجابة صحيحة!*\n\n"
-            f"👤 اللاعب: {winner_name}\n"
-            f"🎯 الإجابة: *{answer}*\n\n"
-            f"⭐ نقاط القيم: +1\n"
-            f"💰 النقاط الأصلية: +{original_reward}\n"
+            f"⏱️ *انتهت الجولة {state.current_round}!*\n\n"
+            f"❌ لم يجب أحد بشكل صحيح.\n\n"
+            f"✅ الإجابة: *{answer}*\n\n"
+            "⏸️ الأدمن يكتب `.كمل` للجولة التالية."
         ),
-        parse_mode="Markdown",
+        parse_mode="Markdown"
     )
 
-    # إضافة النقاط الأصلية إلى نظام البوت
-    await _add_original_points(
-        user_id,
-        original_reward,
+    await _update_board(
+        context,
+        state
     )
-
-    # تحديث اللوحة
-    await update_board(context, state)
-
-    # هل وصل لنقاط الفوز؟
-    if (
-        state.target_points is not None
-        and player.game_points >= state.target_points
-    ):
-        await finish_game(
-            context,
-            state,
-            winner_id=user_id,
-        )
-
-        return True
-
-    # الجولة انتهت وننتظر .كمل
-    state.waiting_continue = True
-
-    await context.bot.send_message(
-        chat_id=state.chat_id,
-        text="⏸️ الأدمن يكتب `.كمل` للجولة التالية.",
-    )
-
-    await update_board(context, state)
-
-    return True
 
 
 # =========================================================
-# إضافة النقاط الأصلية
+# إضافة نقاط البوت الأصلية
 # =========================================================
 
-async def _add_original_points(
+async def _give_original_points(
     user_id: int,
-    amount: int,
+    points: int
 ):
-    if amount <= 0:
+    if points <= 0:
         return
 
     if not add_points:
@@ -965,519 +1032,124 @@ async def _add_original_points(
     try:
         result = add_points(
             user_id,
-            amount,
+            points
         )
 
-        if hasattr(result, "__await__"):
+        if asyncio.iscoroutine(result):
             await result
 
-    except Exception:
-        pass
-
-
-# =========================================================
-# بدء إنشاء اللعبة
-# =========================================================
-
-async def start_image_quiz(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-    if not _ensure_group(update):
-        return
-
-    user = update.effective_user
-
-    if not user or not _is_admin(user.id):
-        await update.effective_message.reply_text(
-            "❌ هذا الأمر للأدمن فقط."
-        )
-        return
-
-    chat_id = update.effective_chat.id
-
-    if chat_id in IMAGE_QUIZZES:
-        await update.effective_message.reply_text(
-            "⚠️ فيه قيم توقع الصورة شغال أو مجهز هنا بالفعل."
-        )
-        return
-
-    state = ImageQuizState(
-        chat_id=chat_id,
-        host_id=user.id,
-        host_name=_player_name(user),
-    )
-
-    IMAGE_QUIZZES[chat_id] = state
-
-    keyboard = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton(
-                "⚙️ الإعدادات",
-                callback_data="iq:settings",
+    except TypeError:
+        try:
+            result = add_points(
+                user_id=user_id,
+                amount=points
             )
-        ]
-    ])
 
-    message = await update.effective_message.reply_text(
-        (
-            "🖼️ *توقع الصورة!*\n\n"
-            "🎮 تم إنشاء القيم.\n\n"
-            "👥 اكتب `دخول` للمشاركة.\n"
-            "🚪 اكتب `خروج` للخروج.\n\n"
-            "⚙️ الأدمن يكتب `.اعدادات` لاختيار نقاط الفوز.\n"
-            "▶️ وبعدها أي أدمن يقدر يكتب `.ابدا` للبدء.\n\n"
-            "⚠️ الحد الأدنى للبدء: لاعبين."
-        ),
-        parse_mode="Markdown",
-        reply_markup=keyboard,
-    )
+            if asyncio.iscoroutine(result):
+                await result
 
-    state.board_message_id = message.message_id
-
-
-# =========================================================
-# دخول
-# =========================================================
-
-async def join_image_quiz(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-    if not _ensure_group(update):
-        return
-
-    chat_id = update.effective_chat.id
-    state = IMAGE_QUIZZES.get(chat_id)
-
-    if not state:
-        return
-
-    if state.started:
-        await update.effective_message.reply_text(
-            "❌ القيم بدأ بالفعل، ما تقدر تدخل الآن."
-        )
-        return
-
-    user = update.effective_user
-
-    if not user:
-        return
-
-    if user.id in state.players:
-        await update.effective_message.reply_text(
-            "⚠️ أنت داخل القيم بالفعل."
-        )
-        return
-
-    player = ImagePlayer(
-        user_id=user.id,
-        name=_player_name(user),
-    )
-
-    state.players[user.id] = player
-
-    await update.effective_message.reply_text(
-        f"✅ دخل {player.name} القيم!\n"
-        f"👥 عدد اللاعبين: {len(state.players)}"
-    )
-
-    await update_board(
-        context,
-        state,
-    )
-
-
-# =========================================================
-# خروج
-# =========================================================
-
-async def leave_image_quiz(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-    if not _ensure_group(update):
-        return
-
-    chat_id = update.effective_chat.id
-    state = IMAGE_QUIZZES.get(chat_id)
-
-    if not state:
-        return
-
-    user = update.effective_user
-
-    if not user:
-        return
-
-    player = state.players.get(user.id)
-
-    if not player:
-        await update.effective_message.reply_text(
-            "⚠️ أنت مو داخل القيم."
-        )
-        return
-
-    # قبل البداية
-    if not state.started:
-        del state.players[user.id]
-
-        await update.effective_message.reply_text(
-            f"🚪 خرج {player.name} من القيم."
-        )
-
-        await update_board(
-            context,
-            state,
-        )
-
-        return
-
-    # أثناء القيم
-    state.eliminated_players.add(user.id)
-    del state.players[user.id]
-
-    await update.effective_message.reply_text(
-        f"🚪 خرج {player.name} من القيم.\n\n"
-        "📊 تم تحديث لوحة اللاعبين."
-    )
-
-    # إذا بقي أقل من لاعبين
-    if len(state.players) < MIN_PLAYERS:
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text=(
-                "⚠️ عدد اللاعبين أصبح أقل من لاعبين.\n"
-                "لن يتمكن القيم من بدء جولة جديدة حتى يعود العدد إلى 2."
-            ),
-        )
-
-    await update_board(
-        context,
-        state,
-    )
-
-
-# =========================================================
-# .اضافة
-# =========================================================
-
-async def add_image_quiz_player(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-    if not _ensure_group(update):
-        return
-
-    user = update.effective_user
-
-    if not user or not _is_admin(user.id):
-        await update.effective_message.reply_text(
-            "❌ هذا الأمر للأدمن فقط."
-        )
-        return
-
-    state = IMAGE_QUIZZES.get(
-        update.effective_chat.id
-    )
-
-    if not state:
-        await update.effective_message.reply_text(
-            "❌ ما فيه قيم توقع الصورة."
-        )
-        return
-
-    if not update.effective_message.reply_to_message:
-        await update.effective_message.reply_text(
-            "❌ استخدم `.اضافة` بالرد على رسالة الشخص اللي تبيه يدخل القيم."
-        )
-        return
-
-    target = update.effective_message.reply_to_message.from_user
-
-    if not target:
-        await update.effective_message.reply_text(
-            "❌ ما قدرت أحدد الشخص."
-        )
-        return
-
-    if target.id in state.players:
-        await update.effective_message.reply_text(
-            "⚠️ هذا الشخص داخل القيم بالفعل."
-        )
-        return
-
-    if target.id in state.eliminated_players:
-        state.eliminated_players.discard(target.id)
-
-    player = ImagePlayer(
-        user_id=target.id,
-        name=_player_name(target),
-    )
-
-    state.players[target.id] = player
-
-    await update.effective_message.reply_text(
-        f"➕ تمت إضافة {player.name} إلى القيم."
-    )
-
-    await update_board(
-        context,
-        state,
-    )
-
-
-# =========================================================
-# الإعدادات
-# =========================================================
-
-def settings_keyboard() -> InlineKeyboardMarkup:
-    rows = []
-
-    current = []
-
-    for number in range(
-        MIN_TARGET_POINTS,
-        MAX_TARGET_POINTS + 1,
-    ):
-        current.append(
-            InlineKeyboardButton(
-                str(number),
-                callback_data=f"iq:points:{number}",
+        except Exception as e:
+            print(
+                f"[IMAGE QUIZ] Failed adding points: {e}"
             )
+
+    except Exception as e:
+        print(
+            f"[IMAGE QUIZ] Failed adding points: {e}"
         )
 
-        if len(current) == 6:
-            rows.append(current)
-            current = []
 
-    if current:
-        rows.append(current)
+# =========================================================
+# حساب مكافأة الإجابة
+# =========================================================
 
-    return InlineKeyboardMarkup(rows)
+def _get_original_reward(elapsed: float) -> int:
+    if elapsed < 20:
+        return ROUND_FIRST_REWARD
+
+    if elapsed < 40:
+        return ROUND_SECOND_REWARD
+
+    if elapsed < 60:
+        return ROUND_THIRD_REWARD
+
+    return ROUND_FINAL_REWARD
 
 
-async def image_quiz_settings(
+# =========================================================
+# فحص إجابة اللاعب
+# =========================================================
+
+async def check_image_quiz_message(
     update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
+    context: ContextTypes.DEFAULT_TYPE
 ):
-    if not _ensure_group(update):
-        return
-
+    message = update.effective_message
+    chat = update.effective_chat
     user = update.effective_user
 
-    if not user or not _is_admin(user.id):
-        await update.effective_message.reply_text(
-            "❌ هذا الأمر للأدمن فقط."
-        )
+    if not message or not chat or not user:
         return
 
-    state = IMAGE_QUIZZES.get(
-        update.effective_chat.id
-    )
-
-    if not state:
-        await update.effective_message.reply_text(
-            "❌ ما فيه قيم توقع الصورة."
-        )
+    if chat.type not in ("group", "supergroup"):
         return
 
-    if state.started:
-        await update.effective_message.reply_text(
-            "❌ ما تقدر تغير الإعدادات بعد بدء القيم."
-        )
-        return
-
-    current = (
-        str(state.target_points)
-        if state.target_points
-        else "غير محددة"
-    )
-
-    await update.effective_message.reply_text(
-        (
-            "⚙️ *إعدادات توقع الصورة!*\n\n"
-            f"🎯 نقاط الفوز الحالية: *{current}*\n\n"
-            "اختر عدد النقاط المطلوبة للفوز:"
-        ),
-        parse_mode="Markdown",
-        reply_markup=settings_keyboard(),
-    )
-
-
-# =========================================================
-# .ابدا
-# =========================================================
-
-async def begin_image_quiz(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-    if not _ensure_group(update):
-        return
-
-    user = update.effective_user
-
-    if not user or not _is_admin(user.id):
-        await update.effective_message.reply_text(
-            "❌ هذا الأمر للأدمن فقط."
-        )
-        return
-
-    state = IMAGE_QUIZZES.get(
-        update.effective_chat.id
-    )
-
-    if not state:
-        await update.effective_message.reply_text(
-            "❌ ما فيه قيم توقع الصورة."
-        )
-        return
-
-    if state.started:
-        await update.effective_message.reply_text(
-            "⚠️ القيم بدأ بالفعل."
-        )
-        return
-
-    if state.target_points is None:
-        await update.effective_message.reply_text(
-            "⚠️ حدد نقاط الفوز أولًا عن طريق `.اعدادات`."
-        )
-        return
-
-    if len(state.players) < MIN_PLAYERS:
-        await update.effective_message.reply_text(
-            f"⚠️ لازم يدخل على الأقل {MIN_PLAYERS} لاعبين."
-        )
-        return
-
-    state.started = True
-    state.current_round = 0
-    state.waiting_continue = False
-
-    await update.effective_message.reply_text(
-        (
-            "🚀 *بدأ قيم توقع الصورة!*\n\n"
-            f"🎯 نقاط الفوز: *{state.target_points}*\n"
-            f"👥 عدد اللاعبين: *{len(state.players)}*\n\n"
-            "🖼️ الجولة الأولى تبدأ الآن!"
-        ),
-        parse_mode="Markdown",
-    )
-
-    await update_board(
-        context,
-        state,
-    )
-
-    await start_round(
-        context,
-        state,
-    )
-
-
-# =========================================================
-# .كمل
-# =========================================================
-
-async def continue_image_quiz(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-    if not _ensure_group(update):
-        return
-
-    user = update.effective_user
-
-    if not user or not _is_admin(user.id):
-        await update.effective_message.reply_text(
-            "❌ هذا الأمر للأدمن فقط."
-        )
-        return
-
-    state = IMAGE_QUIZZES.get(
-        update.effective_chat.id
-    )
+    state = IMAGE_QUIZZES.get(chat.id)
 
     if not state:
         return
 
     if not state.started:
-        await update.effective_message.reply_text(
-            "⚠️ القيم ما بدأ."
-        )
         return
 
-    if not state.waiting_continue:
-        await update.effective_message.reply_text(
-            "⚠️ ما فيه جولة تنتظر `.كمل` حاليًا."
-        )
-        return
-
-    if len(state.players) < MIN_PLAYERS:
-        await update.effective_message.reply_text(
-            f"⚠️ لازم يبقى على الأقل {MIN_PLAYERS} لاعبين."
-        )
-        return
-
-    await start_round(
-        context,
-        state,
-    )
-
-
-# =========================================================
-# .انهاء
-# =========================================================
-
-async def end_image_quiz(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-    if not _ensure_group(update):
-        return
-
-    user = update.effective_user
-
-    if not user or not _is_admin(user.id):
-        await update.effective_message.reply_text(
-            "❌ هذا الأمر للأدمن فقط."
-        )
-        return
-
-    state = IMAGE_QUIZZES.get(
-        update.effective_chat.id
-    )
-
-    if not state:
-        await update.effective_message.reply_text(
-            "❌ ما فيه قيم توقع الصورة."
-        )
-        return
-
-    await finish_game(
-        context,
-        state,
-        winner_id=None,
-        manually=True,
-    )
-
-
-# =========================================================
-# نهاية القيم
-# =========================================================
-
-async def finish_game(
-    context: ContextTypes.DEFAULT_TYPE,
-    state: ImageQuizState,
-    winner_id: Optional[int] = None,
-    manually: bool = False,
-):
     if state.finished:
         return
 
-    state.finished = True
+    if state.answer_locked:
+        return
+
+    if user.id not in state.players:
+        return
+
+    if not message.text:
+        return
+
+    text = message.text.strip()
+
+    # لا نعتبر أوامر اللعبة إجابات
+    ignored_commands = {
+        "دخول",
+        "خروج",
+        ".اضافة",
+        ".اعدادات",
+        ".ابدا",
+        ".كمل",
+        ".انهاء",
+        "توقع الصورة",
+    }
+
+    if text in ignored_commands:
+        return
+
+    # لا نعالج النصوص الفارغة
+    normalized_text = _normalize_text(text)
+
+    if not normalized_text:
+        return
+
+    if not state.current_question:
+        return
+
+    correct_answers = _question_answers(
+        state.current_question
+    )
+
+    if normalized_text not in correct_answers:
+        return
+
+    # قفل الجولة مباشرة
+    state.answer_locked = True
+    state.final_guess_phase = False
 
     # إلغاء المؤقت
     if state.round_task:
@@ -1486,188 +1158,783 @@ async def finish_game(
         except Exception:
             pass
 
-        state.round_task = None
+    # حساب الوقت
+    now = asyncio.get_running_loop().time()
 
-    # بناء النتائج
+    if state.round_started_at:
+        elapsed = now - state.round_started_at
+    else:
+        elapsed = 0
+
+    reward = _get_original_reward(elapsed)
+
+    player = state.players.get(user.id)
+
+    if not player:
+        state.answer_locked = False
+        return
+
+    # +1 في نقاط اللعبة
+    player.game_points += 1
+
+    # النقاط الأصلية منفصلة
+    player.original_points += reward
+
+    answer = state.current_question.get(
+        "answer",
+        text
+    )
+
+    # معرفة إذا وصل اللاعب للهدف
+    target_reached = (
+        state.target_points is not None
+        and player.game_points >= state.target_points
+    )
+
+    if target_reached:
+
+        await context.bot.send_message(
+            chat_id=chat.id,
+            text=(
+                f"🎉 *إجابة صحيحة!*\n\n"
+                f"👤 اللاعب: *{player.name}*\n"
+                f"✅ الإجابة: *{answer}*\n\n"
+                f"🎯 +1 نقطة في القيم\n"
+                f"💰 +{reward} نقطة أصلية\n\n"
+                f"🏆 وصل إلى الهدف "
+                f"*{state.target_points} نقاط*!"
+            ),
+            parse_mode="Markdown"
+        )
+
+        await finish_image_quiz(
+            context,
+            state,
+            winner_id=user.id
+        )
+
+        return
+
+    # إجابة صحيحة عادية
+    await context.bot.send_message(
+        chat_id=chat.id,
+        text=(
+            f"🎯 *إجابة صحيحة!*\n\n"
+            f"👤 {player.name}\n"
+            f"✅ {answer}\n\n"
+            f"🏅 +1 نقطة في القيم\n"
+            f"💰 +{reward} نقطة أصلية\n\n"
+            f"📊 نقاطه الآن: *{player.game_points}*"
+        ),
+        parse_mode="Markdown"
+    )
+
+    state.waiting_continue = True
+
+    await _update_board(
+        context,
+        state
+    )
+
+    await context.bot.send_message(
+        chat_id=chat.id,
+        text=(
+            "⏸️ انتهت الجولة.\n"
+            "الأدمن يكتب `.كمل` للجولة التالية."
+        )
+    )
+
+
+# =========================================================
+# بدء اللعبة
+# =========================================================
+
+async def start_image_quiz(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+    if not await _ensure_group(update):
+        return
+
+    message = update.effective_message
+    chat = update.effective_chat
+    user = update.effective_user
+
+    if not message or not chat or not user:
+        return
+
+    # يجب أن يكون منشئ القيم أدمن
+    if not _is_admin(user.id):
+        await message.reply_text(
+            "❌ لازم تكون أدمن لإنشاء لعبة توقع الصورة."
+        )
+        return
+
+    if chat.id in IMAGE_QUIZZES:
+        await message.reply_text(
+            "⚠️ توجد لعبة توقع الصورة بالفعل في هذا القروب."
+        )
+        return
+
+    state = ImageQuizState(
+        chat_id=chat.id,
+        host_id=user.id,
+        host_name=_player_name(user)
+    )
+
+    IMAGE_QUIZZES[chat.id] = state
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "🎯 اختيار النقاط",
+                callback_data="iq:settings"
+            )
+        ]
+    ]
+
+    board = await message.reply_text(
+        (
+            "🖼️ *توقع الصورة*\n\n"
+            f"👑 المنظم: *{state.host_name}*\n\n"
+            "👥 يجب دخول لاعبين على الأقل.\n"
+            "🎯 حددوا نقاط الفوز من زر الإعدادات.\n\n"
+            "اكتب `دخول` للانضمام."
+        ),
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+    state.board_message_id = board.message_id
+
+
+# =========================================================
+# دخول لاعب
+# =========================================================
+
+async def join_image_quiz(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+    if not await _ensure_group(update):
+        return
+
+    message = update.effective_message
+    chat = update.effective_chat
+    user = update.effective_user
+
+    if not message or not chat or not user:
+        return
+
+    state = IMAGE_QUIZZES.get(chat.id)
+
+    if not state:
+        return
+
+    # بعد بداية اللعبة دخول عادي ممنوع
+    if state.started:
+        await message.reply_text(
+            "❌ القيم بدأ بالفعل.\n"
+            "إذا تبي تضيف شخص استخدم `.اضافة`."
+        )
+        return
+
+    if user.id in state.players:
+        await message.reply_text(
+            "⚠️ أنت داخل القيم بالفعل."
+        )
+        return
+
+    state.players[user.id] = ImagePlayer(
+        user_id=user.id,
+        name=_player_name(user)
+    )
+
+    await message.reply_text(
+        f"✅ تم دخول *{_player_name(user)}* للقيم.",
+        parse_mode="Markdown"
+    )
+
+    await _update_board(
+        context,
+        state
+    )
+
+
+# =========================================================
+# خروج لاعب
+# =========================================================
+
+async def leave_image_quiz(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+    if not await _ensure_group(update):
+        return
+
+    message = update.effective_message
+    chat = update.effective_chat
+    user = update.effective_user
+
+    if not message or not chat or not user:
+        return
+
+    state = IMAGE_QUIZZES.get(chat.id)
+
+    if not state:
+        return
+
+    player = state.players.get(user.id)
+
+    if not player:
+        await message.reply_text(
+            "❌ أنت لست داخل القيم."
+        )
+        return
+
+    del state.players[user.id]
+
+    state.eliminated_players.add(user.id)
+
+    await message.reply_text(
+        f"🚪 خرج *{player.name}* من القيم.",
+        parse_mode="Markdown"
+    )
+
+    # إذا خرج أثناء الجولة الحالية
+    if state.started and not state.waiting_continue:
+        await _update_board(
+            context,
+            state
+        )
+
+        if len(state.players) < MIN_PLAYERS:
+            await context.bot.send_message(
+                chat_id=chat.id,
+                text=(
+                    "⚠️ عدد اللاعبين أصبح أقل من "
+                    f"{MIN_PLAYERS}.\n"
+                    "يمكن للقيم الاستمرار، لكن يجب إضافة لاعب "
+                    "بـ`.اضافة` قبل بدء الجولة التالية."
+                )
+            )
+
+    else:
+        await _update_board(
+            context,
+            state
+        )
+
+
+# =========================================================
+# إضافة لاعب بواسطة الأدمن
+# =========================================================
+
+async def add_image_quiz_player(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+    if not await _ensure_group(update):
+        return
+
+    message = update.effective_message
+    chat = update.effective_chat
+    user = update.effective_user
+
+    if not message or not chat or not user:
+        return
+
+    state = IMAGE_QUIZZES.get(chat.id)
+
+    if not state:
+        return
+
+    if not _is_admin(user.id):
+        await message.reply_text(
+            "❌ هذا الأمر للأدمن فقط."
+        )
+        return
+
+    if not message.reply_to_message:
+        await message.reply_text(
+            "❌ رد على رسالة الشخص الذي تريد إضافته واكتب:\n"
+            "`.اضافة`"
+        )
+        return
+
+    target = message.reply_to_message.from_user
+
+    if not target:
+        await message.reply_text(
+            "❌ لم أستطع معرفة الشخص."
+        )
+        return
+
+    if target.is_bot:
+        await message.reply_text(
+            "❌ لا يمكنك إضافة بوت."
+        )
+        return
+
+    if target.id in state.players:
+        await message.reply_text(
+            "⚠️ الشخص داخل القيم بالفعل."
+        )
+        return
+
+    # إذا كان خرج سابقًا يسمح له بالدخول مرة أخرى
+    state.eliminated_players.discard(
+        target.id
+    )
+
+    state.players[target.id] = ImagePlayer(
+        user_id=target.id,
+        name=_player_name(target)
+    )
+
+    await message.reply_text(
+        f"✅ تمت إضافة *{_player_name(target)}* إلى القيم.",
+        parse_mode="Markdown"
+    )
+
+    await _update_board(
+        context,
+        state
+    )
+
+
+# =========================================================
+# إعدادات اللعبة
+# =========================================================
+
+async def image_quiz_settings(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+    if not await _ensure_group(update):
+        return
+
+    message = update.effective_message
+    chat = update.effective_chat
+    user = update.effective_user
+
+    if not message or not chat or not user:
+        return
+
+    state = IMAGE_QUIZZES.get(chat.id)
+
+    if not state:
+        return
+
+    if not _is_admin(user.id):
+        await message.reply_text(
+            "❌ هذا الأمر للأدمن فقط."
+        )
+        return
+
+    if state.started:
+        await message.reply_text(
+            "❌ لا يمكن تغيير الإعدادات بعد بدء القيم."
+        )
+        return
+
+    keyboard = []
+
+    row = []
+
+    for points in range(
+        MIN_TARGET_POINTS,
+        MAX_TARGET_POINTS + 1
+    ):
+        row.append(
+            InlineKeyboardButton(
+                f"{points} 🎯",
+                callback_data=f"iq:points:{points}"
+            )
+        )
+
+        if len(row) == 4:
+            keyboard.append(row)
+            row = []
+
+    if row:
+        keyboard.append(row)
+
+    await message.reply_text(
+        (
+            "⚙️ *إعدادات توقع الصورة*\n\n"
+            "🎯 اختر عدد النقاط المطلوبة للفوز:"
+        ),
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+# =========================================================
+# بدء القيم
+# =========================================================
+
+async def begin_image_quiz(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+    if not await _ensure_group(update):
+        return
+
+    message = update.effective_message
+    chat = update.effective_chat
+    user = update.effective_user
+
+    if not message or not chat or not user:
+        return
+
+    state = IMAGE_QUIZZES.get(chat.id)
+
+    if not state:
+        return
+
+    # أي أدمن يستطيع البدء
+    if not _is_admin(user.id):
+        await message.reply_text(
+            "❌ هذا الأمر للأدمن فقط."
+        )
+        return
+
+    if state.started:
+        await message.reply_text(
+            "⚠️ القيم بدأ بالفعل."
+        )
+        return
+
+    if state.target_points is None:
+        await message.reply_text(
+            "❌ حدد نقاط الفوز أولًا باستخدام `.اعدادات`."
+        )
+        return
+
+    if len(state.players) < MIN_PLAYERS:
+        await message.reply_text(
+            f"❌ يجب دخول {MIN_PLAYERS} لاعبين على الأقل."
+        )
+        return
+
+    state.started = True
+    state.finished = False
+
+    await message.reply_text(
+        (
+            "🚀 *تم بدء القيم!*\n\n"
+            f"🎯 الهدف: *{state.target_points} نقاط*\n"
+            f"👥 اللاعبين: *{len(state.players)}*"
+        ),
+        parse_mode="Markdown"
+    )
+
+    await start_round(
+        context,
+        state
+    )
+
+
+# =========================================================
+# الجولة التالية
+# =========================================================
+
+async def continue_image_quiz(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+    if not await _ensure_group(update):
+        return
+
+    message = update.effective_message
+    chat = update.effective_chat
+    user = update.effective_user
+
+    if not message or not chat or not user:
+        return
+
+    state = IMAGE_QUIZZES.get(chat.id)
+
+    if not state:
+        return
+
+    if not _is_admin(user.id):
+        await message.reply_text(
+            "❌ هذا الأمر للأدمن فقط."
+        )
+        return
+
+    if not state.started:
+        await message.reply_text(
+            "❌ القيم لم يبدأ بعد."
+        )
+        return
+
+    if state.finished:
+        return
+
+    if not state.waiting_continue:
+        await message.reply_text(
+            "⚠️ الجولة الحالية لم تنتهِ بعد."
+        )
+        return
+
+    if len(state.players) < MIN_PLAYERS:
+        await message.reply_text(
+            (
+                f"❌ لا يمكن بدء الجولة التالية.\n"
+                f"يجب أن يكون هناك {MIN_PLAYERS} لاعبين على الأقل.\n\n"
+                "يمكن للأدمن إضافة لاعب باستخدام `.اضافة`."
+            )
+        )
+        return
+
+    await start_round(
+        context,
+        state
+    )
+
+
+# =========================================================
+# إنهاء اللعبة
+# =========================================================
+
+async def end_image_quiz(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+    if not await _ensure_group(update):
+        return
+
+    message = update.effective_message
+    chat = update.effective_chat
+    user = update.effective_user
+
+    if not message or not chat or not user:
+        return
+
+    state = IMAGE_QUIZZES.get(chat.id)
+
+    if not state:
+        return
+
+    if not _is_admin(user.id):
+        await message.reply_text(
+            "❌ هذا الأمر للأدمن فقط."
+        )
+        return
+
+    await finish_image_quiz(
+        context,
+        state,
+        winner_id=None,
+        manual=True
+    )
+
+
+# =========================================================
+# إنهاء اللعبة وإعلان النتائج
+# =========================================================
+
+async def finish_image_quiz(
+    context: ContextTypes.DEFAULT_TYPE,
+    state: ImageQuizState,
+    winner_id: Optional[int] = None,
+    manual: bool = False
+):
+    if state.finished:
+        return
+
+    state.finished = True
+    state.answer_locked = True
+    state.final_guess_phase = False
+    state.waiting_continue = False
+
+    # إلغاء المؤقت
+    if state.round_task:
+        try:
+            state.round_task.cancel()
+        except Exception:
+            pass
+
     players = list(state.players.values())
 
     players.sort(
         key=lambda p: (
-            -p.game_points,
-            -p.original_points,
-            p.name,
-        )
+            p.game_points,
+            p.original_points
+        ),
+        reverse=True
     )
 
-    if manually:
-        title = "🛑 تم إنهاء قيم توقع الصورة!"
+    # إعطاء نقاط البوت الأصلية عند نهاية القيم
+    # وليس أثناء كل جولة
+    for player in players:
+        if player.original_points > 0:
+            await _give_original_points(
+                player.user_id,
+                player.original_points
+            )
 
-        lines = [
-            title,
-            "",
-            "📊 *النتائج الحالية:*",
-        ]
+    lines = [
+        "🏁 *انتهت لعبة توقع الصورة!*",
+        ""
+    ]
 
-        if players:
-            for index, player in enumerate(players, 1):
-                lines.append(
-                    f"{index}. {player.name} — "
-                    f"{player.game_points} نقطة"
-                )
-        else:
-            lines.append("لا يوجد لاعبين.")
-
-        lines.append("")
-        lines.append("💰 *النقاط الأصلية المكتسبة:*")
-
-        if players:
-            for player in players:
-                if player.original_points > 0:
-                    lines.append(
-                        f"👤 {player.name} — "
-                        f"+{player.original_points} نقطة"
-                    )
-        else:
-            lines.append("لا يوجد.")
-
-        await context.bot.send_message(
-            chat_id=state.chat_id,
-            text="\n".join(lines),
-            parse_mode="Markdown",
+    if manual:
+        lines.append(
+            "🛑 تم إنهاء القيم بواسطة الأدمن."
         )
+        lines.append("")
 
-    else:
-        winner = None
-
-        if winner_id is not None:
-            winner = state.players.get(winner_id)
-
-        if winner is None and players:
-            winner = players[0]
-
-        lines = [
-            "🏆 *انتهى القيم!*",
-            "",
-        ]
+    if winner_id:
+        winner = state.players.get(winner_id)
 
         if winner:
             lines.extend([
-                f"👑 *الفائز: {winner.name}*",
-                "",
+                "🏆 *الفائز*",
+                f"👑 {winner.name}",
+                f"🎯 نقاط القيم: *{winner.game_points}*",
+                ""
             ])
 
+    if players:
         lines.append("📊 *النتائج النهائية:*")
+        lines.append("")
 
-        medals = ["🥇", "🥈", "🥉"]
-
-        for index, player in enumerate(players):
-            medal = medals[index] if index < 3 else f"{index + 1}."
+        for index, player in enumerate(
+            players,
+            start=1
+        ):
             lines.append(
-                f"{medal} {player.name} — "
-                f"{player.game_points} نقطة"
+                f"{index}. {player.name}\n"
+                f"   🎯 نقاط القيم: {player.game_points}\n"
+                f"   💰 النقاط الأصلية: {player.original_points}"
             )
+            lines.append("")
 
-        lines.extend([
-            "",
-            "💰 *النقاط المكتسبة:*",
-        ])
+    await context.bot.send_message(
+        chat_id=state.chat_id,
+        text="\n".join(lines),
+        parse_mode="Markdown"
+    )
 
-        for player in players:
-            if player.original_points > 0:
-                lines.append(
-                    f"👤 {player.name} — "
-                    f"+{player.original_points} نقطة"
-                )
-
-        await context.bot.send_message(
-            chat_id=state.chat_id,
-            text="\n".join(lines),
-            parse_mode="Markdown",
-        )
-
-    # إزالة اللعبة
+    # حذف اللعبة من الألعاب النشطة
     IMAGE_QUIZZES.pop(
         state.chat_id,
-        None,
+        None
     )
 
 
 # =========================================================
-# Callback Query
+# Callback Buttons
 # =========================================================
 
 async def image_quiz_callback(
     update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
+    context: ContextTypes.DEFAULT_TYPE
 ):
     query = update.callback_query
 
     if not query:
         return
 
-    await query.answer()
+    message = query.message
 
-    data = query.data or ""
-
-    if not data.startswith("iq:"):
+    if not message:
+        await query.answer()
         return
 
-    chat = query.message.chat if query.message else None
+    chat = message.chat
 
     if not chat:
+        await query.answer()
         return
 
     state = IMAGE_QUIZZES.get(chat.id)
 
     if not state:
         await query.answer(
-            "القيم غير موجود.",
-            show_alert=True,
+            "❌ لا توجد لعبة نشطة.",
+            show_alert=True
         )
         return
 
     user = query.from_user
 
-    # فتح الإعدادات
+    if not _is_admin(user.id):
+        await query.answer(
+            "❌ هذا الزر للأدمن فقط.",
+            show_alert=True
+        )
+        return
+
+    data = query.data or ""
+
+    # -----------------------------------------------------
+    # فتح إعدادات النقاط
+    # -----------------------------------------------------
+
     if data == "iq:settings":
-        if not _is_admin(user.id):
-            await query.answer(
-                "هذا الخيار للأدمن فقط.",
-                show_alert=True,
-            )
-            return
 
         if state.started:
             await query.answer(
-                "لا يمكن تغيير الإعدادات بعد البداية.",
-                show_alert=True,
+                "❌ لا يمكن تغيير الإعدادات بعد بدء القيم.",
+                show_alert=True
             )
             return
 
-        await query.message.reply_text(
-            (
-                "⚙️ *إعدادات توقع الصورة!*\n\n"
-                "🎯 اختر نقاط الفوز:"
-            ),
-            parse_mode="Markdown",
-            reply_markup=settings_keyboard(),
-        )
+        keyboard = []
+
+        row = []
+
+        for points in range(
+            MIN_TARGET_POINTS,
+            MAX_TARGET_POINTS + 1
+        ):
+            row.append(
+                InlineKeyboardButton(
+                    f"{points} 🎯",
+                    callback_data=f"iq:points:{points}"
+                )
+            )
+
+            if len(row) == 4:
+                keyboard.append(row)
+                row = []
+
+        if row:
+            keyboard.append(row)
+
+        await query.answer()
+
+        try:
+            await query.edit_message_text(
+                (
+                    "⚙️ *إعدادات توقع الصورة*\n\n"
+                    "🎯 اختر عدد النقاط المطلوبة للفوز:"
+                ),
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup(
+                    keyboard
+                )
+            )
+        except Exception:
+            pass
 
         return
 
-    # اختيار نقاط الفوز
+    # -----------------------------------------------------
+    # اختيار النقاط
+    # -----------------------------------------------------
+
     if data.startswith("iq:points:"):
-        if not _is_admin(user.id):
-            await query.answer(
-                "هذا الخيار للأدمن فقط.",
-                show_alert=True,
-            )
-            return
 
         if state.started:
             await query.answer(
-                "القيم بدأ بالفعل.",
-                show_alert=True,
+                "❌ القيم بدأ بالفعل.",
+                show_alert=True
             )
             return
 
@@ -1675,10 +1942,10 @@ async def image_quiz_callback(
             points = int(
                 data.split(":")[-1]
             )
-        except Exception:
+        except ValueError:
             await query.answer(
-                "قيمة غير صحيحة.",
-                show_alert=True,
+                "❌ قيمة غير صحيحة.",
+                show_alert=True
             )
             return
 
@@ -1688,62 +1955,49 @@ async def image_quiz_callback(
             <= MAX_TARGET_POINTS
         ):
             await query.answer(
-                "النقاط يجب أن تكون من 5 إلى 15.",
-                show_alert=True,
+                "❌ عدد النقاط غير مسموح.",
+                show_alert=True
             )
             return
 
         state.target_points = points
 
         await query.answer(
-            f"تم تحديد نقاط الفوز: {points}",
-            show_alert=False,
+            f"تم تحديد الهدف: {points} نقاط."
         )
 
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    "⚙️ تعديل النقاط",
+                    callback_data="iq:settings"
+                )
+            ]
+        ]
+
         try:
-            await query.message.edit_text(
+            await query.edit_message_text(
                 (
-                    "⚙️ *إعدادات توقع الصورة!*\n\n"
-                    f"🎯 نقاط الفوز: *{points}*\n\n"
-                    "تم حفظ الإعدادات."
+                    "🖼️ *توقع الصورة*\n\n"
+                    f"🎯 هدف الفوز: *{points} نقاط*\n\n"
+                    f"👥 اللاعبين الحاليين: "
+                    f"*{len(state.players)}*\n\n"
+                    "اكتب `دخول` للانضمام.\n"
+                    "وبعد اكتمال اللاعبين يكتب الأدمن `.ابدا`."
                 ),
                 parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup(
+                    keyboard
+                )
             )
         except Exception:
             pass
 
-        await update_board(
+        await _update_board(
             context,
-            state,
+            state
         )
 
         return
 
-
-# =========================================================
-# فلتر اللعبة
-# =========================================================
-
-class ImageQuizActiveFilter(filters.MessageFilter):
-    def filter(self, message):
-        try:
-            chat_id = message.chat.id
-
-            state = IMAGE_QUIZZES.get(chat_id)
-
-            if not state:
-                return False
-
-            if not state.started:
-                return False
-
-            if state.finished:
-                return False
-
-            return True
-
-        except Exception:
-            return False
-
-
-image_quiz_active_filter = ImageQuizActiveFilter()
+    await query.answer()
