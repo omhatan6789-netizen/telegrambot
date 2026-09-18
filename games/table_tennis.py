@@ -14,7 +14,7 @@ from telegram import (
     InputMediaPhoto,
 )
 from telegram.ext import ContextTypes
-from telegram.ext.filters import MessageFilter
+from telegram.ext.filters import BaseFilter
 
 from handlers.points import add_points
 
@@ -93,7 +93,7 @@ TABLE_TENNIS_GAMES: dict[int, TableTennisGame] = {}
 # فلتر اللعبة
 # =========================================================
 
-class TableTennisActiveFilter(MessageFilter):
+class TableTennisActiveFilter(BaseFilter):
 
     def __init__(self, patterns=None, name="TableTennisActiveFilter"):
         super().__init__(name=name)
