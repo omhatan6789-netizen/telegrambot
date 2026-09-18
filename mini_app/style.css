@@ -427,7 +427,7 @@ body {
 
 
 /* ==================================================
-   المطور + القروب + القناة
+   المطور + القروب
    صورة كاملة + الاسم بالمنتصف
 ================================================== */
 
@@ -471,16 +471,53 @@ body {
     object-fit: cover;
 
     margin: 0;
-
 }
 
 
 /* ==================================================
-   صورة القروب والقناة
+   صورة القروب
 ================================================== */
 
 .cards > .card:nth-child(4) .card-image,
 .cards > .card:nth-child(5) .card-image {
+
+    width: 100%;
+    height: auto;
+
+    aspect-ratio: 16 / 9;
+
+    flex: none;
+
+    display: block;
+
+    border-radius: 18px;
+
+    object-fit: cover;
+}
+
+
+/* ==================================================
+   صورة القناة فقط
+================================================== */
+
+.cards > .card:nth-child(6) {
+
+    display: flex;
+
+    flex-direction: column;
+
+    align-items: stretch;
+
+    gap: 0;
+
+    padding: 12px;
+
+    min-height: auto;
+
+    text-align: center;
+}
+
+.cards > .card:nth-child(6) .card-image {
 
     width: 100%;
     height: auto;
@@ -517,11 +554,30 @@ body {
 
 
 /* ==================================================
-   محتوى القروب والقناة
+   محتوى القروب
 ================================================== */
 
 .cards > .card:nth-child(4) .card-content,
 .cards > .card:nth-child(5) .card-content {
+
+    width: 100%;
+
+    flex: none;
+
+    text-align: center;
+
+    padding:
+        14px
+        25px
+        5px;
+}
+
+
+/* ==================================================
+   محتوى القناة فقط
+================================================== */
+
+.cards > .card:nth-child(6) .card-content {
 
     width: 100%;
 
@@ -572,7 +628,7 @@ body {
 
 
 /* ==================================================
-   أسماء القروب والقناة
+   اسم القروب
 ================================================== */
 
 .cards > .card:nth-child(4) .card-title,
@@ -589,7 +645,23 @@ body {
 
 
 /* ==================================================
-   إخفاء وصف القروب والقناة
+   اسم القناة فقط
+================================================== */
+
+.cards > .card:nth-child(6) .card-title {
+
+    text-align: center;
+
+    font-size: 16px;
+
+    line-height: 1.5;
+
+    font-weight: 800;
+}
+
+
+/* ==================================================
+   إخفاء وصف القروب
 ================================================== */
 
 .cards > .card:nth-child(4) .card-subtitle,
@@ -600,12 +672,39 @@ body {
 
 
 /* ==================================================
-   أسهم المطور + القروب + القناة
+   إخفاء وصف القناة فقط
+================================================== */
+
+.cards > .card:nth-child(6) .card-subtitle {
+
+    display: none;
+}
+
+
+/* ==================================================
+   أسهم المطور + القروب
 ================================================== */
 
 .cards > .developer-card .card-arrow,
 .cards > .card:nth-child(4) .card-arrow,
 .cards > .card:nth-child(5) .card-arrow {
+
+    position: absolute;
+
+    right: 15px;
+    bottom: 15px;
+
+    margin: 0;
+
+    font-size: 20px;
+}
+
+
+/* ==================================================
+   سهم القناة فقط
+================================================== */
+
+.cards > .card:nth-child(6) .card-arrow {
 
     position: absolute;
 
@@ -802,6 +901,14 @@ footer {
     .cards > .developer-card .developer-avatar,
     .cards > .card:nth-child(4) .card-image,
     .cards > .card:nth-child(5) .card-image {
+        width: 100%;
+        height: auto;
+
+        aspect-ratio: 16 / 9;
+    }
+
+    /* صورة القناة فقط */
+    .cards > .card:nth-child(6) .card-image {
         width: 100%;
         height: auto;
 
