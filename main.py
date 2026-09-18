@@ -340,8 +340,7 @@ from handlers.whisper import (
 
 import os
 import threading
-from http.server import SimpleHTTPRequestHandler, HTTPServer
-from functools import partial
+import asyncio
 # =========================================================
 # 🌐 Mini App Web Server
 # =========================================================
@@ -377,6 +376,7 @@ def start_web_server():
         os.path.dirname(
             os.path.abspath(__file__)
         ),
+        "mini_app"
         "mini_app"
     )
     print(
