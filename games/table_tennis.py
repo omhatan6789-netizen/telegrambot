@@ -13,7 +13,8 @@ from telegram import (
     InputFile,
     InputMediaPhoto,
 )
-from telegram.ext import ContextTypes, BaseFilter
+from telegram.ext import ContextTypes
+from telegram.ext.filters import BaseFilter
 
 from handlers.points import add_points
 
