@@ -1420,7 +1420,38 @@ def main():
     # ==================================================
     # النقاط
     # ==================================================
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^اضف \d+$"),
+            add_points_command
+        ),
+        group=-1
+    )
 
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^بيع نقاطي \d+$"),
+            sell_points
+        ),
+        group=-1
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^نقاطي$"),
+            my_points
+        )
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^توب$"),
+            top_points
+        )
+    )
     
 
 
