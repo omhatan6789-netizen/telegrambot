@@ -5,6 +5,12 @@ from telegram.ext import ContextTypes
 
 from database import connect
 
+from handlers.cache import (
+    get_cached_user,
+    get_user_data_sync,
+    set_cached_rank,
+)
+
 
 # ==================================================
 # الصلاحيات
@@ -41,8 +47,19 @@ DEV_SECONDARY = "secondary"
 # ==================================================
 
 _developer_cache = {}
+
 _rank_cache = {}
+
 _command_permission_cache = {}
+
+# كاش متطلبات الأوامر
+#
+# بدل ما نسوي:
+# SELECT rank FROM command_locks
+# لكل مستخدم + أمر
+#
+# نحمل جدول الأوامر مرة واحدة.
+_command_locks_cache = None
 
 
 # ==================================================
@@ -68,7 +85,11 @@ def clear_user_role_cache(user_id):
 
 def clear_command_permission_cache():
 
+    global _command_locks_cache
+
     _command_permission_cache.clear()
+
+    _command_locks_cache = None
 
 
 # ==================================================
@@ -89,6 +110,54 @@ def normalize_rank(rank):
 
 
 # ==================================================
+# تحميل أقفال الأوامر مرة واحدة
+# ==================================================
+
+def _load_command_locks():
+
+    global _command_locks_cache
+
+    if _command_locks_cache is not None:
+        return _command_locks_cache
+
+    conn = connect()
+
+    cur = None
+
+    try:
+
+        cur = conn.cursor()
+
+        cur.execute(
+            """
+            SELECT command, rank
+            FROM command_locks
+            """
+        )
+
+        rows = cur.fetchall()
+
+        _command_locks_cache = {
+            row[0]: normalize_rank(row[1])
+            for row in rows
+            if row[0]
+        }
+
+        return _command_locks_cache
+
+    finally:
+
+        if cur is not None:
+
+            try:
+                cur.close()
+            except Exception:
+                pass
+
+        conn.close()
+
+
+# ==================================================
 # هل المستخدم Dev؟
 # ==================================================
 
@@ -105,6 +174,8 @@ def is_developer(user_id):
 
     conn = connect()
 
+    cur = None
+
     try:
 
         cur = conn.cursor()
@@ -120,12 +191,14 @@ def is_developer(user_id):
 
         result = cur.fetchone()
 
-        try:
-            cur.close()
-        except Exception:
-            pass
-
     finally:
+
+        if cur is not None:
+
+            try:
+                cur.close()
+            except Exception:
+                pass
 
         conn.close()
 
@@ -174,8 +247,18 @@ def is_secondary_developer(user_id):
 
 def get_rank(user_id):
 
+    # ==================================================
+    # المطور الأساسي
+    # ==================================================
+
     if user_id == OWNER_ID:
         return "Dev"
+
+    # ==================================================
+    # كاش الرتبة القديم
+    #
+    # نبقيه للتوافق مع الأكواد القديمة.
+    # ==================================================
 
     if user_id in _rank_cache:
 
@@ -183,36 +266,63 @@ def get_rank(user_id):
             user_id
         ]
 
+    # ==================================================
+    # الكاش المركزي
+    # ==================================================
+
+    cached = get_cached_user(
+        user_id
+    )
+
+    if cached is not None:
+
+        rank = normalize_rank(
+            cached.get(
+                "rank",
+                "عضو"
+            )
+        )
+
+        _rank_cache[user_id] = rank
+
+        return rank
+
+    # ==================================================
+    # تحميل المستخدم من الكاش المركزي / DB
+    #
+    # get_user_data_sync:
+    # - إذا موجود بالكاش = بدون DB
+    # - إذا غير موجود = استعلام واحد
+    # ==================================================
+
+    data = get_user_data_sync(
+        user_id
+    )
+
+    if data is not None:
+
+        rank = normalize_rank(
+            data.get(
+                "rank",
+                "عضو"
+            )
+        )
+
+        _rank_cache[user_id] = rank
+
+        return rank
+
+    # ==================================================
+    # fallback إلى جدول ranks
+    # ==================================================
+
     conn = connect()
+
+    cur = None
 
     try:
 
         cur = conn.cursor()
-
-        cur.execute(
-            """
-            SELECT rank
-            FROM users
-            WHERE user_id=?
-            """,
-            (user_id,)
-        )
-
-        data = cur.fetchone()
-
-        if data and data[0]:
-
-            rank = normalize_rank(
-                data[0]
-            )
-
-            _rank_cache[user_id] = rank
-
-            return rank
-
-        # ==================================================
-        # fallback إلى ranks
-        # ==================================================
 
         cur.execute(
             """
@@ -231,6 +341,7 @@ def get_rank(user_id):
                 rank_data[0]
             )
 
+            # إنشاء المستخدم إذا لم يكن موجودًا
             cur.execute(
                 """
                 INSERT INTO users
@@ -255,6 +366,12 @@ def get_rank(user_id):
 
             conn.commit()
 
+            # تحديث الكاش المركزي
+            set_cached_rank(
+                user_id,
+                rank
+            )
+
             _rank_cache[user_id] = rank
 
             return rank
@@ -265,10 +382,12 @@ def get_rank(user_id):
 
     finally:
 
-        try:
-            cur.close()
-        except Exception:
-            pass
+        if cur is not None:
+
+            try:
+                cur.close()
+            except Exception:
+                pass
 
         conn.close()
 
@@ -285,7 +404,9 @@ def get_rank_level(user_id):
     if is_secondary_developer(user_id):
         return 6
 
-    rank = get_rank(user_id)
+    rank = get_rank(
+        user_id
+    )
 
     return RANK_LEVELS.get(
         rank,
@@ -307,43 +428,31 @@ def check_command_permission(
         command
     )
 
+    # ==================================================
+    # نتيجة الصلاحية نفسها موجودة
+    # ==================================================
+
     if cache_key in _command_permission_cache:
 
         return _command_permission_cache[
             cache_key
         ]
 
-    conn = connect()
+    # ==================================================
+    # تحميل متطلبات الأوامر مرة واحدة
+    # ==================================================
 
-    try:
+    command_locks = _load_command_locks()
 
-        cur = conn.cursor()
-
-        cur.execute(
-            """
-            SELECT rank
-            FROM command_locks
-            WHERE command=?
-            """,
-            (command,)
-        )
-
-        data = cur.fetchone()
-
-        try:
-            cur.close()
-        except Exception:
-            pass
-
-    finally:
-
-        conn.close()
+    required_rank = command_locks.get(
+        command
+    )
 
     # ==================================================
     # الأمر غير مقفول
     # ==================================================
 
-    if not data:
+    if not required_rank:
 
         result = (
             True,
@@ -356,9 +465,9 @@ def check_command_permission(
 
         return result
 
-    required_rank = normalize_rank(
-        data[0]
-    )
+    # ==================================================
+    # مستوى المستخدم
+    # ==================================================
 
     user_level = get_rank_level(
         user_id
@@ -368,6 +477,10 @@ def check_command_permission(
         required_rank,
         0
     )
+
+    # ==================================================
+    # المطور يتجاوز القفل
+    # ==================================================
 
     if is_developer(user_id):
 
@@ -382,6 +495,10 @@ def check_command_permission(
 
         return result
 
+    # ==================================================
+    # لديه المستوى المطلوب
+    # ==================================================
+
     if user_level >= required_level:
 
         result = (
@@ -394,6 +511,10 @@ def check_command_permission(
         ] = result
 
         return result
+
+    # ==================================================
+    # ليس لديه الصلاحية
+    # ==================================================
 
     result = (
         False,
@@ -421,7 +542,10 @@ async def get_target_user(
 
     message = update.message
 
+    # ==================================================
     # بالرد
+    # ==================================================
+
     if message.reply_to_message:
 
         replied_user = (
@@ -442,7 +566,10 @@ async def get_target_user(
 
     target = parts[-1].strip()
 
+    # ==================================================
     # آيدي
+    # ==================================================
+
     if target.isdigit():
 
         try:
@@ -455,7 +582,10 @@ async def get_target_user(
 
             return None
 
+    # ==================================================
     # يوزر
+    # ==================================================
+
     if target.startswith("@"):
 
         try:
@@ -601,6 +731,10 @@ def can_change_rank(
         target_id
     )
 
+    # ==================================================
+    # لا يمكن تعديل المطور الأساسي
+    # ==================================================
+
     if target_id == OWNER_ID:
 
         return (
@@ -608,8 +742,16 @@ def can_change_rank(
             "❌ لا يمكن تعديل المطور الأساسي."
         )
 
+    # ==================================================
+    # المطور الأساسي
+    # ==================================================
+
     if actor_dev == DEV_PRIMARY:
         return True, None
+
+    # ==================================================
+    # المطور الثانوي
+    # ==================================================
 
     if actor_dev == DEV_SECONDARY:
 
@@ -650,6 +792,10 @@ def can_change_rank(
 
         return True, None
 
+    # ==================================================
+    # المستخدم العادي
+    # ==================================================
+
     if target_level >= actor_level:
 
         return (
@@ -688,6 +834,8 @@ def update_user_rank(
     )
 
     conn = connect()
+
+    cur = None
 
     try:
 
@@ -787,30 +935,54 @@ def update_user_rank(
 
     except Exception:
 
-        conn.rollback()
+        try:
+            conn.rollback()
+        except Exception:
+            pass
 
         raise
 
     finally:
 
-        try:
-            cur.close()
-        except Exception:
-            pass
+        if cur is not None:
+
+            try:
+                cur.close()
+            except Exception:
+                pass
 
         conn.close()
 
     # ==================================================
-    # تحديث الكاش
+    # تحديث الكاش فورًا
     # ==================================================
 
-    clear_user_role_cache(
-        user_id
+    set_cached_rank(
+        user_id,
+        rank
     )
+
+    _rank_cache[user_id] = rank
+
+    # ==================================================
+    # المطور تغير
+    # ==================================================
+
+    _developer_cache.pop(
+        user_id,
+        None
+    )
+
+    # ==================================================
+    # الصلاحيات قد تتغير
+    # ==================================================
 
     clear_command_permission_cache()
 
+    # ==================================================
     # إذا كانت permissions موجودة
+    # ==================================================
+
     try:
 
         from permissions import (
@@ -932,6 +1104,8 @@ async def roles_command(
 
         conn = connect()
 
+        cur = None
+
         try:
 
             cur = conn.cursor()
@@ -945,12 +1119,14 @@ async def roles_command(
 
             user_rows = cur.fetchall()
 
-            try:
-                cur.close()
-            except Exception:
-                pass
-
         finally:
+
+            if cur is not None:
+
+                try:
+                    cur.close()
+                except Exception:
+                    pass
 
             conn.close()
 
