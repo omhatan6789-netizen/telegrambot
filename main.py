@@ -429,216 +429,79 @@ class MiniAppHandler(SimpleHTTPRequestHandler):
 
 def start_web_server():
 
-    port = int(
-        os.environ.get(
-            "PORT",
-            10000
-        )
-    )
-
-    # ==========================================
-    # مكان main.py
-    # ==========================================
+    port = int(os.environ.get("PORT", 10000))
 
     base_path = os.path.dirname(
         os.path.abspath(__file__)
     )
 
-    # ==========================================
-    # البحث عن Mini App
-    # ==========================================
+    mini_app_path = os.path.join(
+        base_path,
+        "mini_app",
+        "mini_app"
+    )
 
-    possible_paths = [
+    print("================================")
+    print("🌐 Mini App Server")
+    print("================================")
+    print("📁 Mini App path:", mini_app_path)
 
-        # الحالة الأولى:
-        # main.py
-        # mini_app/
-        #   index.html
-
-        os.path.join(
-            base_path,
-            "mini_app"
-        ),
-
-        # الحالة الثانية:
-        # main.py
-        # mini_app/
-        #   mini_app/
-        #       index.html
-
-        os.path.join(
-            base_path,
-            "mini_app",
-            "mini_app"
-        ),
-    ]
-
-    mini_app_path = None
-
-    for path in possible_paths:
-
-        index_file = os.path.join(
-            path,
-            "index.html"
-        )
-
-        if os.path.isfile(index_file):
-
-            mini_app_path = path
-
-            break
-
-    # ==========================================
-    # إذا لم يجد Mini App
-    # ==========================================
-
-    if mini_app_path is None:
-
-        print(
-            "❌ لم يتم العثور على index.html"
-        )
-
-        print(
-            f"📁 Base path: {base_path}"
-        )
-
-        print(
-            "📂 الملفات الموجودة:"
-        )
-
-        for root, dirs, files in os.walk(base_path):
-
-            print(
-                f"📁 {root}"
+    print(
+        "📄 index.html:",
+        os.path.isfile(
+            os.path.join(
+                mini_app_path,
+                "index.html"
             )
+        )
+    )
 
-            if files:
+    print(
+        "🎨 style.css:",
+        os.path.isfile(
+            os.path.join(
+                mini_app_path,
+                "style.css"
+            )
+        )
+    )
 
-                print(
-                    f"   📄 {files}"
-                )
-
-        return
-
-    # ==========================================
-    # مسارات الملفات
-    # ==========================================
+    print(
+        "⚙️ app.js:",
+        os.path.isfile(
+            os.path.join(
+                mini_app_path,
+                "app.js"
+            )
+        )
+    )
 
     images_path = os.path.join(
         mini_app_path,
         "images"
     )
 
-    bot_image = os.path.join(
-        images_path,
-        "bot.JPG"
+    print(
+        "🖼️ images folder:",
+        os.path.isdir(images_path)
     )
 
-    background_image = os.path.join(
-        images_path,
-        "background.JPG"
-    )
-
-    group_image = os.path.join(
-        images_path,
-        "group.JPG"
-    )
-
-    channel_image = os.path.join(
-        images_path,
-        "channel.JPG"
-    )
-
-    developer_image = os.path.join(
-        images_path,
+    for filename in [
+        "bot.JPG",
+        "background.JPG",
+        "group.JPG",
+        "channel.JPG",
         "developer.JPG"
-    )
-
-    # ==========================================
-    # معلومات Mini App
-    # ==========================================
-
-    print()
-    print("==========================================")
-    print("🌐 Mini App Server")
-    print("==========================================")
-
-    print(
-        f"📁 Mini App path: {mini_app_path}"
-    )
-
-    print(
-        f"📄 index.html: "
-        f"{os.path.isfile(os.path.join(mini_app_path, 'index.html'))}"
-    )
-
-    print(
-        f"🎨 style.css: "
-        f"{os.path.isfile(os.path.join(mini_app_path, 'style.css'))}"
-    )
-
-    print(
-        f"⚙️ app.js: "
-        f"{os.path.isfile(os.path.join(mini_app_path, 'app.js'))}"
-    )
-
-    print(
-        f"🖼️ images folder: "
-        f"{os.path.isdir(images_path)}"
-    )
-
-    print(
-        f"🤖 bot.JPG: "
-        f"{os.path.isfile(bot_image)}"
-    )
-
-    print(
-        f"🌄 background.JPG: "
-        f"{os.path.isfile(background_image)}"
-    )
-
-    print(
-        f"👥 group.JPG: "
-        f"{os.path.isfile(group_image)}"
-    )
-
-    print(
-        f"📢 channel.JPG: "
-        f"{os.path.isfile(channel_image)}"
-    )
-
-    print(
-        f"👨‍💻 developer.JPG: "
-        f"{os.path.isfile(developer_image)}"
-    )
-
-    # ==========================================
-    # عرض ملفات Mini App
-    # ==========================================
-
-    print()
-    print("📂 Mini App files:")
-
-    for root, dirs, files in os.walk(
-        mini_app_path
-    ):
-
+    ]:
         print(
-            f"📁 {root}"
-        )
-
-        for file in files:
-
-            print(
-                f"   📄 {file}"
+            f"🖼️ {filename}:",
+            os.path.isfile(
+                os.path.join(
+                    images_path,
+                    filename
+                )
             )
-
-    print()
-    print("==========================================")
-
-    # ==========================================
-    # تشغيل السيرفر
-    # ==========================================
+        )
 
     handler = partial(
         MiniAppHandler,
@@ -646,18 +509,13 @@ def start_web_server():
     )
 
     server = HTTPServer(
-        (
-            "0.0.0.0",
-            port
-        ),
+        ("0.0.0.0", port),
         handler
     )
 
     print(
         f"🚀 Mini App running on port {port}"
     )
-
-    print("==========================================")
 
     server.serve_forever()
 # ==================================================
