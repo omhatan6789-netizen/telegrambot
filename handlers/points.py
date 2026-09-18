@@ -384,6 +384,109 @@ async def add_points_command(
         )
 
 
+
+async def remove_points_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not update.message:
+        return
+
+    user = update.effective_user
+
+    if not user:
+        return
+
+    if user.id != OWNER_ID:
+
+        await update.message.reply_text(
+            "❌ هذا الأمر مخصص للمالك فقط."
+        )
+
+        return
+
+    text = update.message.text or ""
+
+    parts = text.strip().split()
+
+    if len(parts) != 2:
+
+        await update.message.reply_text(
+            "❌ الاستخدام الصحيح:\n\n"
+            "خصم 500\n\n"
+            "ويجب استخدام الأمر بالرد على الشخص."
+        )
+
+        return
+
+    try:
+
+        amount = int(parts[1])
+
+    except ValueError:
+
+        await update.message.reply_text(
+            "❌ عدد النقاط غير صحيح."
+        )
+
+        return
+
+    if amount <= 0:
+
+        await update.message.reply_text(
+            "❌ يجب أن يكون عدد النقاط أكبر من صفر."
+        )
+
+        return
+
+    if not update.message.reply_to_message:
+
+        await update.message.reply_text(
+            "❌ يجب استخدام الأمر بالرد على الشخص."
+        )
+
+        return
+
+    target_user = (
+        update.message.reply_to_message.from_user
+    )
+
+    if not target_user:
+
+        return
+
+    target_id = target_user.id
+
+    current_points = get_points(
+        target_id
+    )
+
+    if current_points < amount:
+
+        await update.message.reply_text(
+            "❌ لا يمكن الخصم.\n\n"
+            f"🏆 نقاطه الحالية: {current_points}\n"
+            f"💰 المطلوب خصمه: {amount}"
+        )
+
+        return
+
+    remaining_points = add_points(
+        target_id,
+        -amount
+    )
+
+    target_name = (
+        target_user.first_name
+        or "المستخدم"
+    )
+
+    await update.message.reply_text(
+        f"✅ تم خصم {amount} نقطة من {target_name}.\n\n"
+        f"🏆 نقاطه المتبقية: {remaining_points}"
+    )
+
 def _add_messages_sync(user_id, amount):
 
     conn = connect()
