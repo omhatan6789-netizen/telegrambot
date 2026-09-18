@@ -341,6 +341,11 @@ from handlers.whisper import (
 import os
 import threading
 import asyncio
+
+from http.server import SimpleHTTPRequestHandler, HTTPServer
+from functools import partial
+
+message_flush_task = None
 # =========================================================
 # 🌐 Mini App Web Server
 # =========================================================
