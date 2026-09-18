@@ -56,7 +56,6 @@ body {
 
 /* ==================================================
    طبقة الخلفية
-   بدون تغميق أو Blur
 ================================================== */
 
 .background-overlay {
@@ -304,7 +303,7 @@ body {
 
 
 /* ==================================================
-   بطاقة البوت والقروب والقناة
+   بطاقة البوت فقط
 ================================================== */
 
 .card {
@@ -329,7 +328,7 @@ body {
 
 
 /* ==================================================
-   صور البطاقات
+   صور البطاقات العادية
 ================================================== */
 
 .card-image {
@@ -428,12 +427,14 @@ body {
 
 
 /* ==================================================
-   بطاقة القروب والقناة
+   المطور + القروب + القناة
    صورة كاملة + الاسم بالمنتصف
 ================================================== */
 
-.cards > .card:nth-child(2),
-.cards > .card:nth-child(3) {
+.cards > .developer-card,
+.cards > .card:nth-child(4),
+.cards > .card:nth-child(5) {
+
     display: flex;
 
     flex-direction: column;
@@ -451,11 +452,36 @@ body {
 
 
 /* ==================================================
+   صورة المطور
+================================================== */
+
+.cards > .developer-card .developer-avatar {
+
+    width: 100%;
+    height: auto;
+
+    aspect-ratio: 16 / 9;
+
+    flex: none;
+
+    display: block;
+
+    border-radius: 18px;
+
+    object-fit: cover;
+
+    margin: 0;
+
+}
+
+
+/* ==================================================
    صورة القروب والقناة
 ================================================== */
 
-.cards > .card:nth-child(2) .card-image,
-.cards > .card:nth-child(3) .card-image {
+.cards > .card:nth-child(4) .card-image,
+.cards > .card:nth-child(5) .card-image {
+
     width: 100%;
     height: auto;
 
@@ -472,11 +498,11 @@ body {
 
 
 /* ==================================================
-   محتوى القروب والقناة
+   محتوى المطور
 ================================================== */
 
-.cards > .card:nth-child(2) .card-content,
-.cards > .card:nth-child(3) .card-content {
+.cards > .developer-card .developer-info {
+
     width: 100%;
 
     flex: none;
@@ -491,11 +517,31 @@ body {
 
 
 /* ==================================================
-   اسم القروب والقناة
+   محتوى القروب والقناة
 ================================================== */
 
-.cards > .card:nth-child(2) .card-title,
-.cards > .card:nth-child(3) .card-title {
+.cards > .card:nth-child(4) .card-content,
+.cards > .card:nth-child(5) .card-content {
+
+    width: 100%;
+
+    flex: none;
+
+    text-align: center;
+
+    padding:
+        14px
+        25px
+        5px;
+}
+
+
+/* ==================================================
+   اسم المطور
+================================================== */
+
+.cards > .developer-card .developer-title {
+
     text-align: center;
 
     font-size: 16px;
@@ -507,21 +553,60 @@ body {
 
 
 /* ==================================================
-   إخفاء الوصف للقروب والقناة
+   يوزر المطور
 ================================================== */
 
-.cards > .card:nth-child(2) .card-subtitle,
-.cards > .card:nth-child(3) .card-subtitle {
+.cards > .developer-card .developer-username {
+
+    margin-top: 4px;
+
+    text-align: center;
+
+    direction: ltr;
+
+    color:
+        rgba(255,255,255,0.58);
+
+    font-size: 13px;
+}
+
+
+/* ==================================================
+   أسماء القروب والقناة
+================================================== */
+
+.cards > .card:nth-child(4) .card-title,
+.cards > .card:nth-child(5) .card-title {
+
+    text-align: center;
+
+    font-size: 16px;
+
+    line-height: 1.5;
+
+    font-weight: 800;
+}
+
+
+/* ==================================================
+   إخفاء وصف القروب والقناة
+================================================== */
+
+.cards > .card:nth-child(4) .card-subtitle,
+.cards > .card:nth-child(5) .card-subtitle {
+
     display: none;
 }
 
 
 /* ==================================================
-   سهم القروب والقناة
+   أسهم المطور + القروب + القناة
 ================================================== */
 
-.cards > .card:nth-child(2) .card-arrow,
-.cards > .card:nth-child(3) .card-arrow {
+.cards > .developer-card .card-arrow,
+.cards > .card:nth-child(4) .card-arrow,
+.cards > .card:nth-child(5) .card-arrow {
+
     position: absolute;
 
     right: 15px;
@@ -638,90 +723,12 @@ body {
 ================================================== */
 
 .developer-card {
-    min-height: 80px;
-
-    display: flex;
-
-    align-items: center;
-
-    gap: 13px;
-
-    padding:
-        11px
-        14px;
 
     background:
         rgba(255,255,255,0.085);
 
     backdrop-filter: blur(22px);
     -webkit-backdrop-filter: blur(22px);
-}
-
-
-/* ==================================================
-   صورة المطور
-================================================== */
-
-.developer-avatar {
-    position: relative;
-
-    z-index: 1;
-
-    width: 57px;
-    height: 57px;
-
-    flex: 0 0 57px;
-
-    display: block;
-
-    border-radius: 50%;
-
-    object-fit: cover;
-
-    background:
-        rgba(255,255,255,0.08);
-
-    border:
-        1px solid rgba(255,255,255,0.12);
-
-    box-shadow:
-        0 7px 20px rgba(0,0,0,0.30);
-}
-
-
-/* ==================================================
-   معلومات المطور
-================================================== */
-
-.developer-info {
-    position: relative;
-
-    z-index: 1;
-
-    flex: 1;
-
-    min-width: 0;
-}
-
-.developer-title {
-    font-size: 16px;
-
-    line-height: 1.4;
-
-    font-weight: 800;
-}
-
-.developer-username {
-    margin-top: 3px;
-
-    direction: ltr;
-
-    text-align: right;
-
-    color:
-        rgba(255,255,255,0.58);
-
-    font-size: 13px;
 }
 
 
@@ -789,6 +796,16 @@ footer {
         height: 53px;
 
         flex-basis: 53px;
+    }
+
+    /* صور البطاقات الثلاث */
+    .cards > .developer-card .developer-avatar,
+    .cards > .card:nth-child(4) .card-image,
+    .cards > .card:nth-child(5) .card-image {
+        width: 100%;
+        height: auto;
+
+        aspect-ratio: 16 / 9;
     }
 }
 
