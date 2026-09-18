@@ -123,6 +123,10 @@ from games.anime_game import (
 from handlers.start import start
 
 
+from handlers.commands_menu import (
+    commands_menu_start,
+    commands_menu_callback
+)
 # ==================================================
 # لوحة الإدارة
 # ==================================================
@@ -741,7 +745,20 @@ def main():
             start
         )
     )
+    
+    # ==================================================
+    # 📋 Mini App - أوامر البوت
+    # /start commands
+    # ==================================================
 
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.PRIVATE
+            & filters.Regex(r"^/start(?:@\w+)?\s+commands$"),
+            commands_menu_start
+        ),
+        group=-5
+    )
 
     # ==================================================
     # المستخدم
@@ -2308,6 +2325,18 @@ def main():
             games_menu_callback,
             pattern=r"^game_menu:"
         )
+    )
+
+    # ==================================================
+    # 📋 أزرار قائمة الأوامر
+    # ==================================================
+
+    app.add_handler(
+        CallbackQueryHandler(
+            commands_menu_callback,
+            pattern=r"^cmdmenu:"
+        ),
+        group=-4
     )
     # --------------------------------------------------
     # لوحة الأدمن
