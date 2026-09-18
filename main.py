@@ -351,7 +351,9 @@ message_flush_task = None
 # =========================================================
 class MiniAppHandler(SimpleHTTPRequestHandler):
     def do_GET(self):
+        # ==============================
         # فحص Render
+        # ==============================
         if self.path == "/health":
             self.send_response(200)
             self.send_header(
@@ -363,7 +365,9 @@ class MiniAppHandler(SimpleHTTPRequestHandler):
                 b"Bot is running"
             )
             return
+        # ==============================
         # الصفحة الرئيسية
+        # ==============================
         if self.path == "/":
             self.path = "/index.html"
         return super().do_GET()
@@ -376,12 +380,12 @@ def start_web_server():
             10000
         )
     )
-    # مسار mini_app الحقيقي
+    base_path = os.path.dirname(
+        os.path.abspath(__file__)
+    )
     mini_app_path = os.path.join(
-        os.path.dirname(
-            os.path.abspath(__file__)
-        ),
-        "mini_app"
+        base_path,
+        "mini_app",
         "mini_app"
     )
     print(
@@ -392,15 +396,15 @@ def start_web_server():
     )
     print(
         f"📄 index.html exists: "
-        f"{os.path.exists(os.path.join(mini_app_path, 'index.html'))}"
+        f"{os.path.isfile(os.path.join(mini_app_path, 'index.html'))}"
     )
     print(
         f"🖼️ images folder exists: "
-        f"{os.path.exists(os.path.join(mini_app_path, 'images'))}"
+        f"{os.path.isdir(os.path.join(mini_app_path, 'images'))}"
     )
     print(
         f"🤖 bot.JPG exists: "
-        f"{os.path.exists(os.path.join(mini_app_path, 'images', 'bot.JPG'))}"
+        f"{os.path.isfile(os.path.join(mini_app_path, 'images', 'bot.JPG'))}"
     )
     handler = partial(
         MiniAppHandler,
