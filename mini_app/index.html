@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    >
+
+    <meta name="theme-color" content="#111318">
+
+    <title>بوت نواف</title>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <!-- الخلفية -->
+    <div class="background"></div>
+    <div class="background-overlay"></div>
+
+
+    <main class="container">
+
+        <!-- ============================= -->
+        <!-- الهيدر -->
+        <!-- ============================= -->
+
+        <section class="header">
+
+            <div class="bot-avatar-wrapper">
+                <img
+                    src="images/bot.jpg"
+                    class="bot-avatar"
+                    alt="بوت نواف"
+                >
+            </div>
+
+            <h1>بوت نواف 🎖️</h1>
+
+            <div class="username">
+                @lnll0bot
+            </div>
+
+            <p class="description">
+                حيّاك الله في بوت نواف 🎖️
+                <br>
+                بوت عربي متكامل للمجموعات والقنوات،
+                يوفر لك الحماية والإدارة والردود والألعاب
+                والنقاط والرتب وغيرها الكثير.
+            </p>
+
+        </section>
+
+
+        <!-- ============================= -->
+        <!-- البطاقات -->
+        <!-- ============================= -->
+
+        <section class="cards">
+
+
+            <!-- ============================= -->
+            <!-- بوت نواف -->
+            <!-- ============================= -->
+
+            <button
+                class="card bot-card"
+                onclick="openBot()"
+            >
+
+                <img
+                    src="images/bot.jpg"
+                    class="card-image"
+                    alt="بوت نواف"
+                >
+
+                <div class="card-content">
+
+                    <div class="card-title">
+                        بوت نواف 🎖️
+                    </div>
+
+                    <div class="card-subtitle">
+                        @lnll0bot
+                    </div>
+
+                </div>
+
+                <div class="card-arrow">
+                    ←
+                </div>
+
+            </button>
+
+
+            <!-- ============================= -->
+            <!-- القروب -->
+            <!-- ============================= -->
+
+            <button
+                class="card"
+                onclick="addToGroup()"
+            >
+
+                <img
+                    src="images/group.jpg"
+                    class="card-image"
+                    alt="إضافة للقروب"
+                >
+
+                <div class="card-content">
+
+                    <div class="card-title">
+                        ➕ حط البوت بـ قروبك
+                    </div>
+
+                    <div class="card-subtitle">
+                        أضف بوت نواف إلى مجموعتك
+                    </div>
+
+                </div>
+
+                <div class="card-arrow">
+                    ←
+                </div>
+
+            </button>
+
+
+            <!-- ============================= -->
+            <!-- القناة -->
+            <!-- ============================= -->
+
+            <button
+                class="card"
+                onclick="addToChannel()"
+            >
+
+                <img
+                    src="images/channel.jpg"
+                    class="card-image"
+                    alt="إضافة للقناة"
+                >
+
+                <div class="card-content">
+
+                    <div class="card-title">
+                        📢 حط البوت بـ قناتك
+                    </div>
+
+                    <div class="card-subtitle">
+                        أضف بوت نواف إلى قناتك
+                    </div>
+
+                </div>
+
+                <div class="card-arrow">
+                    ←
+                </div>
+
+            </button>
+
+
+            <!-- ============================= -->
+            <!-- الأوامر -->
+            <!-- ============================= -->
+
+            <button
+                class="commands-card"
+                onclick="openCommands()"
+            >
+
+                <div class="commands-icon">
+                    📋
+                </div>
+
+                <div class="commands-text">
+
+                    <div class="commands-title">
+                        اوامر البوت❗️
+                    </div>
+
+                    <div class="commands-subtitle">
+                        تعرف على جميع أوامر البوت
+                    </div>
+
+                </div>
+
+                <div class="card-arrow">
+                    ←
+                </div>
+
+            </button>
+
+
+            <!-- ============================= -->
+            <!-- المطور -->
+            <!-- ============================= -->
+
+            <button
+                class="developer-card"
+                onclick="contactDeveloper()"
+            >
+
+                <img
+                    src="images/developer.jpg"
+                    class="developer-avatar"
+                    alt="المطور"
+                >
+
+                <div class="developer-info">
+
+                    <div class="developer-title">
+                        للتواصل مع المطور!
+                    </div>
+
+                    <div class="developer-username">
+                        @llalakiah
+                    </div>
+
+                </div>
+
+                <div class="card-arrow">
+                    ←
+                </div>
+
+            </button>
+
+
+        </section>
+
+
+        <footer>
+            بوت نواف 🎖️
+        </footer>
+
+    </main>
+
+
+    <!-- Telegram Mini App -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+    <script src="app.js"></script>
+
+</body>
+</html>
