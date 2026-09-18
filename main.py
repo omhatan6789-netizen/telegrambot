@@ -339,11 +339,12 @@ from handlers.whisper import (
 )
 
 import os
-import threading
 import asyncio
+import threading
 
 from http.server import SimpleHTTPRequestHandler, HTTPServer
 from functools import partial
+from urllib.parse import unquote
 
 # =========================================================
 # 🌐 Mini App Web Server
@@ -352,169 +353,298 @@ from functools import partial
 # 🌐 سيرفر Mini App
 # ==================================================
 class MiniAppHandler(SimpleHTTPRequestHandler):
+
     def do_GET(self):
+
         # ==========================================
-        # Health Check لـ Render
+        # Health Check
         # ==========================================
+
         if self.path == "/health":
+
             self.send_response(200)
+
             self.send_header(
                 "Content-Type",
                 "text/plain; charset=utf-8"
             )
+
             self.end_headers()
+
             self.wfile.write(
                 b"Bot is running"
             )
+
             return
+
         # ==========================================
         # الصفحة الرئيسية
         # ==========================================
+
         if self.path == "/":
+
             self.path = "/index.html"
+
         return super().do_GET()
+
+    # ==========================================
+    # حل مسارات الصور والملفات
+    # ==========================================
+
+    def translate_path(self, path):
+
+        # إزالة Query Parameters
+        path = path.split("?", 1)[0]
+
+        # فك ترميز الرابط
+        path = unquote(path)
+
+        # إزالة /
+        path = path.lstrip("/")
+
+        # منع الخروج من مجلد Mini App
+        path = os.path.normpath(path)
+
+        if path.startswith(".."):
+            path = ""
+
+        full_path = os.path.join(
+            self.directory,
+            path
+        )
+
+        return full_path
+
+    # ==========================================
+    # إخفاء Logs العادية
+    # ==========================================
+
     def log_message(self, format, *args):
         return
+
+
+# ==================================================
+# 🌐 تشغيل سيرفر Mini App
+# ==================================================
+
 def start_web_server():
+
     port = int(
         os.environ.get(
             "PORT",
             10000
         )
     )
+
     # ==========================================
-    # تحديد مكان المشروع
+    # مكان main.py
     # ==========================================
+
     base_path = os.path.dirname(
         os.path.abspath(__file__)
     )
+
     # ==========================================
-    # البحث عن mini_app تلقائيًا
+    # البحث عن Mini App
     # ==========================================
+
     possible_paths = [
-        # الحالة الأولى
+
+        # الحالة الأولى:
+        # main.py
+        # mini_app/
+        #   index.html
+
         os.path.join(
             base_path,
             "mini_app"
         ),
-        # الحالة الثانية
+
+        # الحالة الثانية:
+        # main.py
+        # mini_app/
+        #   mini_app/
+        #       index.html
+
         os.path.join(
             base_path,
             "mini_app",
             "mini_app"
         ),
     ]
+
     mini_app_path = None
+
     for path in possible_paths:
+
         index_file = os.path.join(
             path,
             "index.html"
         )
+
         if os.path.isfile(index_file):
+
             mini_app_path = path
+
             break
+
     # ==========================================
-    # إذا لم يجد index.html
+    # إذا لم يجد Mini App
     # ==========================================
+
     if mini_app_path is None:
+
         print(
             "❌ لم يتم العثور على index.html"
         )
+
         print(
             f"📁 Base path: {base_path}"
         )
+
         print(
             "📂 الملفات الموجودة:"
         )
+
         for root, dirs, files in os.walk(base_path):
+
             print(
                 f"📁 {root}"
             )
+
             if files:
+
                 print(
-                    f"📄 {files}"
+                    f"   📄 {files}"
                 )
+
         return
+
     # ==========================================
-    # معلومات التشغيل
+    # مسارات الملفات
     # ==========================================
+
     images_path = os.path.join(
         mini_app_path,
         "images"
     )
+
     bot_image = os.path.join(
         images_path,
         "bot.JPG"
     )
+
     background_image = os.path.join(
         images_path,
         "background.JPG"
     )
+
+    group_image = os.path.join(
+        images_path,
+        "group.JPG"
+    )
+
+    channel_image = os.path.join(
+        images_path,
+        "channel.JPG"
+    )
+
+    developer_image = os.path.join(
+        images_path,
+        "developer.JPG"
+    )
+
+    # ==========================================
+    # معلومات Mini App
+    # ==========================================
+
     print()
-    print(
-        "=========================================="
-    )
-    print(
-        "🌐 Mini App Server"
-    )
-    print(
-        "=========================================="
-    )
+    print("==========================================")
+    print("🌐 Mini App Server")
+    print("==========================================")
+
     print(
         f"📁 Mini App path: {mini_app_path}"
     )
+
     print(
         f"📄 index.html: "
         f"{os.path.isfile(os.path.join(mini_app_path, 'index.html'))}"
     )
+
     print(
         f"🎨 style.css: "
         f"{os.path.isfile(os.path.join(mini_app_path, 'style.css'))}"
     )
+
     print(
         f"⚙️ app.js: "
         f"{os.path.isfile(os.path.join(mini_app_path, 'app.js'))}"
     )
+
     print(
         f"🖼️ images folder: "
         f"{os.path.isdir(images_path)}"
     )
+
     print(
         f"🤖 bot.JPG: "
         f"{os.path.isfile(bot_image)}"
     )
+
     print(
         f"🌄 background.JPG: "
         f"{os.path.isfile(background_image)}"
     )
-    # ==========================================
-    # عرض جميع ملفات Mini App
-    # ==========================================
-    print()
+
     print(
-        "📂 Mini App files:"
+        f"👥 group.JPG: "
+        f"{os.path.isfile(group_image)}"
     )
+
+    print(
+        f"📢 channel.JPG: "
+        f"{os.path.isfile(channel_image)}"
+    )
+
+    print(
+        f"👨‍💻 developer.JPG: "
+        f"{os.path.isfile(developer_image)}"
+    )
+
+    # ==========================================
+    # عرض ملفات Mini App
+    # ==========================================
+
+    print()
+    print("📂 Mini App files:")
+
     for root, dirs, files in os.walk(
         mini_app_path
     ):
+
         print(
             f"📁 {root}"
         )
+
         for file in files:
+
             print(
                 f"   📄 {file}"
             )
+
     print()
-    print(
-        "=========================================="
-    )
+    print("==========================================")
+
     # ==========================================
     # تشغيل السيرفر
     # ==========================================
+
     handler = partial(
         MiniAppHandler,
         directory=mini_app_path
     )
+
     server = HTTPServer(
         (
             "0.0.0.0",
@@ -522,14 +652,14 @@ def start_web_server():
         ),
         handler
     )
+
     print(
         f"🚀 Mini App running on port {port}"
     )
-    print(
-        "=========================================="
-    )
+
+    print("==========================================")
+
     server.serve_forever()
-  
 # ==================================================
 # استخراج ID الصورة - الخاص فقط
 # ==================================================
