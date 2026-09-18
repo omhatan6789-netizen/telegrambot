@@ -352,6 +352,10 @@ from urllib.parse import unquote
 # ==================================================
 # 🌐 سيرفر Mini App
 # ==================================================
+# ==================================================
+# 🌐 سيرفر Mini App
+# ==================================================
+
 class MiniAppHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
@@ -388,7 +392,7 @@ class MiniAppHandler(SimpleHTTPRequestHandler):
         return super().do_GET()
 
     # ==========================================
-    # حل مسارات الصور والملفات
+    # تحديد مسار الملفات
     # ==========================================
 
     def translate_path(self, path):
@@ -402,18 +406,30 @@ class MiniAppHandler(SimpleHTTPRequestHandler):
         # إزالة /
         path = path.lstrip("/")
 
-        # منع الخروج من مجلد Mini App
-        path = os.path.normpath(path)
+        # ==========================================
+        # 🖼️ الصور
+        # ==========================================
 
-        if path.startswith(".."):
-            path = ""
+        if path.startswith("images/"):
 
-        full_path = os.path.join(
-            self.directory,
+            image_name = path[len("images/"):]
+
+            return os.path.join(
+                self.base_path,
+                "mini_app",
+                "images",
+                image_name
+            )
+
+        # ==========================================
+        # باقي ملفات Mini App
+        # ==========================================
+
+        return os.path.join(
+            self.base_path,
+            "mini_app",
             path
         )
-
-        return full_path
 
     # ==========================================
     # إخفاء Logs العادية
@@ -429,22 +445,44 @@ class MiniAppHandler(SimpleHTTPRequestHandler):
 
 def start_web_server():
 
-    port = int(os.environ.get("PORT", 10000))
+    port = int(
+        os.environ.get(
+            "PORT",
+            10000
+        )
+    )
 
     base_path = os.path.dirname(
         os.path.abspath(__file__)
     )
 
+    # حفظ المسار الأساسي داخل الـ Handler
+    MiniAppHandler.base_path = base_path
+
+    # ==========================================
+    # المسارات
+    # ==========================================
+
     mini_app_path = os.path.join(
         base_path,
-        "mini_app",
         "mini_app"
     )
 
-    print("================================")
+    images_path = os.path.join(
+        base_path,
+        "mini_app",
+        "mini_app",
+        "images"
+    )
+
+    print("==========================================")
     print("🌐 Mini App Server")
-    print("================================")
-    print("📁 Mini App path:", mini_app_path)
+    print("==========================================")
+
+    print(
+        "📁 Mini App path:",
+        mini_app_path
+    )
 
     print(
         "📄 index.html:",
@@ -476,15 +514,14 @@ def start_web_server():
         )
     )
 
-    images_path = os.path.join(
-        mini_app_path,
-        "images"
-    )
-
     print(
         "🖼️ images folder:",
         os.path.isdir(images_path)
     )
+
+    # ==========================================
+    # فحص الصور
+    # ==========================================
 
     for filename in [
         "bot.JPG",
@@ -493,6 +530,7 @@ def start_web_server():
         "channel.JPG",
         "developer.JPG"
     ]:
+
         print(
             f"🖼️ {filename}:",
             os.path.isfile(
@@ -503,19 +541,25 @@ def start_web_server():
             )
         )
 
-    handler = partial(
-        MiniAppHandler,
-        directory=mini_app_path
-    )
+    # ==========================================
+    # تشغيل السيرفر
+    # ==========================================
+
+    handler = MiniAppHandler
 
     server = HTTPServer(
-        ("0.0.0.0", port),
+        (
+            "0.0.0.0",
+            port
+        ),
         handler
     )
 
+    print("==========================================")
     print(
         f"🚀 Mini App running on port {port}"
     )
+    print("==========================================")
 
     server.serve_forever()
 # ==================================================
