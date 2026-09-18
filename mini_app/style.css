@@ -428,6 +428,112 @@ body {
 
 
 /* ==================================================
+   بطاقة القروب والقناة
+   صورة كاملة + الاسم بالمنتصف
+================================================== */
+
+.cards > .card:nth-child(2),
+.cards > .card:nth-child(3) {
+    display: flex;
+
+    flex-direction: column;
+
+    align-items: stretch;
+
+    gap: 0;
+
+    padding: 12px;
+
+    min-height: auto;
+
+    text-align: center;
+}
+
+
+/* ==================================================
+   صورة القروب والقناة
+================================================== */
+
+.cards > .card:nth-child(2) .card-image,
+.cards > .card:nth-child(3) .card-image {
+    width: 100%;
+    height: auto;
+
+    aspect-ratio: 16 / 9;
+
+    flex: none;
+
+    display: block;
+
+    border-radius: 18px;
+
+    object-fit: cover;
+}
+
+
+/* ==================================================
+   محتوى القروب والقناة
+================================================== */
+
+.cards > .card:nth-child(2) .card-content,
+.cards > .card:nth-child(3) .card-content {
+    width: 100%;
+
+    flex: none;
+
+    text-align: center;
+
+    padding:
+        14px
+        25px
+        5px;
+}
+
+
+/* ==================================================
+   اسم القروب والقناة
+================================================== */
+
+.cards > .card:nth-child(2) .card-title,
+.cards > .card:nth-child(3) .card-title {
+    text-align: center;
+
+    font-size: 16px;
+
+    line-height: 1.5;
+
+    font-weight: 800;
+}
+
+
+/* ==================================================
+   إخفاء الوصف للقروب والقناة
+================================================== */
+
+.cards > .card:nth-child(2) .card-subtitle,
+.cards > .card:nth-child(3) .card-subtitle {
+    display: none;
+}
+
+
+/* ==================================================
+   سهم القروب والقناة
+================================================== */
+
+.cards > .card:nth-child(2) .card-arrow,
+.cards > .card:nth-child(3) .card-arrow {
+    position: absolute;
+
+    right: 15px;
+    bottom: 15px;
+
+    margin: 0;
+
+    font-size: 20px;
+}
+
+
+/* ==================================================
    زر الأوامر
 ================================================== */
 
