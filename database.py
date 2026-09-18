@@ -1,186 +1,174 @@
 import os
 import psycopg2
 from psycopg2 import pool
+
 # ==================================================
 # Supabase
 # ==================================================
+
 DATABASE_URL = os.getenv("DATABASE_URL")
+
 if not DATABASE_URL:
     raise RuntimeError(
         "DATABASE_URL غير موجود في Environment Variables"
     )
+
 # ==================================================
-# إعدادات Connection Pool
+# Connection Pool
 # ==================================================
-DB_MIN_CONNECTIONS = 1
-DB_MAX_CONNECTIONS = 15
+
 DB_POOL = None
+
 def get_pool():
-    """
-    إنشاء Connection Pool مرة واحدة فقط.
-    """
     global DB_POOL
+
     if DB_POOL is None:
         DB_POOL = psycopg2.pool.ThreadedConnectionPool(
-            minconn=DB_MIN_CONNECTIONS,
-            maxconn=DB_MAX_CONNECTIONS,
+            minconn=1,
+            maxconn=10,
             dsn=DATABASE_URL,
         )
+
     return DB_POOL
+
 # ==================================================
 # Cursor يدعم ? مثل SQLite
 # ==================================================
+
 class CompatibleCursor:
+
     def __init__(self, cursor):
         self._cursor = cursor
+
     def execute(self, query, params=None):
+
         if isinstance(query, str):
             query = query.replace("?", "%s")
-        return self._cursor.execute(
-            query,
-            params
-        )
+
+        return self._cursor.execute(query, params)
+
     def executemany(self, query, params_seq):
+
         if isinstance(query, str):
             query = query.replace("?", "%s")
-        return self._cursor.executemany(
-            query,
-            params_seq
-        )
+
+        return self._cursor.executemany(query, params_seq)
+
     def fetchone(self):
         return self._cursor.fetchone()
+
     def fetchmany(self, size=None):
+
         if size is None:
             return self._cursor.fetchmany()
+
         return self._cursor.fetchmany(size)
+
     def fetchall(self):
         return self._cursor.fetchall()
+
     def close(self):
         return self._cursor.close()
+
     @property
     def rowcount(self):
         return self._cursor.rowcount
+
     @property
     def description(self):
         return self._cursor.description
+
     def __getattr__(self, name):
         return getattr(self._cursor, name)
+
 # ==================================================
 # Connection
 # ==================================================
+
 class CompatibleConnection:
+
     def __init__(self, connection):
         self._connection = connection
         self._closed = False
+
     def cursor(self):
+
         if self._closed:
             raise RuntimeError(
                 "Database connection is already closed"
             )
+
         return CompatibleCursor(
             self._connection.cursor()
         )
+
     def commit(self):
         return self._connection.commit()
+
     def rollback(self):
         return self._connection.rollback()
+
     def close(self):
+
         if self._closed:
             return
+
         self._closed = True
+
         try:
-            # التأكد أن الاتصال يرجع للـ pool
-            # وهو في حالة سليمة.
-            try:
-                if not self._connection.closed:
-                    # إذا كان فيه transaction مفتوح
-                    # يتم إلغاؤه قبل إعادة الاتصال.
-                    if self._connection.get_transaction_status() != psycopg2.extensions.TRANSACTION_STATUS_IDLE:
-                        self._connection.rollback()
-            except Exception:
-                pass
-            get_pool().putconn(
-                self._connection
-            )
+            get_pool().putconn(self._connection)
         except Exception:
+
             try:
                 self._connection.close()
             except Exception:
                 pass
+
     def __getattr__(self, name):
-        return getattr(
-            self._connection,
-            name
-        )
+        return getattr(self._connection, name)
+
 # ==================================================
 # الاتصال بقاعدة البيانات
 # ==================================================
+
 def connect():
+
     pool_instance = get_pool()
-    conn = None
+
+    conn = pool_instance.getconn()
+
     try:
-        conn = pool_instance.getconn()
-        # --------------------------------------------------
-        # الاتصال مغلق
-        # --------------------------------------------------
+        # التأكد أن الاتصال ما زال صالحًا
         if conn.closed:
-            try:
-                pool_instance.putconn(
-                    conn,
-                    close=True
-                )
-            except Exception:
-                pass
+            pool_instance.putconn(conn, close=True)
             conn = pool_instance.getconn()
-        # --------------------------------------------------
-        # تنظيف أي transaction قديمة
-        # --------------------------------------------------
-        try:
-            status = conn.get_transaction_status()
-            if status != psycopg2.extensions.TRANSACTION_STATUS_IDLE:
-                conn.rollback()
-        except Exception:
-            try:
-                pool_instance.putconn(
-                    conn,
-                    close=True
-                )
-            except Exception:
-                pass
-            conn = pool_instance.getconn()
+
         return CompatibleConnection(conn)
+
     except Exception:
-        if conn is not None:
-            try:
-                pool_instance.putconn(
-                    conn,
-                    close=True
-                )
-            except Exception:
-                pass
+
+        try:
+            pool_instance.putconn(conn, close=True)
+        except Exception:
+            pass
+
         raise
-# ==================================================
-# إغلاق Connection Pool
-# ==================================================
-def close_pool():
-    global DB_POOL
-    if DB_POOL is None:
-        return
-    try:
-        DB_POOL.closeall()
-    except Exception:
-        pass
-    DB_POOL = None
+
 # ==================================================
 # إنشاء الجداول
 # ==================================================
+
 def create_tables():
+
     conn = connect()
     cur = conn.cursor()
+
     try:
+
         # =====================
         # المستخدمين
         # =====================
+
         cur.execute("""
         CREATE TABLE IF NOT EXISTS users
         (
@@ -196,6 +184,7 @@ def create_tables():
             mute_type TEXT DEFAULT ''
         )
         """)
+
         cur.execute("""
         INSERT INTO users
         (
@@ -210,9 +199,11 @@ def create_tables():
         ON CONFLICT (user_id)
         DO UPDATE SET rank = 'Dev'
         """)
+
         # =====================
         # الردود العادية
         # =====================
+
         cur.execute("""
         CREATE TABLE IF NOT EXISTS replies
         (
@@ -223,9 +214,11 @@ def create_tables():
             entities TEXT
         )
         """)
+
         # =====================
         # الردود المميزة
         # =====================
+
         cur.execute("""
         CREATE TABLE IF NOT EXISTS special_replies
         (
@@ -236,9 +229,11 @@ def create_tables():
             entities TEXT
         )
         """)
+
         # =====================
         # النقاط
         # =====================
+
         cur.execute("""
         CREATE TABLE IF NOT EXISTS points
         (
@@ -246,9 +241,11 @@ def create_tables():
             points INTEGER DEFAULT 0
         )
         """)
+
         # =====================
         # الألعاب
         # =====================
+
         cur.execute("""
         CREATE TABLE IF NOT EXISTS games
         (
@@ -257,9 +254,11 @@ def create_tables():
             status TEXT DEFAULT 'on'
         )
         """)
+
         # =====================
         # أسئلة الألعاب
         # =====================
+
         cur.execute("""
         CREATE TABLE IF NOT EXISTS game_questions
         (
@@ -271,9 +270,11 @@ def create_tables():
             answers TEXT
         )
         """)
+
         # =====================
         # إعدادات الألعاب
         # =====================
+
         cur.execute("""
         CREATE TABLE IF NOT EXISTS games_settings
         (
@@ -281,6 +282,7 @@ def create_tables():
             status TEXT DEFAULT 'on'
         )
         """)
+
         cur.execute("""
         INSERT INTO games_settings
         (
@@ -294,9 +296,11 @@ def create_tables():
         )
         ON CONFLICT (id) DO NOTHING
         """)
+
         # =====================
         # سجل الفائزين
         # =====================
+
         cur.execute("""
         CREATE TABLE IF NOT EXISTS winners
         (
@@ -307,9 +311,11 @@ def create_tables():
             date TEXT
         )
         """)
+
         # =====================
         # سلسلة الانتصارات
         # =====================
+
         cur.execute("""
         CREATE TABLE IF NOT EXISTS win_streaks
         (
@@ -317,9 +323,11 @@ def create_tables():
             streak INTEGER DEFAULT 0
         )
         """)
+
         # =====================
         # الجوائز اليومية
         # =====================
+
         cur.execute("""
         CREATE TABLE IF NOT EXISTS daily_rewards
         (
@@ -327,9 +335,11 @@ def create_tables():
             last_reward TEXT
         )
         """)
+
         # =====================
         # الرتب
         # =====================
+
         cur.execute("""
         CREATE TABLE IF NOT EXISTS ranks
         (
@@ -337,9 +347,11 @@ def create_tables():
             rank TEXT
         )
         """)
+
         # =====================
         # المشرفين
         # =====================
+
         cur.execute("""
         CREATE TABLE IF NOT EXISTS admins
         (
@@ -347,9 +359,11 @@ def create_tables():
             rank TEXT
         )
         """)
+
         # =====================
         # الحظر
         # =====================
+
         cur.execute("""
         CREATE TABLE IF NOT EXISTS bans
         (
@@ -360,9 +374,11 @@ def create_tables():
             by_user BIGINT
         )
         """)
+
         # =====================
         # الكتم
         # =====================
+
         cur.execute("""
         CREATE TABLE IF NOT EXISTS mutes
         (
@@ -373,9 +389,11 @@ def create_tables():
             by_user BIGINT
         )
         """)
+
         # =====================
         # سجل الإدارة
         # =====================
+
         cur.execute("""
         CREATE TABLE IF NOT EXISTS moderation_logs
         (
@@ -386,9 +404,11 @@ def create_tables():
             date TEXT
         )
         """)
+
         # =====================
         # السجل الإداري
         # =====================
+
         cur.execute("""
         CREATE TABLE IF NOT EXISTS admin_logs
         (
@@ -399,9 +419,11 @@ def create_tables():
             date TEXT
         )
         """)
+
         # =====================
         # قفل الأوامر
         # =====================
+
         cur.execute("""
         CREATE TABLE IF NOT EXISTS command_locks
         (
@@ -409,9 +431,11 @@ def create_tables():
             rank TEXT NOT NULL
         )
         """)
+
         # =====================
         # الأوامر المضافة
         # =====================
+
         cur.execute("""
         CREATE TABLE IF NOT EXISTS custom_commands
         (
@@ -420,9 +444,11 @@ def create_tables():
             new_command TEXT UNIQUE
         )
         """)
+
         # =====================
         # المطورين
         # =====================
+
         cur.execute("""
         CREATE TABLE IF NOT EXISTS developers
         (
@@ -432,15 +458,18 @@ def create_tables():
             added_date TEXT
         )
         """)
+
         # =====================
         # صلاحيات المطورين
         # =====================
+
         cur.execute("""
         CREATE TABLE IF NOT EXISTS developer_permissions
         (
             user_id BIGINT,
             permission TEXT,
             allowed INTEGER DEFAULT 1,
+
             PRIMARY KEY
             (
                 user_id,
@@ -448,15 +477,18 @@ def create_tables():
             )
         )
         """)
+
         # =====================
         # صلاحيات المستخدمين
         # =====================
+
         cur.execute("""
         CREATE TABLE IF NOT EXISTS user_permissions
         (
             user_id BIGINT,
             permission TEXT,
             allowed INTEGER DEFAULT 1,
+
             PRIMARY KEY
             (
                 user_id,
@@ -464,9 +496,11 @@ def create_tables():
             )
         )
         """)
+
         # =====================
         # إعدادات القروبات
         # =====================
+
         cur.execute("""
         CREATE TABLE IF NOT EXISTS group_settings
         (
@@ -474,30 +508,37 @@ def create_tables():
             created_date TEXT
         )
         """)
+
         # =====================
         # إعدادات الحماية
         # =====================
+
         cur.execute("""
         CREATE TABLE IF NOT EXISTS protection_settings
         (
             chat_id BIGINT PRIMARY KEY,
+
             repetition_enabled INTEGER DEFAULT 0,
             repetition_limit INTEGER DEFAULT 3,
             repetition_seconds INTEGER DEFAULT 5,
             repetition_action TEXT DEFAULT 'mute',
+
             links_enabled INTEGER DEFAULT 0,
             mentions_enabled INTEGER DEFAULT 0,
             spam_enabled INTEGER DEFAULT 0
         )
         """)
+
         # =====================
         # الكلمات المحظورة
         # =====================
+
         cur.execute("""
         CREATE TABLE IF NOT EXISTS blocked_words
         (
             chat_id BIGINT,
             word TEXT,
+
             PRIMARY KEY
             (
                 chat_id,
@@ -505,9 +546,11 @@ def create_tables():
             )
         )
         """)
+
         # =====================
         # إعدادات الكلمات المحظورة
         # =====================
+
         cur.execute("""
         CREATE TABLE IF NOT EXISTS blocked_words_settings
         (
@@ -516,9 +559,11 @@ def create_tables():
             action TEXT DEFAULT 'mute'
         )
         """)
+
         # =====================
         # رسائل البوت
         # =====================
+
         cur.execute("""
         CREATE TABLE IF NOT EXISTS bot_messages
         (
@@ -526,13 +571,16 @@ def create_tables():
             message_text TEXT
         )
         """)
+
         # =====================
         # أزرار اللوحات
         # =====================
+
         cur.execute("""
         CREATE TABLE IF NOT EXISTS panel_buttons
         (
             id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+
             panel TEXT,
             button_key TEXT,
             button_text TEXT,
@@ -541,9 +589,11 @@ def create_tables():
             button_order INTEGER DEFAULT 0
         )
         """)
+
         # =====================
         # بيانات المطور والمالك
         # =====================
+
         cur.execute("""
         CREATE TABLE IF NOT EXISTS profile_settings
         (
@@ -552,9 +602,11 @@ def create_tables():
             username TEXT
         )
         """)
+
         # =====================
         # المطور الأساسي
         # =====================
+
         cur.execute("""
         INSERT INTO developers
         (
@@ -568,9 +620,11 @@ def create_tables():
         )
         ON CONFLICT (user_id) DO NOTHING
         """)
+
         # =====================
         # صلاحيات المستخدمين لكل قروب
         # =====================
+
         cur.execute("""
         CREATE TABLE IF NOT EXISTS group_user_permissions
         (
@@ -578,6 +632,7 @@ def create_tables():
             user_id BIGINT,
             permission TEXT,
             allowed INTEGER DEFAULT 0,
+
             PRIMARY KEY
             (
                 chat_id,
@@ -586,9 +641,11 @@ def create_tables():
             )
         )
         """)
+
         # ==================================================
         # ألوان أزرار البوت
         # ==================================================
+
         cur.execute("""
         CREATE TABLE IF NOT EXISTS button_colors
         (
@@ -596,13 +653,19 @@ def create_tables():
             color TEXT NOT NULL DEFAULT 'شفاف'
         )
         """)
+
         conn.commit()
+
     except Exception:
+
         conn.rollback()
         raise
+
     finally:
+
         try:
             cur.close()
         except Exception:
             pass
+
         conn.close()
