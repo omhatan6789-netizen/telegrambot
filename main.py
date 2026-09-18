@@ -223,6 +223,7 @@ from handlers.points import (
     my_points,
     top_points,
     add_points_command,
+    remove_points_command,
     sell_points,
     flush_pending_points
 )
@@ -1428,7 +1429,16 @@ def main():
         group=-1
     )
 
+    
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^خصم \d+$"),
+            remove_points_command
+        ),
+        group=-1
+    )
 
+    
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^بيع نقاطي \d+$"),
