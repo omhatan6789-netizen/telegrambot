@@ -2201,7 +2201,7 @@ def main():
             & filters.Regex(r"^طاولة تنس$"),
             start_table_tennis
         ),
-        group=-4
+        group=-7
     )
 
     # --------------------------------------------------
@@ -2214,7 +2214,7 @@ def main():
             & TableTennisActiveFilter([r"^دخول$"]),
             join_table_tennis
         ),
-        group=-4
+        group=-7
     )
 
     # --------------------------------------------------
@@ -2227,7 +2227,7 @@ def main():
             & TableTennisActiveFilter([r"^\.خروج$"]),
             leave_table_tennis
         ),
-        group=-4
+        group=-7
     )
 
     # --------------------------------------------------
@@ -2240,7 +2240,7 @@ def main():
             & TableTennisActiveFilter([r"^\.ابدا$"]),
             begin_table_tennis
         ),
-        group=-4
+        group=-7
     )
 
     # --------------------------------------------------
@@ -2253,7 +2253,7 @@ def main():
             & TableTennisActiveFilter([r"^انهاء$"]),
             end_table_tennis
         ),
-        group=-4
+        group=-7
     )
 
     # --------------------------------------------------
@@ -2265,7 +2265,7 @@ def main():
             table_tennis_callback,
             pattern=r"^tt:"
         ),
-        group=-4
+        group=-7
     )
 
     # ==================================================
