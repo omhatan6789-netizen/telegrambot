@@ -7,6 +7,7 @@ from telegram.ext import ContextTypes
 
 from database import connect
 from handlers.roles import get_rank
+from handlers.points import get_points
 
 from handlers.cache import (
     get_cached_user,
@@ -17,19 +18,9 @@ from handlers.cache import (
     ensure_cached_user,
 )
 
-
-# ==================================================
-# توافق مع أي كود قديم يستخدم _user_cache
-# ==================================================
-
 from handlers import cache as _cache_module
 
 _user_cache = _cache_module._user_cache
-
-
-# ==================================================
-# قفل عملية حفظ الرسائل
-# ==================================================
 
 _flush_lock = None
 
@@ -43,10 +34,6 @@ def _get_flush_lock():
     return _flush_lock
 
 
-# ==================================================
-# تحديد الشخص المستهدف في أمر ايدي
-# ==================================================
-
 async def get_id_target_user(update, context):
 
     if not update.message:
@@ -54,7 +41,6 @@ async def get_id_target_user(update, context):
 
     message = update.message
 
-    # الرد على شخص
     if message.reply_to_message:
 
         replied_user = (
@@ -70,44 +56,33 @@ async def get_id_target_user(update, context):
 
     parts = text.split()
 
-    # ايدي فقط = صاحب الرسالة
     if len(parts) < 2:
         return update.effective_user
 
     target = parts[-1].strip()
 
-    # آيدي
     if target.isdigit():
 
         try:
-
             return await context.bot.get_chat(
                 int(target)
             )
 
         except Exception:
-
             return None
 
-    # يوزر
     if target.startswith("@"):
 
         try:
-
             return await context.bot.get_chat(
                 target
             )
 
         except Exception:
-
             return None
 
     return None
 
-
-# ==================================================
-# إنشاء مستخدم في قاعدة البيانات عند الحاجة
-# ==================================================
 
 def _create_user_if_missing_sync(
     user_id,
@@ -115,11 +90,9 @@ def _create_user_if_missing_sync(
     first_name,
 ):
     conn = connect()
-
     cur = None
 
     try:
-
         cur = conn.cursor()
 
         joined_date = datetime.now().strftime(
@@ -177,10 +150,6 @@ def _create_user_if_missing_sync(
         conn.close()
 
 
-# ==================================================
-# أمر ايدي
-# ==================================================
-
 async def user_id_command(update, context):
 
     if not update.message:
@@ -216,10 +185,6 @@ async def user_id_command(update, context):
         ""
     )
 
-    # ==================================================
-    # نحاول أخذ البيانات من الكاش المركزي
-    # ==================================================
-
     cached = get_cached_user(
         user_id
     )
@@ -236,16 +201,7 @@ async def user_id_command(update, context):
             "غير معروف"
         )
 
-        rank = cached.get(
-            "rank",
-            "عضو"
-        )
-
     else:
-
-        # ==================================================
-        # تحميل المستخدم من DB خارج event loop
-        # ==================================================
 
         data = await get_user_data(
             user_id
@@ -263,17 +219,7 @@ async def user_id_command(update, context):
                 "غير معروف"
             )
 
-            rank = data.get(
-                "rank",
-                "عضو"
-            )
-
         else:
-
-            # ==================================================
-            # المستخدم غير موجود
-            # ننشئه خارج event loop
-            # ==================================================
 
             joined_date = await asyncio.to_thread(
                 _create_user_if_missing_sync,
@@ -283,9 +229,7 @@ async def user_id_command(update, context):
             )
 
             messages = 0
-            rank = "عضو"
 
-            # نخليه موجودًا في الكاش
             set_cached_user(
                 user_id,
                 {
@@ -299,43 +243,63 @@ async def user_id_command(update, context):
                 }
             )
 
-        # ==================================================
-        # إذا كانت الرتبة قد تكون مختلفة في جدول الرتب
-        # نقرأها خارج event loop
-        # ==================================================
+    try:
 
-        try:
-
-            rank = await asyncio.to_thread(
-                get_rank,
-                user_id
-            )
-
-        except Exception:
-
-            rank = rank or "عضو"
-
-        cached = get_cached_user(
+        rank = await asyncio.to_thread(
+            get_rank,
             user_id
         )
 
-        if cached is not None:
+    except Exception:
 
-            cached["rank"] = rank
+        rank = "عضو"
 
-    # ==================================================
-    # تحديث بيانات Telegram في الكاش
-    # ==================================================
+    if not rank:
+        rank = "عضو"
+
+    try:
+
+        points = await asyncio.to_thread(
+            get_points,
+            user_id
+        )
+
+    except Exception:
+
+        points = 0
+
+    if points is None:
+        points = 0
+
+    cached = get_cached_user(
+        user_id
+    )
+
+    if cached is not None:
+
+        cached["rank"] = rank
+        cached["points"] = points
+
+    else:
+
+        set_cached_user(
+            user_id,
+            {
+                "user_id": user_id,
+                "messages": messages,
+                "rank": rank,
+                "joined_date": joined_date,
+                "username": username_value,
+                "first_name": first_name_value or "",
+                "points": points,
+            }
+        )
 
     update_cached_profile(
         user_id,
         username=username_value,
         first_name=first_name_value,
     )
-
-    # ==================================================
-    # معلومات Telegram
-    # ==================================================
 
     username = (
         f"@{username_value}"
@@ -385,7 +349,6 @@ async def user_id_command(update, context):
                 f"@{username_value}"
             )
 
-        # تحديث الكاش بالبيانات الأحدث
         update_cached_profile(
             user_id,
             username=username_value,
@@ -393,12 +356,7 @@ async def user_id_command(update, context):
         )
 
     except Exception:
-
         pass
-
-    # ==================================================
-    # حماية HTML
-    # ==================================================
 
     safe_name = escape(
         first_name_value
@@ -421,10 +379,6 @@ async def user_id_command(update, context):
         rank or "عضو"
     )
 
-    # ==================================================
-    # رتبة صاحب البوت Spoiler
-    # ==================================================
-
     if user_id == 8453977662:
 
         rank_text = (
@@ -442,14 +396,11 @@ async def user_id_command(update, context):
 🖥️ USER 𖦹 {safe_username}
 💬 MSG 𖦹 {messages}
 🛡 STA 𖦹 {rank_text}
+💰 POINTS 𖦹 {points}
 ℹ️ ID 𖦹 {user_id}
 🗒 BIO 𖦹 {safe_bio}
 📅 Joined Group 𖦹 {safe_joined_date}
 """
-
-    # ==================================================
-    # صورة البروفايل
-    # ==================================================
 
     try:
 
@@ -473,7 +424,6 @@ async def user_id_command(update, context):
             return
 
     except Exception:
-
         pass
 
     await update.message.reply_text(
@@ -481,10 +431,6 @@ async def user_id_command(update, context):
         parse_mode="HTML"
     )
 
-
-# ==================================================
-# حفظ تاريخ دخول المستخدم
-# ==================================================
 
 def _save_join_date_sync(
     user_id,
@@ -494,7 +440,6 @@ def _save_join_date_sync(
 ):
 
     conn = connect()
-
     cur = None
 
     try:
@@ -570,10 +515,6 @@ async def save_join_date(update, context):
         "%Y/%m/%d"
     )
 
-    # ==================================================
-    # DB خارج event loop
-    # ==================================================
-
     try:
 
         await asyncio.to_thread(
@@ -592,10 +533,6 @@ async def save_join_date(update, context):
 
         return
 
-    # ==================================================
-    # الرتبة خارج event loop
-    # ==================================================
-
     try:
 
         rank = await asyncio.to_thread(
@@ -606,10 +543,6 @@ async def save_join_date(update, context):
     except Exception:
 
         rank = "عضو"
-
-    # ==================================================
-    # الكاش المركزي
-    # ==================================================
 
     set_cached_user(
         user.id,
@@ -625,19 +558,11 @@ async def save_join_date(update, context):
     )
 
 
-# ==================================================
-# تجميع الرسائل
-# ==================================================
-
 _pending_messages = {}
 _pending_user_data = {}
 
 MESSAGE_BATCH_SIZE = 10
 
-
-# ==================================================
-# تنفيذ الحفظ في Thread
-# ==================================================
 
 def _flush_user_messages_sync(
     messages,
@@ -645,7 +570,6 @@ def _flush_user_messages_sync(
 ):
 
     conn = connect()
-
     cur = None
 
     try:
@@ -662,10 +586,6 @@ def _flush_user_messages_sync(
                 continue
 
             username, first_name = data
-
-            # ==================================================
-            # محاولة تحديث المستخدم الموجود
-            # ==================================================
 
             cur.execute(
                 """
@@ -684,10 +604,6 @@ def _flush_user_messages_sync(
                     user_id
                 )
             )
-
-            # ==================================================
-            # المستخدم غير موجود
-            # ==================================================
 
             if cur.rowcount == 0:
 
@@ -755,10 +671,6 @@ def _flush_user_messages_sync(
         conn.close()
 
 
-# ==================================================
-# حفظ الرسائل المعلقة
-# ==================================================
-
 async def flush_user_messages():
 
     global _pending_messages
@@ -771,10 +683,6 @@ async def flush_user_messages():
         if not _pending_messages:
             return
 
-        # ==================================================
-        # نسخ البيانات بسرعة
-        # ==================================================
-
         messages = _pending_messages
         user_data = _pending_user_data
 
@@ -783,30 +691,13 @@ async def flush_user_messages():
 
         try:
 
-            # ==================================================
-            # DB خارج event loop
-            # ==================================================
-
             await asyncio.to_thread(
                 _flush_user_messages_sync,
                 messages,
                 user_data
             )
 
-            # ==================================================
-            # مهم:
-            #
-            # لا نزيد messages هنا!
-            #
-            # save_user_message() زاد الكاش مسبقًا.
-            # لو زدناه هنا راح يتضاعف العداد.
-            # ==================================================
-
         except Exception as e:
-
-            # ==================================================
-            # إعادة الرسائل في حال فشل الحفظ
-            # ==================================================
 
             for user_id, count in messages.items():
 
@@ -829,10 +720,6 @@ async def flush_user_messages():
             )
 
 
-# ==================================================
-# تشغيل Flush في الخلفية
-# ==================================================
-
 def _schedule_message_flush():
 
     try:
@@ -842,14 +729,8 @@ def _schedule_message_flush():
         )
 
     except RuntimeError:
-
-        # لا يوجد event loop متاح
         pass
 
-
-# ==================================================
-# حفظ رسالة المستخدم
-# ==================================================
 
 async def save_user_message(
     update,
@@ -877,10 +758,6 @@ async def save_user_message(
 
     user_id = user.id
 
-    # ==================================================
-    # زيادة الرسائل المعلقة
-    # ==================================================
-
     _pending_messages[user_id] = (
         _pending_messages.get(
             user_id,
@@ -894,26 +771,12 @@ async def save_user_message(
         user.first_name
     )
 
-    # ==================================================
-    # تحديث الكاش المركزي مباشرة
-    #
-    # هذا يجعل #الرسائل وملف المستخدم
-    # محدثين بدون انتظار DB.
-    # ==================================================
-
     increment_cached_messages(
         user_id,
         amount=1,
         username=user.username,
         first_name=user.first_name,
     )
-
-    # ==================================================
-    # إذا وصلت الدفعة إلى 10:
-    #
-    # لا ننتظر DB!
-    # نشغل الحفظ بالخلفية.
-    # ==================================================
 
     if (
         _pending_messages[user_id]
