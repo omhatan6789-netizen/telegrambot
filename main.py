@@ -222,6 +222,8 @@ from handlers.moderation import (
 from handlers.points import (
     my_points,
     top_points,
+    add_points_command,
+    sell_points,
     flush_pending_points
 )
 
@@ -1419,20 +1421,7 @@ def main():
     # النقاط
     # ==================================================
 
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(r"^نقاطي$"),
-            my_points
-        )
-    )
-
-
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(r"^توب$"),
-            top_points
-        )
-    )
+    
 
 
     # ==================================================
