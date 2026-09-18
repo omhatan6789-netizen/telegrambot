@@ -217,7 +217,8 @@ from handlers.moderation import (
 
 from handlers.points import (
     my_points,
-    top_points
+    top_points,
+    flush_pending_points
 )
 
 
@@ -497,19 +498,39 @@ def main():
             except asyncio.CancelledError:
                 pass
 
-        # حفظ أي رسائل بقيت في الذاكرة
+        # ==================================================
+        # حفظ البيانات المعلقة قبل إيقاف البوت
+        # ==================================================
+
+        # حفظ الرسائل
         try:
 
             await flush_user_messages()
 
             print(
-            "💾 تم حفظ الرسائل المعلقة قبل إيقاف البوت"
+                "💾 تم حفظ الرسائل المعلقة قبل إيقاف البوت"
             )
 
         except Exception as e:
 
             print(
                 f"⚠️ تعذر حفظ الرسائل عند الإيقاف: {e}"
+            )
+
+
+        # حفظ النقاط
+        try:
+
+            await flush_pending_points()
+
+            print(
+                "💰 تم حفظ النقاط المعلقة قبل إيقاف البوت"
+            )
+
+        except Exception as e:
+
+            print(
+                f"⚠️ تعذر حفظ النقاط عند الإيقاف: {e}"
             )
 
 
