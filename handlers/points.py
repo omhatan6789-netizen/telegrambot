@@ -10,19 +10,14 @@ from handlers.cache import (
     get_user_data,
     get_user_data_sync,
     set_cached_points,
+    increment_cached_messages,
 )
-
-
-# =========================================================
-# إعدادات
-# =========================================================
 
 POINT_FLUSH_DELAY = 0.5
 
+OWNER_ID = 8453977662
 
-# =========================================================
-# طابور حفظ النقاط
-# =========================================================
+POINTS_PER_MESSAGE = 10
 
 _pending_point_deltas = {}
 
@@ -39,24 +34,14 @@ def _get_point_flush_lock():
     return _point_flush_lock
 
 
-# =========================================================
-# إضافة تغيير نقاط إلى الطابور
-# =========================================================
-
 def _queue_point_delta(user_id, amount):
-
     _pending_point_deltas[user_id] = (
         _pending_point_deltas.get(user_id, 0)
         + amount
     )
 
 
-# =========================================================
-# تشغيل الحفظ بالخلفية
-# =========================================================
-
 def _schedule_point_flush():
-
     global _point_flush_task
 
     try:
@@ -74,13 +59,8 @@ def _schedule_point_flush():
 
 
 async def _delayed_point_flush():
-
     try:
-
-        await asyncio.sleep(
-            POINT_FLUSH_DELAY
-        )
-
+        await asyncio.sleep(POINT_FLUSH_DELAY)
         await flush_pending_points()
 
     except asyncio.CancelledError:
@@ -91,10 +71,6 @@ async def _delayed_point_flush():
             f"⚠️ خطأ في حفظ النقاط بالخلفية: {e}"
         )
 
-
-# =========================================================
-# حفظ النقاط المعلقة
-# =========================================================
 
 async def flush_pending_points():
 
@@ -108,19 +84,11 @@ async def flush_pending_points():
         if not _pending_point_deltas:
             return
 
-        # -------------------------------------------------
-        # أخذ نسخة من التغييرات الحالية
-        # -------------------------------------------------
-
         pending = dict(
             _pending_point_deltas
         )
 
         _pending_point_deltas.clear()
-
-        # -------------------------------------------------
-        # الحفظ خارج event loop
-        # -------------------------------------------------
 
         try:
 
@@ -131,17 +99,10 @@ async def flush_pending_points():
 
         except Exception as e:
 
-            # -------------------------------------------------
-            # إذا فشل الحفظ نرجع النقاط للطابور
-            # -------------------------------------------------
-
             for user_id, amount in pending.items():
 
                 _pending_point_deltas[user_id] = (
-                    _pending_point_deltas.get(
-                        user_id,
-                        0
-                    )
+                    _pending_point_deltas.get(user_id, 0)
                     + amount
                 )
 
@@ -152,13 +113,7 @@ async def flush_pending_points():
             raise
 
 
-# =========================================================
-# الحفظ الفعلي في قاعدة البيانات
-# =========================================================
-
-def _save_point_deltas_sync(
-    pending
-):
+def _save_point_deltas_sync(pending):
 
     if not pending:
         return
@@ -203,6 +158,7 @@ def _save_point_deltas_sync(
     except Exception:
 
         conn.rollback()
+
         raise
 
     finally:
@@ -215,140 +171,63 @@ def _save_point_deltas_sync(
         conn.close()
 
 
-# =========================================================
-# إضافة نقاط
-# =========================================================
+def add_points(user_id, amount):
 
-def add_points(
-    user_id,
-    amount
-):
-
-    # -----------------------------------------------------
-    # محاولة الحصول على النقاط الحالية من الكاش
-    # -----------------------------------------------------
-
-    cached = get_cached_user(
-        user_id
-    )
+    cached = get_cached_user(user_id)
 
     if cached is not None:
 
         current_points = (
-            cached.get(
-                "points",
-                0
-            )
-            or 0
+            cached.get("points", 0) or 0
         )
 
     else:
 
-        # -------------------------------------------------
-        # أول مرة فقط:
-        # نحاول تحميل المستخدم من قاعدة البيانات
-        # -------------------------------------------------
-
-        data = get_user_data_sync(
-            user_id
-        )
+        data = get_user_data_sync(user_id)
 
         if data is not None:
 
             current_points = (
-                data.get(
-                    "points",
-                    0
-                )
-                or 0
+                data.get("points", 0) or 0
             )
 
         else:
 
             current_points = 0
 
-    # -----------------------------------------------------
-    # حساب الرصيد الجديد
-    # -----------------------------------------------------
-
-    new_points = (
-        current_points
-        + amount
-    )
-
-    # -----------------------------------------------------
-    # تحديث الكاش فورًا
-    # -----------------------------------------------------
+    new_points = current_points + amount
 
     set_cached_points(
         user_id,
         new_points
     )
 
-    # -----------------------------------------------------
-    # إضافة التغيير لطابور DB
-    # -----------------------------------------------------
-
     _queue_point_delta(
         user_id,
         amount
     )
 
-    # -----------------------------------------------------
-    # تشغيل الحفظ بالخلفية
-    # -----------------------------------------------------
-
     _schedule_point_flush()
-
-    # -----------------------------------------------------
-    # نفس القيمة التي كانت ترجعها الدالة القديمة
-    # -----------------------------------------------------
 
     return new_points
 
 
-# =========================================================
-# جلب النقاط
-# =========================================================
+def get_points(user_id):
 
-def get_points(
-    user_id
-):
-
-    # -----------------------------------------------------
-    # الكاش أولًا
-    # -----------------------------------------------------
-
-    cached = get_cached_user(
-        user_id
-    )
+    cached = get_cached_user(user_id)
 
     if cached is not None:
 
         return (
-            cached.get(
-                "points",
-                0
-            )
-            or 0
+            cached.get("points", 0) or 0
         )
 
-    # -----------------------------------------------------
-    # تحميل المستخدم من الكاش / DB
-    # -----------------------------------------------------
-
-    data = get_user_data_sync(
-        user_id
-    )
+    data = get_user_data_sync(user_id)
 
     if data is not None:
 
         points = (
-            data.get(
-                "points",
-                0
-            )
-            or 0
+            data.get("points", 0) or 0
         )
 
         set_cached_points(
@@ -357,12 +236,6 @@ def get_points(
         )
 
         return points
-
-    # -----------------------------------------------------
-    # احتياط:
-    # إذا لم يوجد المستخدم في users
-    # نقرأ points مباشرة
-    # -----------------------------------------------------
 
     conn = connect()
 
@@ -376,9 +249,7 @@ def get_points(
             FROM points
             WHERE user_id = ?
             """,
-            (
-                user_id,
-            )
+            (user_id,)
         )
 
         result = cur.fetchone()
@@ -406,9 +277,268 @@ def get_points(
         conn.close()
 
 
-# =========================================================
-# نقاطي
-# =========================================================
+def _get_user_id_from_update(update):
+
+    if not update.message:
+        return None
+
+    if update.message.reply_to_message:
+
+        replied_user = (
+            update.message.reply_to_message.from_user
+        )
+
+        if replied_user:
+            return replied_user.id
+
+    return update.effective_user.id
+
+
+async def add_points_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not update.message:
+        return
+
+    user = update.effective_user
+
+    if not user:
+        return
+
+    if user.id != OWNER_ID:
+
+        await update.message.reply_text(
+            "❌ هذا الأمر مخصص للمالك فقط."
+        )
+
+        return
+
+    text = update.message.text or ""
+
+    parts = text.strip().split()
+
+    if len(parts) != 2:
+
+        await update.message.reply_text(
+            "❌ الاستخدام الصحيح:\n\n"
+            "اضف 500\n\n"
+            "ويُفضل استخدام الأمر بالرد على الشخص."
+        )
+
+        return
+
+    try:
+
+        amount = int(parts[1])
+
+    except ValueError:
+
+        await update.message.reply_text(
+            "❌ عدد النقاط غير صحيح."
+        )
+
+        return
+
+    if amount <= 0:
+
+        await update.message.reply_text(
+            "❌ يجب أن يكون عدد النقاط أكبر من صفر."
+        )
+
+        return
+
+    target_id = _get_user_id_from_update(
+        update
+    )
+
+    if target_id is None:
+        return
+
+    new_points = add_points(
+        target_id,
+        amount
+    )
+
+    if (
+        update.message.reply_to_message
+        and update.message.reply_to_message.from_user
+    ):
+
+        target_name = (
+            update.message.reply_to_message.from_user.first_name
+            or "المستخدم"
+        )
+
+        await update.message.reply_text(
+            f"✅ تمت إضافة {amount} نقطة إلى {target_name}.\n\n"
+            f"🏆 نقاطه الآن: {new_points}"
+        )
+
+    else:
+
+        await update.message.reply_text(
+            f"✅ تمت إضافة {amount} نقطة لك.\n\n"
+            f"🏆 نقاطك الآن: {new_points}"
+        )
+
+
+def _add_messages_sync(user_id, amount):
+
+    conn = connect()
+
+    try:
+
+        cur = conn.cursor()
+
+        cur.execute(
+            """
+            INSERT INTO users
+            (
+                user_id,
+                messages
+            )
+            VALUES
+            (
+                ?,
+                ?
+            )
+            ON CONFLICT(user_id)
+            DO UPDATE SET
+                messages =
+                    COALESCE(users.messages, 0)
+                    + EXCLUDED.messages
+            """,
+            (
+                user_id,
+                amount
+            )
+        )
+
+        conn.commit()
+
+    except Exception:
+
+        conn.rollback()
+
+        raise
+
+    finally:
+
+        try:
+            cur.close()
+        except Exception:
+            pass
+
+        conn.close()
+
+
+async def sell_points(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not update.message:
+        return
+
+    user = update.effective_user
+
+    if not user:
+        return
+
+    text = update.message.text or ""
+
+    parts = text.strip().split()
+
+    if len(parts) != 3:
+
+        await update.message.reply_text(
+            "❌ الاستخدام الصحيح:\n\n"
+            "بيع نقاطي 200"
+        )
+
+        return
+
+    try:
+
+        amount = int(parts[2])
+
+    except ValueError:
+
+        await update.message.reply_text(
+            "❌ عدد النقاط غير صحيح."
+        )
+
+        return
+
+    if amount <= 0:
+
+        await update.message.reply_text(
+            "❌ يجب أن يكون عدد النقاط أكبر من صفر."
+        )
+
+        return
+
+    user_id = user.id
+
+    current_points = get_points(
+        user_id
+    )
+
+    if current_points < amount:
+
+        await update.message.reply_text(
+            "❌ ما عندك نقاط كافية.\n\n"
+            f"🏆 نقاطك الحالية: {current_points}\n"
+            f"💰 المطلوب: {amount}"
+        )
+
+        return
+
+    messages_to_add = (
+        amount * POINTS_PER_MESSAGE
+    )
+
+    remaining_points = add_points(
+        user_id,
+        -amount
+    )
+
+    try:
+
+        await asyncio.to_thread(
+            _add_messages_sync,
+            user_id,
+            messages_to_add
+        )
+
+        increment_cached_messages(
+            user_id,
+            messages_to_add
+        )
+
+    except Exception as e:
+
+        add_points(
+            user_id,
+            amount
+        )
+
+        await update.message.reply_text(
+            "❌ حدث خطأ أثناء إضافة الرسائل، "
+            "وتمت إعادة النقاط.\n\n"
+            f"الخطأ: {e}"
+        )
+
+        return
+
+    await update.message.reply_text(
+        f"✅ تم بيع {amount} نقطة.\n\n"
+        f"💬 حصلت على {messages_to_add} رسالة.\n"
+        f"🏆 نقاطك المتبقية: {remaining_points}"
+    )
+
 
 async def my_points(
     update: Update,
@@ -420,19 +550,10 @@ async def my_points(
 
     user_id = update.effective_user.id
 
-    # -----------------------------------------------------
-    # الكاش / تحميل مرة واحدة عند الحاجة
-    # -----------------------------------------------------
-
-    data = await get_user_data(
-        user_id
-    )
+    data = await get_user_data(user_id)
 
     points = (
-        data.get(
-            "points",
-            0
-        )
+        data.get("points", 0)
         if data
         else 0
     )
@@ -442,10 +563,6 @@ async def my_points(
     )
 
 
-# =========================================================
-# الترتيب
-# =========================================================
-
 async def top_points(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
@@ -453,11 +570,6 @@ async def top_points(
 
     if not update.message:
         return
-
-    # -----------------------------------------------------
-    # نتأكد أن جميع النقاط المعلقة محفوظة
-    # قبل جلب الترتيب
-    # -----------------------------------------------------
 
     try:
 
@@ -467,10 +579,6 @@ async def top_points(
         pass
 
     user = update.effective_user
-
-    # -----------------------------------------------------
-    # DB خارج event loop
-    # -----------------------------------------------------
 
     rows = await asyncio.to_thread(
         _get_top_points_sync,
@@ -487,24 +595,15 @@ async def top_points(
 
         return
 
-    text = (
-        "🏆 ترتيب اللاعبين\n\n"
-    )
+    text = "🏆 ترتيب اللاعبين\n\n"
 
     for place, row in enumerate(
         rows,
         1
     ):
 
-        name = (
-            row[0]
-            or "مستخدم"
-        )
-
-        points = (
-            row[1]
-            or 0
-        )
+        name = row[0] or "مستخدم"
+        points = row[1] or 0
 
         text += (
             f"{place} - {name} : "
@@ -515,10 +614,6 @@ async def top_points(
         text
     )
 
-
-# =========================================================
-# جلب الترتيب من DB
-# =========================================================
 
 def _get_top_points_sync(
     user_id,
@@ -531,10 +626,6 @@ def _get_top_points_sync(
     try:
 
         cur = conn.cursor()
-
-        # -------------------------------------------------
-        # تحديث بيانات المستخدم
-        # -------------------------------------------------
 
         cur.execute(
             """
@@ -563,10 +654,6 @@ def _get_top_points_sync(
         )
 
         conn.commit()
-
-        # -------------------------------------------------
-        # جلب الترتيب
-        # -------------------------------------------------
 
         cur.execute(
             """
