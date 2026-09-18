@@ -181,6 +181,9 @@ async def command_guard(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
+    
+    print("🔥🔥🔥 COMMAND GUARD اشتغل")
+    
     if not update.message:
         return
     # ==================================================
