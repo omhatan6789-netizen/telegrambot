@@ -2,14 +2,12 @@
     box-sizing: border-box;
     -webkit-tap-highlight-color: transparent;
 }
-
 html,
 body {
     margin: 0;
     padding: 0;
     width: 100%;
     min-height: 100%;
-
     font-family:
         -apple-system,
         BlinkMacSystemFont,
@@ -18,473 +16,381 @@ body {
         Tahoma,
         Arial,
         sans-serif;
-
-    color: #ffffff;
-
-    background: #111318;
+    color: #fff;
+    background: #090b10;
 }
-
-
 body {
     min-height: 100vh;
     min-height: 100dvh;
-
     overflow-x: hidden;
 }
-
-
-/* =========================================
+/* ==================================================
    الخلفية
-========================================= */
-
+================================================== */
 .background {
     position: fixed;
-
     inset: 0;
-
-    z-index: -3;
-
-    background-image:
-        url("images/background.JPG");
-
+    width: 100%;
+    height: 100%;
+    z-index: -10;
+    background-image: url("./images/background.JPG");
     background-position: center;
     background-size: cover;
     background-repeat: no-repeat;
+    transform: scale(1.03);
 }
-
-
 .background-overlay {
     position: fixed;
-
     inset: 0;
-
-    z-index: -2;
-
+    z-index: -9;
     background:
         linear-gradient(
             180deg,
-            rgba(8, 10, 15, 0.35),
-            rgba(8, 10, 15, 0.88)
+            rgba(5, 7, 12, 0.25) 0%,
+            rgba(5, 7, 12, 0.48) 38%,
+            rgba(5, 7, 12, 0.88) 100%
         );
-
-    backdrop-filter: blur(2px);
-    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
 }
-
-
-/* =========================================
+/* ==================================================
    الصفحة
-========================================= */
-
+================================================== */
 .container {
-
+    position: relative;
     width: 100%;
-
     max-width: 620px;
-
-    margin: auto;
-
+    margin: 0 auto;
     padding:
-
-        calc(25px + env(safe-area-inset-top))
-
+        calc(26px + env(safe-area-inset-top))
         16px
-
-        calc(25px + env(safe-area-inset-bottom));
+        calc(28px + env(safe-area-inset-bottom));
 }
-
-
-/* =========================================
+/* ==================================================
    الهيدر
-========================================= */
-
+================================================== */
 .header {
-
     text-align: center;
-
-    padding: 15px 10px 22px;
+    padding: 10px 8px 24px;
 }
-
-
 .bot-avatar-wrapper {
-
-    width: 100px;
-    height: 100px;
-
-    margin: 0 auto 14px;
-
-    border-radius: 50%;
-
+    position: relative;
+    width: 104px;
+    height: 104px;
+    margin: 0 auto 16px;
     padding: 3px;
-
+    border-radius: 50%;
     background:
         linear-gradient(
-            135deg,
-            #ffffff,
-            rgba(255,255,255,.2)
+            145deg,
+            rgba(255,255,255,0.95),
+            rgba(255,255,255,0.2),
+            rgba(255,255,255,0.65)
         );
-
     box-shadow:
-        0 12px 35px rgba(0,0,0,.35);
+        0 15px 45px rgba(0, 0, 0, 0.45),
+        0 0 0 1px rgba(255,255,255,0.15);
 }
-
-
 .bot-avatar {
-
+    display: block;
     width: 100%;
     height: 100%;
-
     border-radius: 50%;
-
     object-fit: cover;
-
-    display: block;
+    background: #171a21;
 }
-
-
 .header h1 {
-
     margin: 0;
-
     font-size: 29px;
-
-    font-weight: 800;
+    line-height: 1.25;
+    font-weight: 850;
+    letter-spacing: -0.5px;
+    text-shadow:
+        0 3px 15px rgba(0,0,0,0.35);
 }
-
-
 .username {
-
-    margin-top: 5px;
-
-    color: rgba(255,255,255,.65);
-
+    margin-top: 6px;
     direction: ltr;
-
-    font-size: 15px;
+    color: rgba(255,255,255,0.62);
+    font-size: 14px;
+    font-weight: 500;
 }
-
-
 .description {
-
     margin:
-
-        18px auto 0;
-
-    max-width: 500px;
-
-    color: rgba(255,255,255,.88);
-
+        17px auto 0;
+    max-width: 510px;
+    color: rgba(255,255,255,0.86);
+    font-size: 14px;
     line-height: 1.9;
-
-    font-size: 15px;
+    text-shadow:
+        0 2px 10px rgba(0,0,0,0.25);
 }
-
-
-/* =========================================
+/* ==================================================
    البطاقات
-========================================= */
-
+================================================== */
 .cards {
-
     display: flex;
-
     flex-direction: column;
-
-    gap: 13px;
+    gap: 12px;
 }
-
-
+/* ==================================================
+   البطاقات العادية
+================================================== */
 .card,
 .commands-card,
 .developer-card {
-
+    appearance: none;
+    -webkit-appearance: none;
+    position: relative;
     width: 100%;
-
-    border: 1px solid rgba(255,255,255,.13);
-
-    border-radius: 22px;
-
-    color: white;
-
-    cursor: pointer;
-
+    margin: 0;
+    padding: 0;
+    border: 1px solid rgba(255,255,255,0.13);
+    border-radius: 23px;
+    color: #fff;
     text-align: right;
-
+    cursor: pointer;
+    overflow: hidden;
     box-shadow:
-        0 10px 30px rgba(0,0,0,.22);
-
+        0 12px 35px rgba(0,0,0,0.25),
+        inset 0 1px 0 rgba(255,255,255,0.08);
     transition:
-        transform .15s ease,
-        background .15s ease;
+        transform 0.15s ease,
+        border-color 0.15s ease,
+        background 0.15s ease;
 }
-
-
+.card::before,
+.commands-card::before,
+.developer-card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+        linear-gradient(
+            120deg,
+            rgba(255,255,255,0.08),
+            transparent 35%
+        );
+    opacity: 0.65;
+}
 .card:active,
 .commands-card:active,
 .developer-card:active {
-
-    transform: scale(.98);
+    transform: scale(0.975);
 }
-
-
+/* ==================================================
+   بطاقة البوت والقروب والقناة
+================================================== */
 .card {
-
-    min-height: 88px;
-
+    min-height: 91px;
     display: flex;
-
     align-items: center;
-
     gap: 14px;
-
-    padding: 10px 14px;
-
+    padding: 11px 14px;
     background:
-        rgba(255,255,255,.105);
-
-    backdrop-filter: blur(18px);
-
-    -webkit-backdrop-filter: blur(18px);
+        rgba(255,255,255,0.095);
+    backdrop-filter: blur(22px);
+    -webkit-backdrop-filter: blur(22px);
 }
-
-
 .card-image {
-
+    position: relative;
+    z-index: 1;
     width: 68px;
     height: 68px;
-
-    flex-shrink: 0;
-
-    border-radius: 17px;
-
+    flex: 0 0 68px;
+    display: block;
+    border-radius: 19px;
     object-fit: cover;
-
+    background: rgba(255,255,255,0.08);
     box-shadow:
-        0 5px 15px rgba(0,0,0,.25);
+        0 7px 20px rgba(0,0,0,0.32);
+    border: 1px solid rgba(255,255,255,0.10);
 }
-
-
 .card-content {
-
+    position: relative;
+    z-index: 1;
     flex: 1;
-
     min-width: 0;
 }
-
-
 .card-title {
-
     font-size: 17px;
-
-    font-weight: 750;
-
+    line-height: 1.4;
+    font-weight: 800;
+    color: #fff;
+}
+.card-subtitle {
+    margin-top: 4px;
+    color: rgba(255,255,255,0.58);
+    font-size: 13px;
     line-height: 1.4;
 }
-
-
-.card-subtitle {
-
-    margin-top: 4px;
-
-    color: rgba(255,255,255,.58);
-
-    font-size: 13px;
-}
-
-
 .card-arrow {
-
-    flex-shrink: 0;
-
-    color: rgba(255,255,255,.55);
-
-    font-size: 22px;
+    position: relative;
+    z-index: 1;
+    flex: 0 0 auto;
+    color: rgba(255,255,255,0.60);
+    font-size: 23px;
+    font-weight: 300;
+    margin-left: 2px;
 }
-
-
-/* =========================================
+/* ==================================================
    زر الأوامر
-========================================= */
-
+================================================== */
 .commands-card {
-
-    min-height: 82px;
-
+    min-height: 88px;
     display: flex;
-
     align-items: center;
-
     gap: 14px;
-
-    padding: 12px 17px;
-
+    padding: 12px 16px;
     background:
         linear-gradient(
             135deg,
-            rgba(65,145,255,.28),
-            rgba(65,145,255,.10)
+            rgba(52,130,255,0.30),
+            rgba(52,130,255,0.12)
         );
-
     border-color:
-        rgba(90,160,255,.32);
-
-    backdrop-filter: blur(18px);
-
-    -webkit-backdrop-filter: blur(18px);
+        rgba(95,165,255,0.30);
+    backdrop-filter: blur(22px);
+    -webkit-backdrop-filter: blur(22px);
 }
-
-
 .commands-icon {
-
-    width: 54px;
-    height: 54px;
-
+    position: relative;
+    z-index: 1;
+    width: 57px;
+    height: 57px;
+    flex: 0 0 57px;
     display: flex;
-
     align-items: center;
     justify-content: center;
-
-    border-radius: 16px;
-
+    border-radius: 18px;
     background:
-        rgba(255,255,255,.12);
-
+        rgba(255,255,255,0.13);
+    border:
+        1px solid rgba(255,255,255,0.12);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.10);
     font-size: 28px;
-
-    flex-shrink: 0;
 }
-
-
 .commands-text {
-
+    position: relative;
+    z-index: 1;
     flex: 1;
+    min-width: 0;
 }
-
-
 .commands-title {
-
     font-size: 18px;
-
+    line-height: 1.35;
+    font-weight: 850;
+}
+.commands-subtitle {
+    margin-top: 4px;
+    color: rgba(255,255,255,0.65);
+    font-size: 13px;
+    line-height: 1.4;
+}
+/* ==================================================
+   بطاقة المطور
+================================================== */
+.developer-card {
+    min-height: 80px;
+    display: flex;
+    align-items: center;
+    gap: 13px;
+    padding: 11px 14px;
+    background:
+        rgba(255,255,255,0.085);
+    backdrop-filter: blur(22px);
+    -webkit-backdrop-filter: blur(22px);
+}
+.developer-avatar {
+    position: relative;
+    z-index: 1;
+    width: 57px;
+    height: 57px;
+    flex: 0 0 57px;
+    display: block;
+    border-radius: 50%;
+    object-fit: cover;
+    background: rgba(255,255,255,0.08);
+    border:
+        1px solid rgba(255,255,255,0.12);
+    box-shadow:
+        0 7px 20px rgba(0,0,0,0.30);
+}
+.developer-info {
+    position: relative;
+    z-index: 1;
+    flex: 1;
+    min-width: 0;
+}
+.developer-title {
+    font-size: 16px;
+    line-height: 1.4;
     font-weight: 800;
 }
-
-
-.commands-subtitle {
-
-    margin-top: 4px;
-
-    font-size: 13px;
-
-    color: rgba(255,255,255,.65);
-}
-
-
-/* =========================================
-   المطور
-========================================= */
-
-.developer-card {
-
-    min-height: 76px;
-
-    display: flex;
-
-    align-items: center;
-
-    gap: 13px;
-
-    padding: 10px 14px;
-
-    background:
-        rgba(255,255,255,.08);
-
-    backdrop-filter: blur(18px);
-
-    -webkit-backdrop-filter: blur(18px);
-}
-
-
-.developer-avatar {
-
-    width: 56px;
-    height: 56px;
-
-    border-radius: 50%;
-
-    object-fit: cover;
-
-    flex-shrink: 0;
-
-    box-shadow:
-        0 5px 15px rgba(0,0,0,.25);
-}
-
-
-.developer-info {
-
-    flex: 1;
-}
-
-
-.developer-title {
-
-    font-size: 16px;
-
-    font-weight: 750;
-}
-
-
 .developer-username {
-
     margin-top: 3px;
-
     direction: ltr;
-
     text-align: right;
-
-    color: rgba(255,255,255,.58);
-
+    color: rgba(255,255,255,0.58);
     font-size: 13px;
 }
-
-
-/* =========================================
+/* ==================================================
    الفوتر
-========================================= */
-
+================================================== */
 footer {
-
+    margin-top: 23px;
     text-align: center;
-
-    margin-top: 22px;
-
-    color: rgba(255,255,255,.4);
-
+    color: rgba(255,255,255,0.38);
     font-size: 12px;
 }
-
-
-/* =========================================
-   الجوال
-========================================= */
-
+/* ==================================================
+   الشاشات الصغيرة
+================================================== */
 @media (max-width: 400px) {
-
     .container {
         padding-left: 12px;
         padding-right: 12px;
     }
-
-    .card-image {
-        width: 62px;
-        height: 62px;
+    .header {
+        padding-top: 6px;
     }
-
+    .bot-avatar-wrapper {
+        width: 94px;
+        height: 94px;
+    }
     .header h1 {
         font-size: 26px;
     }
-
+    .description {
+        font-size: 13.5px;
+    }
+    .card-image {
+        width: 62px;
+        height: 62px;
+        flex-basis: 62px;
+    }
+    .card {
+        min-height: 84px;
+    }
     .card-title {
         font-size: 16px;
+    }
+    .commands-icon {
+        width: 53px;
+        height: 53px;
+        flex-basis: 53px;
+    }
+}
+/* ==================================================
+   أجهزة الآيفون ذات النوتش
+================================================== */
+@supports (padding: max(0px)) {
+    .container {
+        padding-top:
+            max(26px, env(safe-area-inset-top));
+        padding-bottom:
+            max(28px, env(safe-area-inset-bottom));
     }
 }
