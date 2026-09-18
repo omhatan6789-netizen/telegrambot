@@ -92,15 +92,6 @@ from handlers.games_menu import (
     games_menu_callback,
 )
 
-from games.table_tennis import (
-    start_table_tennis,
-    join_table_tennis,
-    leave_table_tennis,
-    begin_table_tennis,
-    end_table_tennis,
-    table_tennis_callback,
-    TableTennisActiveFilter,
-)
 
 from games.liar import (
     start_liar_game_lobby,
@@ -2187,86 +2178,7 @@ def main():
         group=-3
     )
 
-    # ==================================================
-    # 🏓 لعبة طاولة تنس
-    # ==================================================
 
-    # --------------------------------------------------
-    # إنشاء اللعبة
-    # --------------------------------------------------
-
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.Regex(r"^طاولة تنس$"),
-            start_table_tennis
-        ),
-        group=-8
-    )
-
-    # --------------------------------------------------
-    # دخول
-    # --------------------------------------------------
-
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & TableTennisActiveFilter([r"^دخول$"]),
-            join_table_tennis
-        ),
-        group=-8
-    )
-
-    # --------------------------------------------------
-    # خروج
-    # --------------------------------------------------
-
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & TableTennisActiveFilter([r"^\.خروج$"]),
-            leave_table_tennis
-        ),
-        group=-8
-    )
-
-    # --------------------------------------------------
-    # بدء المباراة
-    # --------------------------------------------------
-
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & TableTennisActiveFilter([r"^\.ابدا$"]),
-            begin_table_tennis
-        ),
-        group=-8
-    )
-
-    # --------------------------------------------------
-    # إنهاء المباراة
-    # --------------------------------------------------
-
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & TableTennisActiveFilter([r"^انهاء$"]),
-            end_table_tennis
-        ),
-        group=-8
-    )
-
-    # --------------------------------------------------
-    # أزرار لعبة طاولة التنس
-    # --------------------------------------------------
-
-    app.add_handler(
-        CallbackQueryHandler(
-            table_tennis_callback,
-            pattern=r"^tt:"
-        ),
-        group=-8
-    )
 
     # ==================================================
     # لعبة الغميضة
