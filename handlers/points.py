@@ -1,13 +1,29 @@
+import asyncio
+
 from telegram import Update
 from telegram.ext import ContextTypes
+
 from database import connect
-# =====================
+
+from handlers.cache import (
+    get_cached_user,
+    get_user_data,
+    set_cached_points,
+)
+
+
+# =========================================================
 # إضافة نقاط
-# =====================
+# =========================================================
+
 def add_points(user_id, amount):
+
     conn = connect()
-    cur = conn.cursor()
+
     try:
+
+        cur = conn.cursor()
+
         cur.execute(
             """
             INSERT INTO points
@@ -22,30 +38,65 @@ def add_points(user_id, amount):
             )
             ON CONFLICT (user_id)
             DO UPDATE SET
-                points = points.points + EXCLUDED.points
+                points =
+                    points.points
+                    + EXCLUDED.points
+            RETURNING points
             """,
             (
                 user_id,
                 amount
             )
         )
+
+        result = cur.fetchone()
+
         conn.commit()
+
+        if result:
+            new_points = result[0]
+
+            set_cached_points(
+                user_id,
+                new_points
+            )
+
+            return new_points
+
+        return None
+
     except Exception:
+
         conn.rollback()
         raise
+
     finally:
+
         try:
             cur.close()
         except Exception:
             pass
+
         conn.close()
-# =====================
+
+
+# =========================================================
 # جلب النقاط
-# =====================
+# =========================================================
+
 def get_points(user_id):
+
+    cached = get_cached_user(user_id)
+
+    if cached is not None:
+        return cached.get("points", 0)
+
     conn = connect()
-    cur = conn.cursor()
+
     try:
+
+        cur = conn.cursor()
+
         cur.execute(
             """
             SELECT points
@@ -54,46 +105,129 @@ def get_points(user_id):
             """,
             (user_id,)
         )
+
         result = cur.fetchone()
+
+        points = (
+            result[0]
+            if result
+            else 0
+        )
+
+        set_cached_points(
+            user_id,
+            points
+        )
+
+        return points
+
     finally:
+
         try:
             cur.close()
         except Exception:
             pass
+
         conn.close()
-    if not result:
-        return 0
-    return result[0]
-# =====================
+
+
+# =========================================================
 # نقاطي
-# =====================
+# =========================================================
+
 async def my_points(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
+
     if not update.message:
         return
-    points = get_points(
-        update.effective_user.id
+
+    user_id = update.effective_user.id
+
+    data = await get_user_data(user_id)
+
+    points = (
+        data.get("points", 0)
+        if data
+        else 0
     )
+
     await update.message.reply_text(
         f"🏆 نقاطك الحالية: {points}"
     )
-# =====================
+
+
+# =========================================================
 # الترتيب
-# =====================
+# =========================================================
+
 async def top_points(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
+
     if not update.message:
         return
-    # =====================
-    # تحديث اسم المستخدم الحالي
-    # =====================
+
+    user = update.effective_user
+
+    # =====================================================
+    # تنفيذ DB خارج event loop
+    # =====================================================
+
+    rows = await asyncio.to_thread(
+        _get_top_points_sync,
+        user.id,
+        user.first_name,
+        user.username
+    )
+
+    if not rows:
+
+        await update.message.reply_text(
+            "❌ لا يوجد ترتيب حتى الآن"
+        )
+
+        return
+
+    text = "🏆 ترتيب اللاعبين\n\n"
+
+    for place, row in enumerate(
+        rows,
+        1
+    ):
+
+        name = row[0] or "مستخدم"
+        points = row[1] or 0
+
+        text += (
+            f"{place} - {name} : "
+            f"{points} نقطة\n"
+        )
+
+    await update.message.reply_text(
+        text
+    )
+
+
+# =========================================================
+# جلب الترتيب من DB
+# =========================================================
+
+def _get_top_points_sync(
+    user_id,
+    first_name,
+    username
+):
+
     conn = connect()
-    cur = conn.cursor()
+
     try:
+
+        cur = conn.cursor()
+
+        # تحديث بيانات المستخدم
         cur.execute(
             """
             INSERT INTO users
@@ -114,24 +248,15 @@ async def top_points(
                 username = EXCLUDED.username
             """,
             (
-                update.effective_user.id,
-                update.effective_user.first_name,
-                update.effective_user.username
+                user_id,
+                first_name,
+                username
             )
         )
+
         conn.commit()
-    finally:
-        try:
-            cur.close()
-        except Exception:
-            pass
-        conn.close()
-    # =====================
-    # جلب الترتيب
-    # =====================
-    conn = connect()
-    cur = conn.cursor()
-    try:
+
+        # جلب الترتيب
         cur.execute(
             """
             SELECT
@@ -139,33 +264,21 @@ async def top_points(
                 points.points
             FROM points
             LEFT JOIN users
-            ON users.user_id = points.user_id
+                ON users.user_id = points.user_id
             ORDER BY points.points DESC
             LIMIT 10
             """
         )
+
         rows = cur.fetchall()
+
+        return rows
+
     finally:
+
         try:
             cur.close()
         except Exception:
             pass
+
         conn.close()
-    if not rows:
-        await update.message.reply_text(
-            "❌ لا يوجد ترتيب حتى الآن"
-        )
-        return
-    text = "🏆 ترتيب اللاعبين\n\n"
-    place = 1
-    for row in rows:
-        name = row[0] or "مستخدم"
-        pts = row[1] or 0
-        text += (
-            f"{place} - {name} : "
-            f"{pts} نقطة\n"
-        )
-        place += 1
-    await update.message.reply_text(
-        text
-    )
