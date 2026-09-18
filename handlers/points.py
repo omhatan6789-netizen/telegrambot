@@ -8,15 +8,160 @@ from database import connect
 from handlers.cache import (
     get_cached_user,
     get_user_data,
+    get_user_data_sync,
     set_cached_points,
 )
 
 
 # =========================================================
-# إضافة نقاط
+# إعدادات
 # =========================================================
 
-def add_points(user_id, amount):
+POINT_FLUSH_DELAY = 0.5
+
+
+# =========================================================
+# طابور حفظ النقاط
+# =========================================================
+
+_pending_point_deltas = {}
+
+_point_flush_task = None
+_point_flush_lock = None
+
+
+def _get_point_flush_lock():
+    global _point_flush_lock
+
+    if _point_flush_lock is None:
+        _point_flush_lock = asyncio.Lock()
+
+    return _point_flush_lock
+
+
+# =========================================================
+# إضافة تغيير نقاط إلى الطابور
+# =========================================================
+
+def _queue_point_delta(user_id, amount):
+
+    _pending_point_deltas[user_id] = (
+        _pending_point_deltas.get(user_id, 0)
+        + amount
+    )
+
+
+# =========================================================
+# تشغيل الحفظ بالخلفية
+# =========================================================
+
+def _schedule_point_flush():
+
+    global _point_flush_task
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+
+    if (
+        _point_flush_task is None
+        or _point_flush_task.done()
+    ):
+        _point_flush_task = loop.create_task(
+            _delayed_point_flush()
+        )
+
+
+async def _delayed_point_flush():
+
+    try:
+
+        await asyncio.sleep(
+            POINT_FLUSH_DELAY
+        )
+
+        await flush_pending_points()
+
+    except asyncio.CancelledError:
+        raise
+
+    except Exception as e:
+        print(
+            f"⚠️ خطأ في حفظ النقاط بالخلفية: {e}"
+        )
+
+
+# =========================================================
+# حفظ النقاط المعلقة
+# =========================================================
+
+async def flush_pending_points():
+
+    if not _pending_point_deltas:
+        return
+
+    lock = _get_point_flush_lock()
+
+    async with lock:
+
+        if not _pending_point_deltas:
+            return
+
+        # -------------------------------------------------
+        # أخذ نسخة من التغييرات الحالية
+        # -------------------------------------------------
+
+        pending = dict(
+            _pending_point_deltas
+        )
+
+        _pending_point_deltas.clear()
+
+        # -------------------------------------------------
+        # الحفظ خارج event loop
+        # -------------------------------------------------
+
+        try:
+
+            await asyncio.to_thread(
+                _save_point_deltas_sync,
+                pending
+            )
+
+        except Exception as e:
+
+            # -------------------------------------------------
+            # إذا فشل الحفظ نرجع النقاط للطابور
+            # -------------------------------------------------
+
+            for user_id, amount in pending.items():
+
+                _pending_point_deltas[user_id] = (
+                    _pending_point_deltas.get(
+                        user_id,
+                        0
+                    )
+                    + amount
+                )
+
+            print(
+                f"⚠️ فشل حفظ النقاط، تمت إعادتها للطابور: {e}"
+            )
+
+            raise
+
+
+# =========================================================
+# الحفظ الفعلي في قاعدة البيانات
+# =========================================================
+
+def _save_point_deltas_sync(
+    pending
+):
+
+    if not pending:
+        return
 
     conn = connect()
 
@@ -24,46 +169,36 @@ def add_points(user_id, amount):
 
         cur = conn.cursor()
 
-        cur.execute(
-            """
-            INSERT INTO points
-            (
-                user_id,
-                points
-            )
-            VALUES
-            (
-                ?,
-                ?
-            )
-            ON CONFLICT (user_id)
-            DO UPDATE SET
-                points =
-                    points.points
-                    + EXCLUDED.points
-            RETURNING points
-            """,
-            (
-                user_id,
-                amount
-            )
-        )
+        for user_id, amount in pending.items():
 
-        result = cur.fetchone()
+            if amount == 0:
+                continue
+
+            cur.execute(
+                """
+                INSERT INTO points
+                (
+                    user_id,
+                    points
+                )
+                VALUES
+                (
+                    ?,
+                    ?
+                )
+                ON CONFLICT (user_id)
+                DO UPDATE SET
+                    points =
+                        points.points
+                        + EXCLUDED.points
+                """,
+                (
+                    user_id,
+                    amount
+                )
+            )
 
         conn.commit()
-
-        if result:
-            new_points = result[0]
-
-            set_cached_points(
-                user_id,
-                new_points
-            )
-
-            return new_points
-
-        return None
 
     except Exception:
 
@@ -81,15 +216,153 @@ def add_points(user_id, amount):
 
 
 # =========================================================
+# إضافة نقاط
+# =========================================================
+
+def add_points(
+    user_id,
+    amount
+):
+
+    # -----------------------------------------------------
+    # محاولة الحصول على النقاط الحالية من الكاش
+    # -----------------------------------------------------
+
+    cached = get_cached_user(
+        user_id
+    )
+
+    if cached is not None:
+
+        current_points = (
+            cached.get(
+                "points",
+                0
+            )
+            or 0
+        )
+
+    else:
+
+        # -------------------------------------------------
+        # أول مرة فقط:
+        # نحاول تحميل المستخدم من قاعدة البيانات
+        # -------------------------------------------------
+
+        data = get_user_data_sync(
+            user_id
+        )
+
+        if data is not None:
+
+            current_points = (
+                data.get(
+                    "points",
+                    0
+                )
+                or 0
+            )
+
+        else:
+
+            current_points = 0
+
+    # -----------------------------------------------------
+    # حساب الرصيد الجديد
+    # -----------------------------------------------------
+
+    new_points = (
+        current_points
+        + amount
+    )
+
+    # -----------------------------------------------------
+    # تحديث الكاش فورًا
+    # -----------------------------------------------------
+
+    set_cached_points(
+        user_id,
+        new_points
+    )
+
+    # -----------------------------------------------------
+    # إضافة التغيير لطابور DB
+    # -----------------------------------------------------
+
+    _queue_point_delta(
+        user_id,
+        amount
+    )
+
+    # -----------------------------------------------------
+    # تشغيل الحفظ بالخلفية
+    # -----------------------------------------------------
+
+    _schedule_point_flush()
+
+    # -----------------------------------------------------
+    # نفس القيمة التي كانت ترجعها الدالة القديمة
+    # -----------------------------------------------------
+
+    return new_points
+
+
+# =========================================================
 # جلب النقاط
 # =========================================================
 
-def get_points(user_id):
+def get_points(
+    user_id
+):
 
-    cached = get_cached_user(user_id)
+    # -----------------------------------------------------
+    # الكاش أولًا
+    # -----------------------------------------------------
+
+    cached = get_cached_user(
+        user_id
+    )
 
     if cached is not None:
-        return cached.get("points", 0)
+
+        return (
+            cached.get(
+                "points",
+                0
+            )
+            or 0
+        )
+
+    # -----------------------------------------------------
+    # تحميل المستخدم من الكاش / DB
+    # -----------------------------------------------------
+
+    data = get_user_data_sync(
+        user_id
+    )
+
+    if data is not None:
+
+        points = (
+            data.get(
+                "points",
+                0
+            )
+            or 0
+        )
+
+        set_cached_points(
+            user_id,
+            points
+        )
+
+        return points
+
+    # -----------------------------------------------------
+    # احتياط:
+    # إذا لم يوجد المستخدم في users
+    # نقرأ points مباشرة
+    # -----------------------------------------------------
 
     conn = connect()
 
@@ -103,7 +376,9 @@ def get_points(user_id):
             FROM points
             WHERE user_id = ?
             """,
-            (user_id,)
+            (
+                user_id,
+            )
         )
 
         result = cur.fetchone()
@@ -145,10 +420,19 @@ async def my_points(
 
     user_id = update.effective_user.id
 
-    data = await get_user_data(user_id)
+    # -----------------------------------------------------
+    # الكاش / تحميل مرة واحدة عند الحاجة
+    # -----------------------------------------------------
+
+    data = await get_user_data(
+        user_id
+    )
 
     points = (
-        data.get("points", 0)
+        data.get(
+            "points",
+            0
+        )
         if data
         else 0
     )
@@ -170,11 +454,23 @@ async def top_points(
     if not update.message:
         return
 
+    # -----------------------------------------------------
+    # نتأكد أن جميع النقاط المعلقة محفوظة
+    # قبل جلب الترتيب
+    # -----------------------------------------------------
+
+    try:
+
+        await flush_pending_points()
+
+    except Exception:
+        pass
+
     user = update.effective_user
 
-    # =====================================================
-    # تنفيذ DB خارج event loop
-    # =====================================================
+    # -----------------------------------------------------
+    # DB خارج event loop
+    # -----------------------------------------------------
 
     rows = await asyncio.to_thread(
         _get_top_points_sync,
@@ -191,15 +487,24 @@ async def top_points(
 
         return
 
-    text = "🏆 ترتيب اللاعبين\n\n"
+    text = (
+        "🏆 ترتيب اللاعبين\n\n"
+    )
 
     for place, row in enumerate(
         rows,
         1
     ):
 
-        name = row[0] or "مستخدم"
-        points = row[1] or 0
+        name = (
+            row[0]
+            or "مستخدم"
+        )
+
+        points = (
+            row[1]
+            or 0
+        )
 
         text += (
             f"{place} - {name} : "
@@ -227,7 +532,10 @@ def _get_top_points_sync(
 
         cur = conn.cursor()
 
+        # -------------------------------------------------
         # تحديث بيانات المستخدم
+        # -------------------------------------------------
+
         cur.execute(
             """
             INSERT INTO users
@@ -256,7 +564,10 @@ def _get_top_points_sync(
 
         conn.commit()
 
+        # -------------------------------------------------
         # جلب الترتيب
+        # -------------------------------------------------
+
         cur.execute(
             """
             SELECT
