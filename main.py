@@ -349,74 +349,56 @@ message_flush_task = None
 # =========================================================
 # 🌐 Mini App Web Server
 # =========================================================
+# ==================================================
+# 🌐 سيرفر Mini App
+# ==================================================
+
 class MiniAppHandler(SimpleHTTPRequestHandler):
+
     def do_GET(self):
-        # ==============================
+
         # فحص Render
-        # ==============================
         if self.path == "/health":
             self.send_response(200)
-            self.send_header(
-                "Content-Type",
-                "text/plain; charset=utf-8"
-            )
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
             self.end_headers()
-            self.wfile.write(
-                b"Bot is running"
-            )
+            self.wfile.write(b"Bot is running")
             return
-        # ==============================
+
         # الصفحة الرئيسية
-        # ==============================
         if self.path == "/":
             self.path = "/index.html"
+
         return super().do_GET()
+
     def log_message(self, format, *args):
         return
+
+
 def start_web_server():
-    port = int(
-        os.environ.get(
-            "PORT",
-            10000
-        )
-    )
-    base_path = os.path.dirname(
-        os.path.abspath(__file__)
-    )
+
+    port = int(os.environ.get("PORT", 10000))
+
     mini_app_path = os.path.join(
-        base_path,
+        os.path.dirname(os.path.abspath(__file__)),
         "mini_app",
         "mini_app"
     )
-    print(
-        f"🌐 Mini App running on port {port}"
-    )
-    print(
-        f"📁 Mini App path: {mini_app_path}"
-    )
-    print(
-        f"📄 index.html exists: "
-        f"{os.path.isfile(os.path.join(mini_app_path, 'index.html'))}"
-    )
-    print(
-        f"🖼️ images folder exists: "
-        f"{os.path.isdir(os.path.join(mini_app_path, 'images'))}"
-    )
-    print(
-        f"🤖 bot.JPG exists: "
-        f"{os.path.isfile(os.path.join(mini_app_path, 'images', 'bot.JPG'))}"
-    )
+
     handler = partial(
         MiniAppHandler,
         directory=mini_app_path
     )
+
     server = HTTPServer(
         ("0.0.0.0", port),
         handler
     )
+
+    print(f"🌐 Mini App running on port {port}")
+    print(f"📁 Mini App path: {mini_app_path}")
+
     server.serve_forever()
-
-
 # ==================================================
 # استخراج ID الصورة - الخاص فقط
 # ==================================================
