@@ -24,7 +24,6 @@ _user_cache = _cache_module._user_cache
 
 _flush_lock = None
 
-
 def _get_flush_lock():
     global _flush_lock
 
@@ -64,21 +63,25 @@ async def get_id_target_user(update, context):
     if target.isdigit():
 
         try:
+
             return await context.bot.get_chat(
                 int(target)
             )
 
         except Exception:
+
             return None
 
     if target.startswith("@"):
 
         try:
+
             return await context.bot.get_chat(
                 target
             )
 
         except Exception:
+
             return None
 
     return None
@@ -90,9 +93,11 @@ def _create_user_if_missing_sync(
     first_name,
 ):
     conn = connect()
+
     cur = None
 
     try:
+
         cur = conn.cursor()
 
         joined_date = datetime.now().strftime(
@@ -356,6 +361,7 @@ async def user_id_command(update, context):
         )
 
     except Exception:
+
         pass
 
     safe_name = escape(
@@ -396,7 +402,6 @@ async def user_id_command(update, context):
 🖥️ USER 𖦹 {safe_username}
 💬 MSG 𖦹 {messages}
 🛡 STA 𖦹 {rank_text}
-💰 POINTS 𖦹 {points}
 ℹ️ ID 𖦹 {user_id}
 🗒 BIO 𖦹 {safe_bio}
 📅 Joined Group 𖦹 {safe_joined_date}
@@ -424,6 +429,7 @@ async def user_id_command(update, context):
             return
 
     except Exception:
+
         pass
 
     await update.message.reply_text(
@@ -440,6 +446,7 @@ def _save_join_date_sync(
 ):
 
     conn = connect()
+
     cur = None
 
     try:
@@ -570,6 +577,7 @@ def _flush_user_messages_sync(
 ):
 
     conn = connect()
+
     cur = None
 
     try:
@@ -729,6 +737,7 @@ def _schedule_message_flush():
         )
 
     except RuntimeError:
+
         pass
 
 
