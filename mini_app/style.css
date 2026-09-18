@@ -31,7 +31,7 @@ body {
 
 
 /* ==================================================
-   الخلفية
+   الخلفية الأصلية
 ================================================== */
 
 .background {
@@ -54,6 +54,7 @@ body {
 
 /* ==================================================
    طبقة الخلفية
+   بدون تغميق أو Blur
 ================================================== */
 
 .background-overlay {
@@ -62,16 +63,10 @@ body {
 
     z-index: -9;
 
-    background:
-        linear-gradient(
-            180deg,
-            rgba(5, 7, 12, 0.08) 0%,
-            rgba(5, 7, 12, 0.18) 45%,
-            rgba(5, 7, 12, 0.38) 100%
-        );
+    background: transparent;
 
-    backdrop-filter: blur(1px);
-    -webkit-backdrop-filter: blur(1px);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
 }
 
 
