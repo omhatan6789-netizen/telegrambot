@@ -1,8 +1,6 @@
 import os
-import threading
 import psycopg2
 from psycopg2 import pool
-from psycopg2 import extensions
 # ==================================================
 # Supabase
 # ==================================================
@@ -12,29 +10,22 @@ if not DATABASE_URL:
         "DATABASE_URL غير موجود في Environment Variables"
     )
 # ==================================================
-# Connection Pool
+# إعدادات Connection Pool
 # ==================================================
+DB_MIN_CONNECTIONS = 1
+DB_MAX_CONNECTIONS = 15
 DB_POOL = None
-_POOL_LOCK = threading.Lock()
-# لا نرفع الرقم بشكل مبالغ فيه حتى لا نضغط على Supabase.
-POOL_MIN_CONN = 1
-POOL_MAX_CONN = 15
 def get_pool():
     """
-    إنشاء Pool واحد فقط لكل التطبيق.
-    ThreadedConnectionPool آمن للاستخدام من أكثر
-    من Thread، وهذا مناسب مع asyncio.to_thread().
+    إنشاء Connection Pool مرة واحدة فقط.
     """
     global DB_POOL
-    if DB_POOL is not None:
-        return DB_POOL
-    with _POOL_LOCK:
-        if DB_POOL is None:
-            DB_POOL = psycopg2.pool.ThreadedConnectionPool(
-                minconn=POOL_MIN_CONN,
-                maxconn=POOL_MAX_CONN,
-                dsn=DATABASE_URL,
-            )
+    if DB_POOL is None:
+        DB_POOL = psycopg2.pool.ThreadedConnectionPool(
+            minconn=DB_MIN_CONNECTIONS,
+            maxconn=DB_MAX_CONNECTIONS,
+            dsn=DATABASE_URL,
+        )
     return DB_POOL
 # ==================================================
 # Cursor يدعم ? مثل SQLite
@@ -81,9 +72,6 @@ class CompatibleConnection:
     def __init__(self, connection):
         self._connection = connection
         self._closed = False
-    # --------------------------------------------------
-    # Cursor
-    # --------------------------------------------------
     def cursor(self):
         if self._closed:
             raise RuntimeError(
@@ -92,89 +80,38 @@ class CompatibleConnection:
         return CompatibleCursor(
             self._connection.cursor()
         )
-    # --------------------------------------------------
-    # Commit
-    # --------------------------------------------------
     def commit(self):
         return self._connection.commit()
-    # --------------------------------------------------
-    # Rollback
-    # --------------------------------------------------
     def rollback(self):
         return self._connection.rollback()
-    # --------------------------------------------------
-    # Close
-    # --------------------------------------------------
     def close(self):
         if self._closed:
             return
         self._closed = True
-        connection = self._connection
-        pool_instance = DB_POOL
-        if connection is None:
-            return
         try:
-            # إذا بقيت Transaction مفتوحة بسبب استعلام
-            # لم يتم عمل commit/rollback له، نرجع الاتصال
-            # للحالة الطبيعية قبل إعادته للـPool.
-            if (
-                not connection.closed
-                and connection.status
-                != extensions.STATUS_READY
-            ):
-                try:
-                    connection.rollback()
-                except Exception:
-                    pass
-            if pool_instance is not None:
-                try:
-                    pool_instance.putconn(
-                        connection,
-                        close=False
-                    )
-                    return
-                except Exception:
-                    pass
-            # إذا فشل إرجاعه للـPool
+            # التأكد أن الاتصال يرجع للـ pool
+            # وهو في حالة سليمة.
             try:
-                connection.close()
+                if not self._connection.closed:
+                    # إذا كان فيه transaction مفتوح
+                    # يتم إلغاؤه قبل إعادة الاتصال.
+                    if self._connection.get_transaction_status() != psycopg2.extensions.TRANSACTION_STATUS_IDLE:
+                        self._connection.rollback()
             except Exception:
                 pass
-        finally:
-            self._connection = None
-    # --------------------------------------------------
-    # خصائص psycopg2 الأصلية
-    # --------------------------------------------------
+            get_pool().putconn(
+                self._connection
+            )
+        except Exception:
+            try:
+                self._connection.close()
+            except Exception:
+                pass
     def __getattr__(self, name):
-        connection = object.__getattribute__(
-            self,
-            "_connection"
+        return getattr(
+            self._connection,
+            name
         )
-        if connection is None:
-            raise AttributeError(name)
-        return getattr(connection, name)
-# ==================================================
-# التحقق من صلاحية الاتصال
-# ==================================================
-def _connection_is_usable(conn):
-    """
-    التحقق بشكل سريع من أن الاتصال ما زال صالحًا.
-    """
-    if conn is None:
-        return False
-    try:
-        if conn.closed:
-            return False
-        # إذا كان الاتصال في حالة transaction failed
-        # لا نعيد استخدامه قبل rollback.
-        if (
-            conn.status
-            == extensions.STATUS_IN_FAILED_TRANSACTION
-        ):
-            conn.rollback()
-        return True
-    except Exception:
-        return False
 # ==================================================
 # الاتصال بقاعدة البيانات
 # ==================================================
@@ -183,34 +120,34 @@ def connect():
     conn = None
     try:
         conn = pool_instance.getconn()
-        if _connection_is_usable(conn):
-            return CompatibleConnection(conn)
-        # الاتصال غير صالح، نحذفه من الـPool
-        try:
-            pool_instance.putconn(
-                conn,
-                close=True
-            )
-        except Exception:
-            try:
-                conn.close()
-            except Exception:
-                pass
-        conn = pool_instance.getconn()
-        if not _connection_is_usable(conn):
+        # --------------------------------------------------
+        # الاتصال مغلق
+        # --------------------------------------------------
+        if conn.closed:
             try:
                 pool_instance.putconn(
                     conn,
                     close=True
                 )
             except Exception:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
-            raise RuntimeError(
-                "تعذر الحصول على اتصال صالح بقاعدة البيانات"
-            )
+                pass
+            conn = pool_instance.getconn()
+        # --------------------------------------------------
+        # تنظيف أي transaction قديمة
+        # --------------------------------------------------
+        try:
+            status = conn.get_transaction_status()
+            if status != psycopg2.extensions.TRANSACTION_STATUS_IDLE:
+                conn.rollback()
+        except Exception:
+            try:
+                pool_instance.putconn(
+                    conn,
+                    close=True
+                )
+            except Exception:
+                pass
+            conn = pool_instance.getconn()
         return CompatibleConnection(conn)
     except Exception:
         if conn is not None:
@@ -220,26 +157,20 @@ def connect():
                     close=True
                 )
             except Exception:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
+                pass
         raise
 # ==================================================
-# إغلاق الـPool
+# إغلاق Connection Pool
 # ==================================================
 def close_pool():
     global DB_POOL
     if DB_POOL is None:
         return
-    with _POOL_LOCK:
-        if DB_POOL is None:
-            return
-        try:
-            DB_POOL.closeall()
-        except Exception:
-            pass
-        DB_POOL = None
+    try:
+        DB_POOL.closeall()
+    except Exception:
+        pass
+    DB_POOL = None
 # ==================================================
 # إنشاء الجداول
 # ==================================================
@@ -277,8 +208,7 @@ def create_tables():
             'Dev'
         )
         ON CONFLICT (user_id)
-        DO UPDATE SET
-            rank = 'Dev'
+        DO UPDATE SET rank = 'Dev'
         """)
         # =====================
         # الردود العادية
@@ -286,9 +216,11 @@ def create_tables():
         cur.execute("""
         CREATE TABLE IF NOT EXISTS replies
         (
-            trigger TEXT PRIMARY KEY,
-            content TEXT,
-            metadata TEXT
+            name TEXT PRIMARY KEY,
+            text TEXT,
+            type TEXT,
+            caption TEXT,
+            entities TEXT
         )
         """)
         # =====================
@@ -297,9 +229,11 @@ def create_tables():
         cur.execute("""
         CREATE TABLE IF NOT EXISTS special_replies
         (
-            trigger TEXT PRIMARY KEY,
-            content TEXT,
-            metadata TEXT
+            name TEXT PRIMARY KEY,
+            text TEXT,
+            type TEXT,
+            caption TEXT,
+            entities TEXT
         )
         """)
         # =====================
@@ -358,8 +292,7 @@ def create_tables():
             1,
             'on'
         )
-        ON CONFLICT (id)
-        DO NOTHING
+        ON CONFLICT (id) DO NOTHING
         """)
         # =====================
         # سجل الفائزين
@@ -633,8 +566,7 @@ def create_tables():
             8453977662,
             'primary'
         )
-        ON CONFLICT (user_id)
-        DO NOTHING
+        ON CONFLICT (user_id) DO NOTHING
         """)
         # =====================
         # صلاحيات المستخدمين لكل قروب
@@ -654,9 +586,9 @@ def create_tables():
             )
         )
         """)
-        # =====================
+        # ==================================================
         # ألوان أزرار البوت
-        # =====================
+        # ==================================================
         cur.execute("""
         CREATE TABLE IF NOT EXISTS button_colors
         (
@@ -666,10 +598,7 @@ def create_tables():
         """)
         conn.commit()
     except Exception:
-        try:
-            conn.rollback()
-        except Exception:
-            pass
+        conn.rollback()
         raise
     finally:
         try:
