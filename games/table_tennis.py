@@ -1,182 +1,101 @@
-# games/table_tennis.py
-
-import asyncio
 import io
 import random
+import asyncio
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Optional
 
-from PIL import Image, ImageDraw, ImageFont, ImageFilter
+from PIL import Image, ImageDraw, ImageFont
 
 from telegram import (
     Update,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     InputFile,
+    InputMediaPhoto,
 )
-from telegram.ext import ContextTypes, filters
+from telegram.ext import ContextTypes, BaseFilter
+
+from handlers.points import add_points
 
 
-# ==================================================
-# الصلاحيات
-# ==================================================
+# =========================================================
+# الإعدادات
+# =========================================================
 
-try:
-    from handlers.roles import (
-        is_primary_developer,
-        is_secondary_developer,
-        get_rank,
-    )
-except Exception:
-    is_primary_developer = lambda _uid: False
-    is_secondary_developer = lambda _uid: False
-    get_rank = lambda _uid: ""
+TABLE_IMAGE_FILE_ID = (
+    "AgACAgQAAxkBAAIEnmqsj8k7vw-CvrqUzRnmD7fPz9fi"
+    "AAKzEmsbF1lhUe-eLSZyl-zLAQADAgADeQADPQQ"
+)
 
+WIN_POINTS = 150
+TARGET_SCORE = 11
 
-try:
-    from permissions import get_permission_level
-except Exception:
-    get_permission_level = lambda _uid: 0
-
-
-# ==================================================
-# النقاط
-# ==================================================
-
-try:
-    from handlers.points import add_points
-except Exception:
-    add_points = None
-
-
-# ==================================================
-# إعدادات اللعبة
-# ==================================================
+TURN_TIMEOUT = 15
 
 MAX_PLAYERS = 4
 MIN_PLAYERS = 2
 
-WIN_POINTS = 150
 
-TARGET_SCORE = 11
-
-TURN_TIME = 15
-
-MAX_STAMINA = 100
-
-# تكلفة الضربات
-SHOT_COSTS = {
-    "fast": 15,
-    "precise": 8,
-    "spin": 10,
-    "smash": 30,
-    "block": 5,
-}
-
-
-# ==================================================
+# =========================================================
 # الحالة
-# ==================================================
+# =========================================================
 
 @dataclass
 class TTPlayer:
-
     user_id: int
     name: str
-
-    team: str = ""
-
-    score: int = 0
-
-    stamina: int = MAX_STAMINA
-
-    shots: int = 0
-    successful_shots: int = 0
-    failed_shots: int = 0
-
-    smash_count: int = 0
-
-    combo: int = 0
-    best_combo: int = 0
+    team: str
+    stamina: int = 100
 
 
 @dataclass
-class TableTennisState:
-
+class TableTennisGame:
     chat_id: int
-
     host_id: int
-    host_name: str
 
-    players: List[TTPlayer] = field(default_factory=list)
+    players: list[TTPlayer] = field(default_factory=list)
+
+    red_score: int = 0
+    blue_score: int = 0
 
     started: bool = False
     finished: bool = False
 
-    mode: str = ""
+    turn_index: int = 0
 
-    current_index: int = 0
+    # اللاعب المهاجم
+    attacker_id: Optional[int] = None
 
-    # آخر لاعب ضرب
-    last_player_id: Optional[int] = None
+    # اللاعب المدافع
+    defender_id: Optional[int] = None
 
-    # آخر ضربة
-    last_shot: str = ""
+    attacker_action: Optional[str] = None
+    attacker_direction: Optional[str] = None
 
-    last_direction: str = ""
+    defender_action: Optional[str] = None
 
-    # مكان الكرة
-    ball_position: str = "center"
+    last_action: str = "بداية المباراة 🏓"
 
-    # من عليه الدور
-    waiting_for: Optional[int] = None
+    image_message_id: Optional[int] = None
 
-    # هل الكرة في اللعب
-    rally_active: bool = False
-
-    # النتيجة
-    score_red: int = 0
-    score_blue: int = 0
-
-    # الرسالة الرئيسية
-    message_id: Optional[int] = None
-
-    # المهمة المؤقتة
     turn_task: Optional[asyncio.Task] = None
 
-    # ترتيب الأدوار في 2v2
-    turn_order: List[int] = field(default_factory=list)
-
-    # رقم التبادل
-    rally_number: int = 0
-
-    # آخر نتيجة
-    last_result: str = ""
-
-    # أفضل ضربة إحصائيًا فقط
-    best_shot: str = ""
-
-    # أعلى كومبو إحصائي فقط
-    best_combo: int = 0
+    # مكان الكرة:
+    # center / red / blue
+    ball_side: str = "center"
 
 
-# ==================================================
-# الألعاب النشطة
-# ==================================================
-
-TABLE_TENNIS_GAMES: Dict[int, TableTennisState] = {}
+TABLE_TENNIS_GAMES: dict[int, TableTennisGame] = {}
 
 
-# ==================================================
-# فلتر اللعبة النشطة
-# ==================================================
+# =========================================================
+# فلتر اللعبة
+# =========================================================
 
-class TableTennisActiveFilter(filters.MessageFilter):
+class TableTennisActiveFilter(BaseFilter):
 
-    def __init__(self, patterns=None):
-
-        super().__init__()
-
+    def __init__(self, patterns=None, name="TableTennisActiveFilter"):
+        super().__init__(name=name)
         self.patterns = patterns or []
 
     def filter(self, message):
@@ -184,12 +103,9 @@ class TableTennisActiveFilter(filters.MessageFilter):
         if not message:
             return False
 
-        chat = message.chat
+        chat_id = message.chat_id
 
-        if not chat:
-            return False
-
-        if chat.id not in TABLE_TENNIS_GAMES:
+        if chat_id not in TABLE_TENNIS_GAMES:
             return False
 
         if not self.patterns:
@@ -200,598 +116,435 @@ class TableTennisActiveFilter(filters.MessageFilter):
         import re
 
         return any(
-            re.match(pattern, text)
+            re.search(pattern, text)
             for pattern in self.patterns
         )
 
 
-# ==================================================
-# أدوات عامة
-# ==================================================
+# =========================================================
+# أدوات
+# =========================================================
 
-def _get_rank_level(user_id: int) -> int:
-
-    try:
-
-        level = get_permission_level(user_id)
-
-        if isinstance(level, int):
-            return level
-
-    except Exception:
-        pass
-
-    try:
-
-        rank = get_rank(user_id)
-
-    except Exception:
-
-        rank = ""
-
-    levels = {
-        "عضو": 0,
-        "مميز": 1,
-        "ادمن": 2,
-        "ادمن اساسي": 3,
-        "نائب المالك": 4,
-        "المالك": 5,
-        "Dev": 6,
-    }
-
-    return levels.get(rank, 0)
+def get_game(chat_id: int):
+    return TABLE_TENNIS_GAMES.get(chat_id)
 
 
-def _is_admin_plus(user_id: int) -> bool:
-
-    return _get_rank_level(user_id) >= 2
-
-
-def _is_developer(user_id: int) -> bool:
-
-    try:
-
-        if is_primary_developer(user_id):
-            return True
-
-    except Exception:
-        pass
-
-    try:
-
-        if is_secondary_developer(user_id):
-            return True
-
-    except Exception:
-        pass
-
-    return _get_rank_level(user_id) >= 6
+def get_player(game: TableTennisGame, user_id: int):
+    for player in game.players:
+        if player.user_id == user_id:
+            return player
+    return None
 
 
-def _is_controller(
-    state: TableTennisState,
-    user_id: int
-) -> bool:
-
-    return (
-        user_id == state.host_id
-        or _is_developer(user_id)
-    )
-
-
-def _ensure_group(update: Update) -> bool:
-
-    chat = update.effective_chat
-
-    if not chat:
-        return False
-
-    return chat.type in (
-        "group",
-        "supergroup",
-    )
-
-
-async def _give_points(
-    user_id: int,
-    amount: int = WIN_POINTS
-):
-
-    if not add_points:
-        return
-
-    attempts = [
-
-        ((user_id, amount), {}),
-
-        (
-            (),
-            {
-                "user_id": user_id,
-                "amount": amount,
-            }
-        ),
-
-        (
-            (),
-            {
-                "user_id": user_id,
-                "points": amount,
-            }
-        ),
-
-        (
-            (user_id,),
-            {
-                "points": amount,
-            }
-        ),
+def get_team_players(game: TableTennisGame, team: str):
+    return [
+        p for p in game.players
+        if p.team == team
     ]
 
-    for args, kwargs in attempts:
 
-        try:
+def team_name(game: TableTennisGame, team: str):
+    players = get_team_players(game, team)
 
-            result = add_points(
-                *args,
-                **kwargs
-            )
+    if not players:
+        return "فارغ"
 
-            if asyncio.iscoroutine(result):
-
-                await result
-
-            return
-
-        except TypeError:
-
-            continue
-
-        except Exception:
-
-            return
+    return " + ".join(
+        p.name[:14]
+        for p in players
+    )
 
 
-async def _safe_delete(
-    context,
-    chat_id: int,
-    message_id: Optional[int]
-):
+def current_attacker(game: TableTennisGame):
+    if not game.players:
+        return None
 
-    if not message_id:
+    if game.turn_index >= len(game.players):
+        game.turn_index = 0
+
+    return game.players[game.turn_index]
+
+
+def current_defender(game: TableTennisGame):
+    attacker = current_attacker(game)
+
+    if not attacker:
+        return None
+
+    enemy_team = "blue" if attacker.team == "red" else "red"
+
+    enemy = get_team_players(game, enemy_team)
+
+    if not enemy:
+        return None
+
+    # في 1 ضد 1
+    if len(enemy) == 1:
+        return enemy[0]
+
+    # في 2 ضد 2:
+    # نختار لاعبًا عشوائيًا من الفريق الخصم
+    return enemy[game.turn_index % len(enemy)]
+
+
+def next_turn(game: TableTennisGame):
+
+    if not game.players:
         return
 
-    try:
+    game.turn_index += 1
 
-        await context.bot.delete_message(
-            chat_id=chat_id,
-            message_id=message_id
-        )
-
-    except Exception:
-        pass
+    if game.turn_index >= len(game.players):
+        game.turn_index = 0
 
 
-# ==================================================
-# الخطوط
-# ==================================================
+def get_font(size: int):
 
-def _font(size: int):
-
-    paths = [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    possible_fonts = [
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSansArabic-Bold.ttf",
+        "/usr/share/fonts/opentype/noto/NotoSansArabic-Regular.ttf",
+        "/usr/share/fonts/opentype/noto/NotoSansArabic-Bold.ttf",
     ]
 
-    for path in paths:
-
+    for path in possible_fonts:
         try:
-            return ImageFont.truetype(
-                path,
-                size
-            )
-
+            return ImageFont.truetype(path, size)
         except Exception:
-            continue
+            pass
 
     return ImageFont.load_default()
 
 
-# ==================================================
-# إنشاء صورة المباراة
-# ==================================================
+def fit_text(draw, text, max_width, font_size=22):
 
-def _create_match_image(
-    state: TableTennisState
+    size = font_size
+
+    while size >= 10:
+
+        font = get_font(size)
+
+        box = draw.textbbox(
+            (0, 0),
+            text,
+            font=font
+        )
+
+        width = box[2] - box[0]
+
+        if width <= max_width:
+            return font
+
+        size -= 1
+
+    return get_font(10)
+
+
+# =========================================================
+# تحميل قالب الصورة من Telegram
+# =========================================================
+
+async def get_template_image(context: ContextTypes.DEFAULT_TYPE):
+
+    file = await context.bot.get_file(
+        TABLE_IMAGE_FILE_ID
+    )
+
+    data = await file.download_as_bytearray()
+
+    image = Image.open(
+        io.BytesIO(data)
+    ).convert("RGBA")
+
+    return image
+
+
+# =========================================================
+# كتابة النص على الصورة
+# =========================================================
+
+def draw_centered_text(
+    draw,
+    text,
+    center_x,
+    y,
+    font,
+    fill="white",
 ):
 
-    WIDTH = 1200
-    HEIGHT = 800
-
-    image = Image.new(
-        "RGB",
-        (WIDTH, HEIGHT),
-        (25, 25, 35)
+    box = draw.textbbox(
+        (0, 0),
+        text,
+        font=font
     )
+
+    width = box[2] - box[0]
+
+    draw.text(
+        (
+            center_x - width / 2,
+            y
+        ),
+        text,
+        font=font,
+        fill=fill,
+    )
+
+
+# =========================================================
+# إنشاء صورة المباراة
+# =========================================================
+
+def build_match_image(
+    image: Image.Image,
+    game: TableTennisGame,
+):
+
+    image = image.copy()
 
     draw = ImageDraw.Draw(image)
 
-    # ==================================================
-    # الخلفية
-    # ==================================================
+    # الصورة الأصلية = 1000 × 563
+    # -----------------------------------------------------
+    # أماكن مربعات الفريقين بالأعلى
+    # -----------------------------------------------------
 
-    draw.rectangle(
-        (0, 0, WIDTH, HEIGHT),
-        fill=(24, 28, 40)
+    red_icon_font = get_font(27)
+    blue_icon_font = get_font(27)
+
+    draw_centered_text(
+        draw,
+        "⚡️",
+        301,
+        18,
+        red_icon_font,
+        "white",
     )
 
-    # الجمهور
-    for row in range(3):
-
-        y = 80 + row * 45
-
-        for x in range(
-            40,
-            WIDTH - 40,
-            45
-        ):
-
-            radius = random.randint(
-                5,
-                9
-            )
-
-            draw.ellipse(
-                (
-                    x - radius,
-                    y - radius,
-                    x + radius,
-                    y + radius
-                ),
-                fill=(
-                    random.randint(70, 150),
-                    random.randint(70, 150),
-                    random.randint(70, 150)
-                )
-            )
-
-    # ==================================================
-    # لوحة النتيجة
-    # ==================================================
-
-    score_font = _font(55)
-    title_font = _font(30)
-
-    draw.rounded_rectangle(
-        (380, 25, 820, 125),
-        radius=25,
-        fill=(15, 15, 20)
+    draw_centered_text(
+        draw,
+        "🎸",
+        699,
+        18,
+        blue_icon_font,
+        "white",
     )
 
-    draw.text(
-        (600, 48),
-        f"{state.score_red}  —  {state.score_blue}",
-        font=score_font,
-        anchor="mm",
-        fill=(255, 255, 255)
+    # -----------------------------------------------------
+    # النتيجة
+    # -----------------------------------------------------
+
+    score_font = get_font(31)
+
+    draw_centered_text(
+        draw,
+        str(game.red_score),
+        454,
+        20,
+        score_font,
+        "white",
     )
 
-    draw.text(
-        (600, 105),
-        "🏓 TABLE TENNIS",
-        font=title_font,
-        anchor="mm",
-        fill=(220, 220, 220)
+    draw_centered_text(
+        draw,
+        str(game.blue_score),
+        545,
+        20,
+        score_font,
+        "white",
     )
 
-    # ==================================================
-    # الملعب
-    # ==================================================
+    # -----------------------------------------------------
+    # أسماء الفريق الأحمر
+    # -----------------------------------------------------
 
-    table_x1 = 160
-    table_y1 = 270
-
-    table_x2 = 1040
-    table_y2 = 620
-
-    # أرضية
-    draw.rectangle(
-        (80, 200, 1120, 700),
-        fill=(40, 90, 65)
+    red_players = get_team_players(
+        game,
+        "red"
     )
 
-    # حدود الطاولة
-    draw.rounded_rectangle(
-        (
-            table_x1,
-            table_y1,
-            table_x2,
-            table_y2
-        ),
-        radius=15,
-        fill=(30, 90, 150),
-        outline=(255, 255, 255),
-        width=6
+    blue_players = get_team_players(
+        game,
+        "blue"
     )
 
-    # خط المنتصف
-    center_x = (
-        table_x1 + table_x2
-    ) // 2
+    # المستطيل السفلي الأحمر
+    # تقريبًا x=20 إلى 318
+    # -----------------------------------------------------
 
-    draw.line(
-        (
-            center_x,
-            table_y1,
-            center_x,
-            table_y2
-        ),
-        fill=(255, 255, 255),
-        width=4
-    )
+    red_y = 443
 
-    # الشبكة
-    net_y = (
-        table_y1 + table_y2
-    ) // 2
-
-    draw.rectangle(
-        (
-            table_x1 - 10,
-            net_y - 10,
-            table_x2 + 10,
-            net_y + 10
-        ),
-        fill=(230, 230, 230)
-    )
-
-    # ==================================================
-    # اللاعبين
-    # ==================================================
-
-    red_players = [
-        p for p in state.players
-        if p.team == "red"
-    ]
-
-    blue_players = [
-        p for p in state.players
-        if p.team == "blue"
-    ]
-
-    # الأحمر
-    for i, player in enumerate(
-        red_players
-    ):
-
-        x = 260 + i * 100
-        y = 225
-
-        active = (
-            state.waiting_for
-            == player.user_id
-        )
-
-        radius = 38 if active else 32
-
-        draw.ellipse(
-            (
-                x - radius,
-                y - radius,
-                x + radius,
-                y + radius
-            ),
-            fill=(190, 45, 55),
-            outline=(
-                255,
-                230,
-                80
-            ) if active else None,
-            width=5
-        )
-
-    # الأزرق
-    for i, player in enumerate(
-        blue_players
-    ):
-
-        x = 740 + i * 100
-        y = 665
-
-        active = (
-            state.waiting_for
-            == player.user_id
-        )
-
-        radius = 38 if active else 32
-
-        draw.ellipse(
-            (
-                x - radius,
-                y - radius,
-                x + radius,
-                y + radius
-            ),
-            fill=(45, 90, 200),
-            outline=(
-                255,
-                230,
-                80
-            ) if active else None,
-            width=5
-        )
-
-    # ==================================================
-    # الكرة
-    # ==================================================
-
-    positions = {
-
-        "center": (
-            center_x,
-            net_y
-        ),
-
-        "up": (
-            center_x,
-            table_y1 + 70
-        ),
-
-        "down": (
-            center_x,
-            table_y2 - 70
-        ),
-
-        "left": (
-            table_x1 + 130,
-            net_y
-        ),
-
-        "right": (
-            table_x2 - 130,
-            net_y
-        ),
-
-        "up_left": (
-            table_x1 + 180,
-            table_y1 + 80
-        ),
-
-        "up_right": (
-            table_x2 - 180,
-            table_y1 + 80
-        ),
-
-        "down_left": (
-            table_x1 + 180,
-            table_y2 - 80
-        ),
-
-        "down_right": (
-            table_x2 - 180,
-            table_y2 - 80
-        ),
-    }
-
-    bx, by = positions.get(
-        state.ball_position,
-        positions["center"]
-    )
-
-    draw.ellipse(
-        (
-            bx - 12,
-            by - 12,
-            bx + 12,
-            by + 12
-        ),
-        fill=(255, 255, 255),
-        outline=(30, 30, 30),
-        width=3
-    )
-
-    # ==================================================
-    # أسماء اللاعبين والطاقة
-    # ==================================================
-
-    name_font = _font(22)
-    small_font = _font(17)
-
-    # الأحمر
-    y = 725
-
-    for player in red_players:
+    for index, player in enumerate(red_players[:2]):
 
         text = (
-            f"🔴 {player.name}  "
-            f"⚡ {player.stamina}"
+            f"{player.name[:15]}  ⚡ {player.stamina}"
+        )
+
+        font = fit_text(
+            draw,
+            text,
+            270,
+            19
         )
 
         draw.text(
-            (80, y),
+            (
+                40,
+                red_y + index * 23
+            ),
             text,
-            font=name_font,
-            fill=(255, 255, 255)
+            font=font,
+            fill="white",
         )
 
-        y += 30
+    # -----------------------------------------------------
+    # أسماء الفريق الأزرق
+    # -----------------------------------------------------
 
-    # الأزرق
-    y = 725
+    blue_y = 443
 
-    for player in blue_players:
+    for index, player in enumerate(blue_players[:2]):
 
         text = (
-            f"🔵 {player.name}  "
-            f"⚡ {player.stamina}"
+            f"{player.name[:15]}  ⚡ {player.stamina}"
         )
 
-        bbox = draw.textbbox(
+        font = fit_text(
+            draw,
+            text,
+            270,
+            19
+        )
+
+        # نبدأ من اليمين تقريبًا
+        box = draw.textbbox(
             (0, 0),
             text,
-            font=name_font
+            font=font
         )
+
+        text_width = box[2] - box[0]
 
         draw.text(
             (
-                WIDTH - (
-                    bbox[2] - bbox[0]
-                ) - 80,
-                y
+                960 - text_width,
+                blue_y + index * 23
             ),
             text,
-            font=name_font,
-            fill=(255, 255, 255)
+            font=font,
+            fill="white",
         )
 
-        y += 30
+    # -----------------------------------------------------
+    # معلومات وسط الملعب
+    # -----------------------------------------------------
 
-    # ==================================================
-    # آخر ضربة
-    # ==================================================
+    if game.started and not game.finished:
 
-    if state.last_shot:
+        attacker = current_attacker(game)
 
-        text = (
-            f"{state.last_shot}"
-            f"  {state.last_direction}"
-        )
+        if attacker:
 
-        draw.rounded_rectangle(
-            (
-                430,
-                145,
-                770,
-                195
-            ),
-            radius=15,
-            fill=(15, 15, 20)
-        )
+            turn_text = (
+                f"دور: {attacker.name[:15]}"
+            )
 
-        draw.text(
-            (
-                600,
-                170
-            ),
-            text,
-            font=small_font,
-            anchor="mm",
-            fill=(255, 255, 255)
-        )
+            font = fit_text(
+                draw,
+                turn_text,
+                300,
+                18
+            )
 
-    # ==================================================
-    # تحسين بسيط
-    # ==================================================
+            draw_centered_text(
+                draw,
+                turn_text,
+                500,
+                365,
+                font,
+                "white",
+            )
 
-    image = image.filter(
-        ImageFilter.SHARPEN
+    # -----------------------------------------------------
+    # آخر حركة
+    # -----------------------------------------------------
+
+    action_font = fit_text(
+        draw,
+        game.last_action,
+        500,
+        20
     )
+
+    draw_centered_text(
+        draw,
+        game.last_action,
+        500,
+        392,
+        action_font,
+        "white",
+    )
+
+    # -----------------------------------------------------
+    # مؤشر الكرة
+    # -----------------------------------------------------
+
+    ball_positions = {
+        "red": (245, 265),
+        "center": (500, 265),
+        "blue": (755, 265),
+    }
+
+    bx, by = ball_positions.get(
+        game.ball_side,
+        (500, 265)
+    )
+
+    # دائرة الكرة
+    draw.ellipse(
+        (
+            bx - 8,
+            by - 8,
+            bx + 8,
+            by + 8,
+        ),
+        fill="white",
+        outline="black",
+        width=2,
+    )
+
+    # -----------------------------------------------------
+    # إذا المباراة لم تبدأ
+    # -----------------------------------------------------
+
+    if not game.started:
+
+        draw_centered_text(
+            draw,
+            "بانتظار بدء المباراة 🏓",
+            500,
+            365,
+            get_font(22),
+            "white",
+        )
+
+    return image
+
+
+# =========================================================
+# تحويل الصورة إلى Bytes
+# =========================================================
+
+def image_to_bytes(image):
 
     output = io.BytesIO()
 
     image.save(
         output,
-        format="PNG"
+        format="PNG",
+        optimize=True,
     )
 
     output.seek(0)
@@ -799,62 +552,130 @@ def _create_match_image(
     return output
 
 
-# ==================================================
-# إنشاء لوحة الأزرار
-# ==================================================
+# =========================================================
+# إرسال / تحديث صورة المباراة
+# =========================================================
 
-def _shot_keyboard():
+async def send_or_update_image(
+    update,
+    context,
+    game,
+):
+
+    template = await get_template_image(
+        context
+    )
+
+    final_image = build_match_image(
+        template,
+        game
+    )
+
+    buffer = image_to_bytes(
+        final_image
+    )
+
+    # أول مرة
+    if not game.image_message_id:
+
+        message = await context.bot.send_photo(
+            chat_id=game.chat_id,
+            photo=InputFile(
+                buffer,
+                filename="table_tennis.png"
+            ),
+        )
+
+        game.image_message_id = message.message_id
+
+        return message
+
+    # تحديث الصورة
+    try:
+
+        await context.bot.edit_message_media(
+            chat_id=game.chat_id,
+            message_id=game.image_message_id,
+            media=InputMediaPhoto(
+                media=InputFile(
+                    buffer,
+                    filename="table_tennis.png"
+                )
+            )
+        )
+
+    except Exception:
+
+        # إذا فشل التعديل نرسل صورة جديدة
+        message = await context.bot.send_photo(
+            chat_id=game.chat_id,
+            photo=InputFile(
+                buffer,
+                filename="table_tennis.png"
+            ),
+        )
+
+        game.image_message_id = message.message_id
+
+    return None
+
+
+# =========================================================
+# أزرار المهاجم
+# =========================================================
+
+def attacker_keyboard():
 
     return InlineKeyboardMarkup([
 
         [
             InlineKeyboardButton(
                 "↖️",
-                callback_data="tt:dir:up_left"
+                callback_data="tt:dir:ul"
             ),
             InlineKeyboardButton(
                 "⬆️",
-                callback_data="tt:dir:up"
+                callback_data="tt:dir:u"
             ),
             InlineKeyboardButton(
                 "↗️",
-                callback_data="tt:dir:up_right"
+                callback_data="tt:dir:ur"
             ),
         ],
 
         [
             InlineKeyboardButton(
                 "⬅️",
-                callback_data="tt:dir:left"
+                callback_data="tt:dir:l"
             ),
             InlineKeyboardButton(
                 "🎯",
-                callback_data="tt:dir:center"
+                callback_data="tt:dir:c"
             ),
             InlineKeyboardButton(
                 "➡️",
-                callback_data="tt:dir:right"
+                callback_data="tt:dir:r"
             ),
         ],
 
         [
             InlineKeyboardButton(
                 "↙️",
-                callback_data="tt:dir:down_left"
+                callback_data="tt:dir:dl"
             ),
             InlineKeyboardButton(
                 "⬇️",
-                callback_data="tt:dir:down"
+                callback_data="tt:dir:d"
             ),
             InlineKeyboardButton(
                 "↘️",
-                callback_data="tt:dir:down_right"
+                callback_data="tt:dir:dr"
             ),
         ],
 
         [
             InlineKeyboardButton(
-                "⚡ سريعة",
+                "⚡️ سريعة",
                 callback_data="tt:shot:fast"
             ),
             InlineKeyboardButton(
@@ -872,1398 +693,1175 @@ def _shot_keyboard():
                 "💥 Smash",
                 callback_data="tt:shot:smash"
             ),
-            InlineKeyboardButton(
-                "🛡️ صد",
-                callback_data="tt:shot:block"
-            ),
         ],
+
     ])
 
 
-# ==================================================
-# توزيع الفرق
-# ==================================================
+# =========================================================
+# أزرار المدافع
+# =========================================================
 
-def _assign_teams(
-    state: TableTennisState
+def defender_keyboard():
+
+    return InlineKeyboardMarkup([
+
+        [
+            InlineKeyboardButton(
+                "🛡️ صد",
+                callback_data="tt:def:block"
+            ),
+            InlineKeyboardButton(
+                "⚡️ صد سريع",
+                callback_data="tt:def:quick"
+            ),
+        ],
+
+        [
+            InlineKeyboardButton(
+                "↩️ إرجاع",
+                callback_data="tt:def:return"
+            ),
+            InlineKeyboardButton(
+                "🎯 رد دقيق",
+                callback_data="tt:def:precise"
+            ),
+        ],
+
+    ])
+
+
+# =========================================================
+# إرسال دور المهاجم
+# =========================================================
+
+async def send_attacker_controls(
+    context,
+    game,
 ):
 
-    players = state.players[:]
+    attacker = current_attacker(game)
 
-    random.shuffle(players)
+    defender = current_defender(game)
 
-    if len(players) == 2:
+    if not attacker or not defender:
+        return
 
-        players[0].team = "red"
-        players[1].team = "blue"
+    game.attacker_id = attacker.user_id
+    game.defender_id = defender.user_id
 
-        state.mode = "1v1"
+    game.attacker_action = None
+    game.attacker_direction = None
+    game.defender_action = None
 
-    elif len(players) == 4:
+    try:
 
-        players[0].team = "red"
-        players[1].team = "red"
+        await context.bot.send_message(
+            chat_id=attacker.user_id,
+            text=(
+                "🏓 <b>دورك في طاولة التنس!</b>\n\n"
+                "اختر اتجاه الضربة أولًا، "
+                "ثم اختر نوع الضربة.\n\n"
+                "⏱ لديك 15 ثانية."
+            ),
+            reply_markup=attacker_keyboard(),
+            parse_mode="HTML",
+        )
 
-        players[2].team = "blue"
-        players[3].team = "blue"
+    except Exception:
 
-        state.mode = "2v2"
+        await context.bot.send_message(
+            chat_id=game.chat_id,
+            text=(
+                f"⚠️ <a href='tg://user?id={attacker.user_id}'>"
+                f"{attacker.name}</a>\n"
+                "افتح خاص البوت أولًا حتى تقدر تلعب."
+            ),
+            parse_mode="HTML",
+        )
 
 
-# ==================================================
-# ترتيب الأدوار
-# ==================================================
+# =========================================================
+# إرسال دور المدافع
+# =========================================================
 
-def _build_turn_order(
-    state: TableTennisState
+async def send_defender_controls(
+    context,
+    game,
 ):
 
-    if state.mode == "1v1":
+    defender = get_player(
+        game,
+        game.defender_id
+    )
 
-        state.turn_order = [
-            p.user_id
-            for p in state.players
-        ]
+    attacker = get_player(
+        game,
+        game.attacker_id
+    )
+
+    if not defender or not attacker:
+        return
+
+    try:
+
+        await context.bot.send_message(
+            chat_id=defender.user_id,
+            text=(
+                "🏓 <b>دورك للدفاع!</b>\n\n"
+                f"🏓 اللاعب المهاجم: {attacker.name}\n"
+                f"🎯 الاتجاه: {game.attacker_direction}\n"
+                f"💥 الضربة: {game.attacker_action}\n\n"
+                "اختر طريقة الصد:"
+            ),
+            reply_markup=defender_keyboard(),
+            parse_mode="HTML",
+        )
+
+    except Exception:
+
+        await context.bot.send_message(
+            chat_id=game.chat_id,
+            text=(
+                f"⚠️ <a href='tg://user?id={defender.user_id}'>"
+                f"{defender.name}</a>\n"
+                "افتح خاص البوت أولًا حتى تقدر تلعب."
+            ),
+            parse_mode="HTML",
+        )
+
+
+# =========================================================
+# قوة الضربات
+# =========================================================
+
+SHOT_POWER = {
+    "fast": 20,
+    "precise": 15,
+    "spin": 25,
+    "smash": 40,
+}
+
+SHOT_COST = {
+    "fast": 12,
+    "precise": 8,
+    "spin": 10,
+    "smash": 30,
+}
+
+
+DEFENSE_POWER = {
+    "block": 25,
+    "quick": 18,
+    "return": 30,
+    "precise": 35,
+}
+
+
+SHOT_NAMES = {
+    "fast": "⚡️ سريعة",
+    "precise": "🎯 دقيقة",
+    "spin": "🌀 Spin",
+    "smash": "💥 Smash",
+}
+
+DEFENSE_NAMES = {
+    "block": "🛡️ صد",
+    "quick": "⚡️ صد سريع",
+    "return": "↩️ إرجاع",
+    "precise": "🎯 رد دقيق",
+}
+
+
+# =========================================================
+# حساب التبادل
+# =========================================================
+
+async def resolve_exchange(
+    context,
+    game,
+):
+
+    attacker = get_player(
+        game,
+        game.attacker_id
+    )
+
+    defender = get_player(
+        game,
+        game.defender_id
+    )
+
+    if not attacker or not defender:
+        return
+
+    shot = game.attacker_action
+    defense = game.defender_action
+
+    if not shot or not defense:
+        return
+
+    # -----------------------------------------------------
+    # الطاقة
+    # -----------------------------------------------------
+
+    attacker.stamina = max(
+        0,
+        attacker.stamina - SHOT_COST.get(
+            shot,
+            10
+        )
+    )
+
+    # -----------------------------------------------------
+    # حساب قوة الهجوم
+    # -----------------------------------------------------
+
+    attack_power = SHOT_POWER.get(
+        shot,
+        15
+    )
+
+    # طاقة اللاعب تؤثر
+    attack_power += (
+        attacker.stamina // 20
+    )
+
+    # -----------------------------------------------------
+    # قوة الدفاع
+    # -----------------------------------------------------
+
+    defense_power = DEFENSE_POWER.get(
+        defense,
+        20
+    )
+
+    defense_power += (
+        defender.stamina // 25
+    )
+
+    # -----------------------------------------------------
+    # بعض الضربات أقوى ضد أنواع معينة
+    # -----------------------------------------------------
+
+    bonus = 0
+
+    if shot == "smash" and defense == "block":
+        bonus = 12
+
+    elif shot == "spin" and defense == "quick":
+        bonus = 8
+
+    elif shot == "precise" and defense == "return":
+        bonus = 7
+
+    elif shot == "fast" and defense == "precise":
+        bonus = -5
+
+    attack_power += bonus
+
+    # عشوائية بسيطة حتى لا تصبح النتيجة مضمونة
+    attack_power += random.randint(
+        -8,
+        8
+    )
+
+    defense_power += random.randint(
+        -8,
+        8
+    )
+
+    # -----------------------------------------------------
+    # النتيجة
+    # -----------------------------------------------------
+
+    attacker_wins_exchange = (
+        attack_power > defense_power
+    )
+
+    if attacker_wins_exchange:
+
+        # نقطة للمهاجم
+        if attacker.team == "red":
+            game.red_score += 1
+            game.ball_side = "red"
+        else:
+            game.blue_score += 1
+            game.ball_side = "blue"
+
+        game.last_action = (
+            f"{SHOT_NAMES[shot]} — نقطة لـ"
+            f"{'الأحمر 🔴' if attacker.team == 'red' else 'الأزرق 🔵'}"
+        )
+
+        # استرجاع بسيط للطاقة بعد النقطة
+        defender.stamina = min(
+            100,
+            defender.stamina + 5
+        )
+
+    else:
+
+        # الدفاع نجح
+        defender.stamina = min(
+            100,
+            defender.stamina + 8
+        )
+
+        game.ball_side = defender.team
+
+        game.last_action = (
+            f"{DEFENSE_NAMES[defense]} — صد ناجح 🛡️"
+        )
+
+    # -----------------------------------------------------
+    # تحديث الصورة
+    # -----------------------------------------------------
+
+    await send_or_update_image(
+        None,
+        context,
+        game
+    )
+
+    # -----------------------------------------------------
+    # هل انتهت المباراة؟
+    # -----------------------------------------------------
+
+    if check_winner(game):
+
+        await finish_game(
+            context,
+            game
+        )
 
         return
 
-    red = [
-        p.user_id
-        for p in state.players
-        if p.team == "red"
-    ]
+    # -----------------------------------------------------
+    # الدور التالي
+    # -----------------------------------------------------
 
-    blue = [
-        p.user_id
-        for p in state.players
-        if p.team == "blue"
-    ]
+    next_turn(game)
 
-    state.turn_order = []
+    await asyncio.sleep(1)
 
-    count = min(
-        len(red),
-        len(blue)
+    await send_or_update_image(
+        None,
+        context,
+        game
     )
 
-    for i in range(count):
-
-        state.turn_order.append(
-            red[i]
-        )
-
-        state.turn_order.append(
-            blue[i]
-        )
-
-
-# ==================================================
-# اللاعب الحالي
-# ==================================================
-
-def _current_player(
-    state: TableTennisState
-) -> Optional[TTPlayer]:
-
-    if not state.turn_order:
-        return None
-
-    user_id = state.turn_order[
-        state.current_index
-        % len(state.turn_order)
-    ]
-
-    for player in state.players:
-
-        if player.user_id == user_id:
-
-            return player
-
-    return None
-
-
-# ==================================================
-# الفريق المقابل
-# ==================================================
-
-def _opponent_team(
-    player: TTPlayer
-):
-
-    return (
-        "blue"
-        if player.team == "red"
-        else "red"
+    await send_attacker_controls(
+        context,
+        game
     )
 
+    # مؤقت الدور
+    if game.turn_task:
 
-# ==================================================
-# تحديد نجاح الضربة
-# ==================================================
+        try:
+            game.turn_task.cancel()
+        except Exception:
+            pass
 
-def _shot_success_probability(
-    shot: str,
-    direction: str,
-    player: TTPlayer
-) -> float:
-
-    base = {
-
-        "fast": 0.74,
-
-        "precise": 0.82,
-
-        "spin": 0.78,
-
-        "smash": 0.58,
-
-        "block": 0.88,
-    }.get(
-        shot,
-        0.70
-    )
-
-    # الطاقة تؤثر
-    if player.stamina < 30:
-
-        base -= 0.15
-
-    elif player.stamina < 50:
-
-        base -= 0.07
-
-    # الزوايا أصعب
-    if direction in (
-        "up_left",
-        "up_right",
-        "down_left",
-        "down_right"
-    ):
-
-        base -= 0.03
-
-    return max(
-        0.15,
-        min(
-            base,
-            0.95
+    game.turn_task = asyncio.create_task(
+        attacker_timeout(
+            context,
+            game.chat_id
         )
     )
 
 
-# ==================================================
-# حساب النقطة
-# ==================================================
+# =========================================================
+# مؤقت الدور
+# =========================================================
 
-def _give_point_to_opponent(
-    state: TableTennisState,
-    player: TTPlayer
+async def attacker_timeout(
+    context,
+    chat_id,
 ):
 
-    opponent_team = _opponent_team(
-        player
+    await asyncio.sleep(
+        TURN_TIMEOUT
     )
 
-    if opponent_team == "red":
+    game = TABLE_TENNIS_GAMES.get(
+        chat_id
+    )
 
-        state.score_red += 1
+    if not game:
+        return
 
-    else:
+    if game.finished:
+        return
 
-        state.score_blue += 1
+    attacker = current_attacker(game)
+
+    if not attacker:
+        return
+
+    game.last_action = (
+        f"⏱ {attacker.name} تأخر عن الدور"
+    )
+
+    # خصم بسيط من الطاقة بدل نقطة مجانية
+    attacker.stamina = max(
+        0,
+        attacker.stamina - 10
+    )
+
+    next_turn(game)
+
+    await send_or_update_image(
+        None,
+        context,
+        game
+    )
+
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=(
+            f"⏱ انتهى وقت <b>{attacker.name}</b>\n"
+            "تم الانتقال للاعب التالي."
+        ),
+        parse_mode="HTML",
+    )
+
+    await send_attacker_controls(
+        context,
+        game
+    )
+
+    game.turn_task = asyncio.create_task(
+        attacker_timeout(
+            context,
+            chat_id
+        )
+    )
 
 
-def _give_point_to_player_team(
-    state: TableTennisState,
-    player: TTPlayer
-):
+# =========================================================
+# التحقق من الفائز
+# =========================================================
 
-    if player.team == "red":
+def check_winner(game):
 
-        state.score_red += 1
+    red = game.red_score
+    blue = game.blue_score
 
-    else:
-
-        state.score_blue += 1
-
-
-# ==================================================
-# هل انتهت المباراة؟
-# ==================================================
-
-def _winner_team(
-    state: TableTennisState
-):
-
-    red = state.score_red
-    blue = state.score_blue
-
-    if (
-        red >= TARGET_SCORE
-        and red - blue >= 2
-    ):
-
+    if red >= TARGET_SCORE and red - blue >= 2:
         return "red"
 
-    if (
-        blue >= TARGET_SCORE
-        and blue - red >= 2
-    ):
-
+    if blue >= TARGET_SCORE and blue - red >= 2:
         return "blue"
 
     return None
 
 
-# ==================================================
-# تحديث الطاقة
-# ==================================================
+# =========================================================
+# إعطاء النقاط
+# =========================================================
 
-def _consume_stamina(
-    player: TTPlayer,
-    shot: str
+async def give_winner_points(
+    user_id,
+    chat_id,
 ):
-
-    cost = SHOT_COSTS.get(
-        shot,
-        10
-    )
-
-    player.stamina = max(
-        0,
-        player.stamina - cost
-    )
-
-
-def _recover_stamina(
-    state: TableTennisState
-):
-
-    for player in state.players:
-
-        player.stamina = min(
-            MAX_STAMINA,
-            player.stamina + 3
-        )
-
-
-# ==================================================
-# إرسال صورة المباراة
-# ==================================================
-
-async def _send_match(
-    state: TableTennisState,
-    context: ContextTypes.DEFAULT_TYPE,
-    caption: str,
-    keyboard=None
-):
-
-    image = _create_match_image(
-        state
-    )
-
-    photo = InputFile(
-        image,
-        filename="table_tennis.png"
-    )
-
-    if state.message_id:
-
-        try:
-
-            message = (
-                await context.bot.edit_message_media(
-                    chat_id=state.chat_id,
-                    message_id=state.message_id,
-                    media=__import__(
-                        "telegram"
-                    ).InputMediaPhoto(
-                        media=photo,
-                        caption=caption
-                    ),
-                )
-            )
-
-            if keyboard:
-
-                await context.bot.edit_message_reply_markup(
-                    chat_id=state.chat_id,
-                    message_id=state.message_id,
-                    reply_markup=keyboard
-                )
-
-            return message
-
-        except Exception:
-
-            pass
-
-    message = await context.bot.send_photo(
-        chat_id=state.chat_id,
-        photo=photo,
-        caption=caption,
-        reply_markup=keyboard
-    )
-
-    state.message_id = message.message_id
-
-    return message
-
-
-# ==================================================
-# وصف المباراة
-# ==================================================
-
-def _match_caption(
-    state: TableTennisState
-):
-
-    red = [
-        p.name
-        for p in state.players
-        if p.team == "red"
-    ]
-
-    blue = [
-        p.name
-        for p in state.players
-        if p.team == "blue"
-    ]
-
-    red_text = (
-        " — ".join(red)
-        if red
-        else "لا يوجد"
-    )
-
-    blue_text = (
-        " — ".join(blue)
-        if blue
-        else "لا يوجد"
-    )
-
-    current = _current_player(
-        state
-    )
-
-    current_name = (
-        current.name
-        if current
-        else "—"
-    )
-
-    text = (
-        "🏓 <b>طاولة تنس</b>\n\n"
-        f"🔴 <b>الفريق الأحمر:</b> "
-        f"{red_text}\n"
-        f"🔵 <b>الفريق الأزرق:</b> "
-        f"{blue_text}\n\n"
-        f"🏆 <b>{state.score_red} — "
-        f"{state.score_blue}</b>\n\n"
-        f"🎯 الدور: <b>{current_name}</b>"
-    )
-
-    if state.last_result:
-
-        text += (
-            f"\n\n{state.last_result}"
-        )
-
-    return text
-
-
-# ==================================================
-# انتهاء المهمة المؤقتة
-# ==================================================
-
-async def _cancel_turn_task(
-    state: TableTennisState
-):
-
-    if not state.turn_task:
-        return
-
-    if state.turn_task.done():
-        return
-
-    state.turn_task.cancel()
 
     try:
 
-        await state.turn_task
+        result = add_points(
+            user_id,
+            WIN_POINTS,
+            chat_id
+        )
 
-    except asyncio.CancelledError:
-        pass
+        if asyncio.iscoroutine(result):
+            await result
+
+        return True
+
+    except TypeError:
+
+        try:
+
+            result = add_points(
+                chat_id,
+                user_id,
+                WIN_POINTS
+            )
+
+            if asyncio.iscoroutine(result):
+                await result
+
+            return True
+
+        except Exception:
+            pass
 
     except Exception:
         pass
 
+    return False
 
-# ==================================================
-# مؤقت الدور
-# ==================================================
 
-async def _turn_timeout(
-    state: TableTennisState,
-    context: ContextTypes.DEFAULT_TYPE,
-    user_id: int
+# =========================================================
+# إنهاء المباراة
+# =========================================================
+
+async def finish_game(
+    context,
+    game,
 ):
 
-    try:
+    if game.finished:
+        return
 
-        await asyncio.sleep(
-            TURN_TIME
+    game.finished = True
+
+    if game.turn_task:
+
+        try:
+            game.turn_task.cancel()
+        except Exception:
+            pass
+
+        game.turn_task = None
+
+    winner = check_winner(game)
+
+    if not winner:
+        return
+
+    winner_players = get_team_players(
+        game,
+        winner
+    )
+
+    winner_text = (
+        "🔴 الفريق الأحمر"
+        if winner == "red"
+        else
+        "🔵 الفريق الأزرق"
+    )
+
+    for player in winner_players:
+
+        await give_winner_points(
+            player.user_id,
+            game.chat_id
         )
 
-    except asyncio.CancelledError:
+    game.last_action = (
+        f"🏆 {winner_text} فاز!"
+    )
 
-        return
+    await send_or_update_image(
+        None,
+        context,
+        game
+    )
 
-    if (
-        state.finished
-        or not state.started
-        or state.waiting_for != user_id
-    ):
+    names = "\n".join(
+        f"• {p.name}"
+        for p in winner_players
+    )
 
-        return
-
-    player = next(
-        (
-            p for p in state.players
-            if p.user_id == user_id
+    await context.bot.send_message(
+        chat_id=game.chat_id,
+        text=(
+            "🏓 <b>انتهت مباراة طاولة التنس!</b>\n\n"
+            f"🏆 الفائز: <b>{winner_text}</b>\n"
+            f"🔴 {game.red_score} — {game.blue_score} 🔵\n\n"
+            f"🎉 الفائزون:\n{names}\n\n"
+            f"💰 كل لاعب فائز حصل على <b>+{WIN_POINTS}</b> نقطة."
         ),
+        parse_mode="HTML",
+    )
+
+    TABLE_TENNIS_GAMES.pop(
+        game.chat_id,
         None
     )
 
-    if not player:
-        return
 
-    # الوقت انتهى = نقطة للخصم
-    _give_point_to_opponent(
-        state,
-        player
-    )
-
-    player.failed_shots += 1
-    player.combo = 0
-
-    state.last_result = (
-        f"⏰ <b>{player.name}</b> "
-        "تأخر في الرد!\n"
-        "🏓 نقطة للفريق الخصم."
-    )
-
-    state.current_index += 1
-
-    winner = _winner_team(
-        state
-    )
-
-    if winner:
-
-        await _finish_match(
-            state,
-            context,
-            winner
-        )
-
-        return
-
-    state.waiting_for = (
-        _current_player(state).user_id
-    )
-
-    state.rally_active = False
-
-    await _send_match(
-        state,
-        context,
-        _match_caption(state),
-        _shot_keyboard()
-    )
-
-    state.turn_task = asyncio.create_task(
-        _turn_timeout(
-            state,
-            context,
-            state.waiting_for
-        )
-    )
-
-
-# ==================================================
+# =========================================================
 # إنشاء اللعبة
-# ==================================================
+# =========================================================
 
 async def start_table_tennis(
     update: Update,
-    context: ContextTypes.DEFAULT_TYPE
+    context: ContextTypes.DEFAULT_TYPE,
 ):
 
-    if not _ensure_group(update):
-
-        return
-
-    chat_id = update.effective_chat.id
-
-    if chat_id in TABLE_TENNIS_GAMES:
-
-        await update.message.reply_text(
-            "🏓 توجد لعبة طاولة تنس بالفعل في هذا القروب."
-        )
-
-        return
-
+    message = update.effective_message
+    chat = update.effective_chat
     user = update.effective_user
 
-    if not user:
-
+    if chat.type not in (
+        "group",
+        "supergroup"
+    ):
         return
 
-    if not _is_admin_plus(
-        user.id
-    ) and not _is_developer(
-        user.id
-    ):
+    if chat.id in TABLE_TENNIS_GAMES:
 
-        await update.message.reply_text(
-            "❌ هذه اللعبة متاحة للأدمن وفوق."
+        await message.reply_text(
+            "🏓 توجد طاولة تنس مفتوحة بالفعل."
         )
 
         return
 
-    state = TableTennisState(
-        chat_id=chat_id,
-        host_id=user.id,
-        host_name=user.first_name
-        or "الهوست"
+    game = TableTennisGame(
+        chat_id=chat.id,
+        host_id=user.id
     )
 
     TABLE_TENNIS_GAMES[
-        chat_id
-    ] = state
+        chat.id
+    ] = game
 
-    await update.message.reply_text(
+    await message.reply_text(
+        "🏓 <b>تم إنشاء طاولة تنس!</b>\n\n"
+        "👥 اللاعبين: <b>2 أو 4</b>\n"
+        "🔴 لاعبان = 1 ضد 1\n"
+        "🔵 أربعة لاعبين = 2 ضد 2\n\n"
+        "اكتب <b>دخول</b> للانضمام.\n"
+        "عند اكتمال اللاعبين اكتب <b>.ابدا</b>\n\n"
+        "💰 الفائز يحصل على <b>+150 نقطة</b>\n"
+        "❌ لا يوجد XP.",
+        parse_mode="HTML",
+    )
 
-        "🏓 <b>طاولة تنس</b>\n\n"
-
-        "🎮 تم إنشاء المباراة!\n\n"
-
-        "👥 اللاعبين: <b>0/4</b>\n\n"
-
-        "يمكن للاعبين الدخول بكتابة:\n"
-        "👉 <code>دخول</code>\n\n"
-
-        "🚪 للخروج:\n"
-        "👉 <code>.خروج</code>\n\n"
-
-        "▶️ عند اكتمال اللاعبين، "
-        "الهوست يكتب:\n"
-        "👉 <code>.ابدا</code>",
-
-        parse_mode="HTML"
+    await send_or_update_image(
+        update,
+        context,
+        game
     )
 
 
-# ==================================================
-# الدخول
-# ==================================================
+# =========================================================
+# دخول
+# =========================================================
 
 async def join_table_tennis(
     update: Update,
-    context: ContextTypes.DEFAULT_TYPE
+    context: ContextTypes.DEFAULT_TYPE,
 ):
 
-    if not _ensure_group(update):
-
-        return
-
-    chat_id = update.effective_chat.id
-
-    state = TABLE_TENNIS_GAMES.get(
-        chat_id
+    message = update.effective_message
+    user = update.effective_user
+    game = get_game(
+        update.effective_chat.id
     )
 
-    if not state:
-
+    if not game:
         return
 
-    if state.started:
+    if game.started:
 
-        return
-
-    if state.finished:
-
-        return
-
-    user = update.effective_user
-
-    if not user:
-        return
-
-    if any(
-        p.user_id == user.id
-        for p in state.players
-    ):
-
-        await update.message.reply_text(
-            "🏓 أنت داخل اللعبة بالفعل."
+        await message.reply_text(
+            "🏓 المباراة بدأت بالفعل."
         )
 
         return
 
-    if len(state.players) >= MAX_PLAYERS:
+    if len(game.players) >= MAX_PLAYERS:
 
-        await update.message.reply_text(
-            "❌ اكتمل عدد اللاعبين."
+        await message.reply_text(
+            "❌ الطاولة مكتملة."
         )
 
         return
+
+    if get_player(game, user.id):
+
+        await message.reply_text(
+            "أنت داخل الطاولة بالفعل."
+        )
+
+        return
+
+    # أول لاعبين أحمر
+    if len(game.players) < 2:
+        team = "red"
+    else:
+        team = "blue"
 
     player = TTPlayer(
         user_id=user.id,
-        name=user.first_name
-        or "لاعب"
+        name=(
+            user.first_name
+            or user.username
+            or str(user.id)
+        ),
+        team=team
     )
 
-    state.players.append(
+    game.players.append(
         player
     )
 
-    await update.message.reply_text(
+    team_text = (
+        "🔴 الأحمر"
+        if team == "red"
+        else
+        "🔵 الأزرق"
+    )
 
-        "🏓 تم دخولك في طاولة التنس!\n\n"
+    await message.reply_text(
+        f"🏓 دخل <b>{player.name}</b>\n"
+        f"الفريق: {team_text}\n\n"
+        f"👥 العدد: {len(game.players)}/4",
+        parse_mode="HTML",
+    )
 
-        f"👤 <b>{player.name}</b>\n"
-        f"👥 اللاعبين: "
-        f"<b>{len(state.players)}/{MAX_PLAYERS}</b>",
-
-        parse_mode="HTML"
+    await send_or_update_image(
+        update,
+        context,
+        game
     )
 
 
-# ==================================================
-# الخروج
-# ==================================================
+# =========================================================
+# خروج
+# =========================================================
 
 async def leave_table_tennis(
     update: Update,
-    context: ContextTypes.DEFAULT_TYPE
+    context: ContextTypes.DEFAULT_TYPE,
 ):
 
-    if not _ensure_group(update):
+    message = update.effective_message
+    user = update.effective_user
 
-        return
-
-    chat_id = update.effective_chat.id
-
-    state = TABLE_TENNIS_GAMES.get(
-        chat_id
+    game = get_game(
+        update.effective_chat.id
     )
 
-    if not state:
-
+    if not game:
         return
 
-    if state.started:
+    if game.started:
 
-        await update.message.reply_text(
+        await message.reply_text(
             "❌ لا يمكنك الخروج بعد بدء المباراة."
         )
 
         return
 
-    user = update.effective_user
-
-    if not user:
-        return
-
-    old_length = len(
-        state.players
+    player = get_player(
+        game,
+        user.id
     )
 
-    state.players = [
-        p for p in state.players
-        if p.user_id != user.id
-    ]
+    if not player:
 
-    if len(state.players) == old_length:
-
-        await update.message.reply_text(
-            "❌ أنت لست داخل اللعبة."
+        await message.reply_text(
+            "أنت لست داخل الطاولة."
         )
 
         return
 
-    await update.message.reply_text(
-        "🚪 تم خروجك من طاولة التنس."
+    game.players.remove(
+        player
+    )
+
+    # إعادة توزيع الفرق
+    for index, p in enumerate(game.players):
+
+        p.team = (
+            "red"
+            if index < 2
+            else "blue"
+        )
+
+    await message.reply_text(
+        f"🚪 خرج <b>{player.name}</b> من الطاولة.",
+        parse_mode="HTML",
+    )
+
+    await send_or_update_image(
+        update,
+        context,
+        game
     )
 
 
-# ==================================================
+# =========================================================
 # بدء المباراة
-# ==================================================
+# =========================================================
 
 async def begin_table_tennis(
     update: Update,
-    context: ContextTypes.DEFAULT_TYPE
+    context: ContextTypes.DEFAULT_TYPE,
 ):
 
-    if not _ensure_group(update):
-
-        return
-
-    chat_id = update.effective_chat.id
-
-    state = TABLE_TENNIS_GAMES.get(
-        chat_id
-    )
-
-    if not state:
-
-        return
-
+    message = update.effective_message
     user = update.effective_user
 
-    if not user:
+    game = get_game(
+        update.effective_chat.id
+    )
+
+    if not game:
         return
 
-    if not _is_controller(
-        state,
-        user.id
-    ):
+    if user.id != game.host_id:
 
-        await update.message.reply_text(
-            "❌ فقط الهوست أو المطور يستطيع بدء المباراة."
+        await message.reply_text(
+            "❌ فقط صاحب الطاولة يقدر يبدأ المباراة."
         )
 
         return
 
-    if state.started:
+    if game.started:
 
-        return
-
-    if len(state.players) < MIN_PLAYERS:
-
-        await update.message.reply_text(
-            "❌ تحتاج إلى لاعبين على الأقل لبدء المباراة."
+        await message.reply_text(
+            "🏓 المباراة بدأت بالفعل."
         )
 
         return
 
-    _assign_teams(state)
+    if len(game.players) not in (2, 4):
 
-    _build_turn_order(state)
+        await message.reply_text(
+            "❌ لازم يكون عدد اللاعبين <b>2 أو 4</b>.",
+            parse_mode="HTML",
+        )
 
-    state.started = True
+        return
 
-    state.finished = False
+    # في حال 2 لاعبين
+    if len(game.players) == 2:
 
-    state.current_index = 0
+        game.players[0].team = "red"
+        game.players[1].team = "blue"
 
-    state.score_red = 0
+    # في حال 4 لاعبين
+    else:
 
-    state.score_blue = 0
+        game.players[0].team = "red"
+        game.players[1].team = "red"
+        game.players[2].team = "blue"
+        game.players[3].team = "blue"
 
-    current = _current_player(
-        state
+    game.started = True
+    game.finished = False
+    game.turn_index = 0
+
+    first = current_attacker(game)
+
+    game.last_action = (
+        f"🏓 المباراة بدأت!\n"
+        f"الدور على {first.name}"
     )
 
-    state.waiting_for = (
-        current.user_id
-        if current
-        else None
+    await message.reply_text(
+        "🏓 <b>بدأت مباراة طاولة التنس!</b>\n\n"
+        "🔴 الأحمر ضد 🔵 الأزرق\n"
+        "🎯 المباراة إلى 11 نقطة\n"
+        "📌 لازم يكون الفوز بفارق نقطتين\n\n"
+        "💡 الضربات والصدود تؤثر على نتيجة كل تبادل.",
+        parse_mode="HTML",
     )
 
-    state.last_result = (
-        "🎮 <b>بدأت المباراة!</b>"
-    )
-
-    # حذف رسالة الانتظار القديمة ليس ضروريًا
-    # ونرسل صورة مستقلة للمباراة.
-
-    await _send_match(
-        state,
+    await send_or_update_image(
+        update,
         context,
-        _match_caption(state),
-        _shot_keyboard()
+        game
     )
 
-    if state.waiting_for:
+    await send_attacker_controls(
+        context,
+        game
+    )
 
-        state.turn_task = asyncio.create_task(
-            _turn_timeout(
-                state,
-                context,
-                state.waiting_for
-            )
+    game.turn_task = asyncio.create_task(
+        attacker_timeout(
+            context,
+            game.chat_id
+        )
+    )
+
+
+# =========================================================
+# إنهاء يدوي
+# =========================================================
+
+async def end_table_tennis(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    message = update.effective_message
+    user = update.effective_user
+
+    game = get_game(
+        update.effective_chat.id
+    )
+
+    if not game:
+        return
+
+    if user.id != game.host_id:
+
+        await message.reply_text(
+            "❌ فقط صاحب الطاولة يقدر ينهيها."
         )
 
+        return
 
-# ==================================================
-# معالجة الأزرار
-# ==================================================
+    if game.turn_task:
+
+        try:
+            game.turn_task.cancel()
+        except Exception:
+            pass
+
+    TABLE_TENNIS_GAMES.pop(
+        game.chat_id,
+        None
+    )
+
+    await message.reply_text(
+        "🏓 تم إنهاء طاولة التنس."
+    )
+
+
+# =========================================================
+# Callback
+# =========================================================
 
 async def table_tennis_callback(
     update: Update,
-    context: ContextTypes.DEFAULT_TYPE
+    context: ContextTypes.DEFAULT_TYPE,
 ):
 
     query = update.callback_query
 
-    if not query:
-        return
-
     await query.answer()
 
-    message = query.message
+    user = query.from_user
 
-    if not message:
-        return
+    # نبحث عن اللعبة التي يكون اللاعب مشاركًا فيها
+    game = None
 
-    chat_id = message.chat.id
+    for candidate in TABLE_TENNIS_GAMES.values():
 
-    state = TABLE_TENNIS_GAMES.get(
-        chat_id
-    )
+        if get_player(
+            candidate,
+            user.id
+        ):
 
-    if not state:
+            game = candidate
+            break
 
+    if not game:
         await query.answer(
-            "انتهت اللعبة.",
+            "❌ أنت لست داخل مباراة.",
             show_alert=True
         )
-
         return
 
-    if not state.started:
-
-        await query.answer(
-            "المباراة لم تبدأ بعد.",
-            show_alert=True
-        )
-
-        return
-
-    if state.finished:
-
+    if game.finished:
         await query.answer(
             "انتهت المباراة.",
             show_alert=True
         )
-
         return
 
-    user = query.from_user
-
-    if not user:
-        return
-
-    if state.waiting_for != user.id:
-
-        await query.answer(
-            "⏳ ليس دورك الآن.",
-            show_alert=True
-        )
-
-        return
-
-    data = query.data or ""
-
-    # ==================================================
+    # -----------------------------------------------------
     # اختيار الاتجاه
-    # ==================================================
+    # -----------------------------------------------------
 
-    if data.startswith(
+    if query.data.startswith(
         "tt:dir:"
     ):
 
-        direction = data.split(
-            ":",
-            2
-        )[2]
-
-        context.user_data[
-            "tt_direction"
-        ] = direction
-
-        names = {
-
-            "up_left": "↖️",
-
-            "up": "⬆️",
-
-            "up_right": "↗️",
-
-            "left": "⬅️",
-
-            "center": "🎯",
-
-            "right": "➡️",
-
-            "down_left": "↙️",
-
-            "down": "⬇️",
-
-            "down_right": "↘️",
-        }
-
-        await query.answer(
-            f"تم اختيار {names.get(direction, '🎯')}"
+        attacker = current_attacker(
+            game
         )
 
-        return
+        if not attacker:
+            return
 
-    # ==================================================
-    # اختيار نوع الضربة
-    # ==================================================
-
-    if data.startswith(
-        "tt:shot:"
-    ):
-
-        shot = data.split(
-            ":",
-            2
-        )[2]
-
-        direction = context.user_data.get(
-            "tt_direction"
-        )
-
-        if not direction:
+        if attacker.user_id != user.id:
 
             await query.answer(
-                "⚠️ اختر اتجاه الكرة أولًا.",
+                "❌ ليس دورك.",
                 show_alert=True
             )
 
             return
 
-        await _perform_shot(
-            state,
-            context,
-            user.id,
-            shot,
-            direction
+        direction_map = {
+            "ul": "↖️",
+            "u": "⬆️",
+            "ur": "↗️",
+            "l": "⬅️",
+            "c": "🎯",
+            "r": "➡️",
+            "dl": "↙️",
+            "d": "⬇️",
+            "dr": "↘️",
+        }
+
+        direction = query.data.split(
+            ":"
+        )[-1]
+
+        game.attacker_direction = (
+            direction_map.get(
+                direction,
+                "🎯"
+            )
         )
 
-        context.user_data.pop(
-            "tt_direction",
-            None
+        await query.edit_message_text(
+            (
+                "🏓 اختر نوع الضربة:\n\n"
+                f"🎯 الاتجاه: "
+                f"<b>{game.attacker_direction}</b>"
+            ),
+            reply_markup=InlineKeyboardMarkup([
+
+                [
+                    InlineKeyboardButton(
+                        "⚡️ سريعة",
+                        callback_data="tt:shot:fast"
+                    ),
+                    InlineKeyboardButton(
+                        "🎯 دقيقة",
+                        callback_data="tt:shot:precise"
+                    ),
+                ],
+
+                [
+                    InlineKeyboardButton(
+                        "🌀 Spin",
+                        callback_data="tt:shot:spin"
+                    ),
+                    InlineKeyboardButton(
+                        "💥 Smash",
+                        callback_data="tt:shot:smash"
+                    ),
+                ]
+
+            ]),
+            parse_mode="HTML"
         )
-
-
-# ==================================================
-# تنفيذ الضربة
-# ==================================================
-
-async def _perform_shot(
-    state: TableTennisState,
-    context: ContextTypes.DEFAULT_TYPE,
-    user_id: int,
-    shot: str,
-    direction: str
-):
-
-    player = next(
-        (
-            p for p in state.players
-            if p.user_id == user_id
-        ),
-        None
-    )
-
-    if not player:
 
         return
 
-    await _cancel_turn_task(
-        state
-    )
+    # -----------------------------------------------------
+    # اختيار الضربة
+    # -----------------------------------------------------
 
-    # ==================================================
-    # استهلاك الطاقة
-    # ==================================================
+    if query.data.startswith(
+        "tt:shot:"
+    ):
 
-    _consume_stamina(
-        player,
-        shot
-    )
-
-    player.shots += 1
-
-    if shot == "smash":
-
-        player.smash_count += 1
-
-    # ==================================================
-    # فرصة النجاح
-    # ==================================================
-
-    probability = (
-        _shot_success_probability(
-            shot,
-            direction,
-            player
-        )
-    )
-
-    success = (
-        random.random()
-        < probability
-    )
-
-    state.last_player_id = user_id
-
-    state.last_direction = {
-        "up_left": "↖️",
-        "up": "⬆️",
-        "up_right": "↗️",
-        "left": "⬅️",
-        "center": "🎯",
-        "right": "➡️",
-        "down_left": "↙️",
-        "down": "⬇️",
-        "down_right": "↘️",
-    }.get(
-        direction,
-        "🎯"
-    )
-
-    state.last_shot = {
-        "fast": "⚡ سريعة",
-        "precise": "🎯 دقيقة",
-        "spin": "🌀 Spin",
-        "smash": "💥 Smash",
-        "block": "🛡️ صد",
-    }.get(
-        shot,
-        shot
-    )
-
-    state.rally_number += 1
-
-    # ==================================================
-    # ضربة فاشلة
-    # ==================================================
-
-    if not success:
-
-        player.failed_shots += 1
-
-        player.combo = 0
-
-        _give_point_to_opponent(
-            state,
-            player
+        attacker = current_attacker(
+            game
         )
 
-        state.last_result = (
-            f"❌ <b>{player.name}</b> "
-            f"أخطأ في {state.last_shot} "
-            f"{state.last_direction}!\n"
-            "🏓 نقطة للفريق الخصم."
-        )
+        if not attacker:
+            return
 
-        state.current_index += 1
+        if attacker.user_id != user.id:
 
-        _recover_stamina(
-            state
-        )
-
-        winner = _winner_team(
-            state
-        )
-
-        if winner:
-
-            await _finish_match(
-                state,
-                context,
-                winner
+            await query.answer(
+                "❌ ليس دورك.",
+                show_alert=True
             )
 
             return
 
-        current = _current_player(
-            state
+        shot = query.data.split(
+            ":"
+        )[-1]
+
+        game.attacker_action = shot
+
+        game.last_action = (
+            f"{SHOT_NAMES.get(shot, shot)} "
+            f"{game.attacker_direction}"
         )
 
-        state.waiting_for = (
-            current.user_id
-            if current
-            else None
-        )
-
-        state.ball_position = "center"
-
-        await _send_match(
-            state,
+        # تحديث الصورة
+        await send_or_update_image(
+            None,
             context,
-            _match_caption(state),
-            _shot_keyboard()
+            game
         )
 
-        if state.waiting_for:
-
-            state.turn_task = asyncio.create_task(
-                _turn_timeout(
-                    state,
-                    context,
-                    state.waiting_for
-                )
-            )
-
-        return
-
-    # ==================================================
-    # ضربة ناجحة
-    # ==================================================
-
-    player.successful_shots += 1
-
-    player.combo += 1
-
-    player.best_combo = max(
-        player.best_combo,
-        player.combo
-    )
-
-    state.best_combo = max(
-        state.best_combo,
-        player.combo
-    )
-
-    if shot == "smash":
-
-        state.best_shot = "💥 Smash"
-
-    elif not state.best_shot:
-
-        state.best_shot = state.last_shot
-
-    # ==================================================
-    # تحريك الكرة
-    # ==================================================
-
-    state.ball_position = direction
-
-    # ==================================================
-    # عرض الرد
-    # ==================================================
-
-    state.last_result = (
-        f"🏓 <b>رد ناجح!</b>\n"
-        f"🔴 <b>{player.name}</b>\n"
-        f"{state.last_shot} "
-        f"{state.last_direction}\n\n"
-        "⏳ الكرة مستمرة في اللعب..."
-    )
-
-    # الدور ينتقل
-    state.current_index += 1
-
-    current = _current_player(
-        state
-    )
-
-    state.waiting_for = (
-        current.user_id
-        if current
-        else None
-    )
-
-    _recover_stamina(
-        state
-    )
-
-    await _send_match(
-        state,
-        context,
-        _match_caption(state),
-        _shot_keyboard()
-    )
-
-    if state.waiting_for:
-
-        state.turn_task = asyncio.create_task(
-            _turn_timeout(
-                state,
-                context,
-                state.waiting_for
-            )
+        await query.edit_message_text(
+            (
+                "🏓 تم اختيار الضربة!\n\n"
+                f"🎯 الاتجاه: "
+                f"<b>{game.attacker_direction}</b>\n"
+                f"💥 الضربة: "
+                f"<b>{SHOT_NAMES.get(shot, shot)}</b>\n\n"
+                "🛡️ بانتظار دفاع الخصم..."
+            ),
+            parse_mode="HTML"
         )
 
-
-# ==================================================
-# إنهاء المباراة
-# ==================================================
-
-async def _finish_match(
-    state: TableTennisState,
-    context: ContextTypes.DEFAULT_TYPE,
-    winner_team: str
-):
-
-    if state.finished:
-
-        return
-
-    state.finished = True
-    state.started = False
-
-    await _cancel_turn_task(
-        state
-    )
-
-    winners = [
-        p for p in state.players
-        if p.team == winner_team
-    ]
-
-    losers = [
-        p for p in state.players
-        if p.team != winner_team
-    ]
-
-    # ==================================================
-    # النقاط
-    # ==================================================
-
-    for player in winners:
-
-        await _give_points(
-            player.user_id,
-            WIN_POINTS
+        await send_defender_controls(
+            context,
+            game
         )
 
-    winner_names = " — ".join(
-        p.name
-        for p in winners
-    )
-
-    loser_names = " — ".join(
-        p.name
-        for p in losers
-    )
-
-    winner_label = (
-        "🔴 الفريق الأحمر"
-        if winner_team == "red"
-        else "🔵 الفريق الأزرق"
-    )
-
-    state.last_result = (
-        "🏆 <b>انتهت المباراة!</b>\n\n"
-        f"🥇 {winner_label}\n"
-        f"{winner_names}\n\n"
-        f"💰 مكافأة الفوز: "
-        f"<b>+{WIN_POINTS} نقطة</b> لكل فائز"
-    )
-
-    await _send_match(
-        state,
-        context,
-        _match_caption(state),
-        None
-    )
-
-    # ==================================================
-    # رسالة النتيجة
-    # ==================================================
-
-    await context.bot.send_message(
-
-        chat_id=state.chat_id,
-
-        text=(
-
-            "🏆 <b>انتهت مباراة طاولة التنس!</b>\n\n"
-
-            f"🥇 <b>الفائز:</b>\n"
-            f"{winner_names}\n\n"
-
-            f"🏆 النتيجة:\n"
-            f"🔴 {state.score_red}"
-            f" — "
-            f"{state.score_blue} 🔵\n\n"
-
-            f"💰 <b>+{WIN_POINTS} نقطة</b>"
-            " لكل لاعب من الفريق الفائز.\n\n"
-
-            f"💥 أفضل ضربة: "
-            f"{state.best_shot or '—'}\n"
-
-            f"🔥 أعلى Combo: "
-            f"×{state.best_combo}"
-        ),
-
-        parse_mode="HTML"
-    )
-
-    # ==================================================
-    # إزالة اللعبة
-    # ==================================================
-
-    TABLE_TENNIS_GAMES.pop(
-        state.chat_id,
-        None
-    )
-
-
-# ==================================================
-# الإنهاء اليدوي
-# ==================================================
-
-async def end_table_tennis(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-
-    if not _ensure_group(update):
-
         return
 
-    chat_id = update.effective_chat.id
+    # -----------------------------------------------------
+    # دفاع
+    # -----------------------------------------------------
 
-    state = TABLE_TENNIS_GAMES.get(
-        chat_id
-    )
-
-    if not state:
-
-        return
-
-    user = update.effective_user
-
-    if not user:
-        return
-
-    if not _is_controller(
-        state,
-        user.id
+    if query.data.startswith(
+        "tt:def:"
     ):
 
-        await update.message.reply_text(
-            "❌ فقط الهوست أو المطور يستطيع إنهاء اللعبة."
+        defender = get_player(
+            game,
+            game.defender_id
+        )
+
+        if not defender:
+            return
+
+        if defender.user_id != user.id:
+
+            await query.answer(
+                "❌ ليس دورك للدفاع.",
+                show_alert=True
+            )
+
+            return
+
+        defense = query.data.split(
+            ":"
+        )[-1]
+
+        game.defender_action = defense
+
+        game.last_action = (
+            f"{DEFENSE_NAMES.get(defense, defense)}"
+        )
+
+        await query.edit_message_text(
+            (
+                "🛡️ تم اختيار الدفاع!\n\n"
+                f"{DEFENSE_NAMES.get(defense, defense)}\n\n"
+                "🏓 جاري حساب التبادل..."
+            )
+        )
+
+        await asyncio.sleep(1)
+
+        await resolve_exchange(
+            context,
+            game
         )
 
         return
-
-    await _cancel_turn_task(
-        state
-    )
-
-    state.finished = True
-
-    state.started = False
-
-    TABLE_TENNIS_GAMES.pop(
-        chat_id,
-        None
-    )
-
-    await update.message.reply_text(
-        "🛑 تم إنهاء لعبة طاولة التنس."
-    )
