@@ -349,20 +349,9 @@ from urllib.parse import unquote
 # =========================================================
 # 🌐 Mini App Web Server
 # =========================================================
-# ==================================================
-# 🌐 سيرفر Mini App
-# ==================================================
-# ==================================================
-# 🌐 سيرفر Mini App
-# ==================================================
-
 class MiniAppHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
-
-        # ==========================================
-        # Health Check
-        # ==========================================
 
         if self.path == "/health":
 
@@ -381,33 +370,22 @@ class MiniAppHandler(SimpleHTTPRequestHandler):
 
             return
 
-        # ==========================================
-        # الصفحة الرئيسية
-        # ==========================================
-
         if self.path == "/":
 
             self.path = "/index.html"
 
         return super().do_GET()
 
-    # ==========================================
-    # تحديد مسار الملفات
-    # ==========================================
-
     def translate_path(self, path):
 
-        # إزالة Query Parameters
         path = path.split("?", 1)[0]
 
-        # فك ترميز الرابط
         path = unquote(path)
 
-        # إزالة /
         path = path.lstrip("/")
 
         # ==========================================
-        # 🖼️ الصور
+        # 🖼️ صور Mini App
         # ==========================================
 
         if path.startswith("images/"):
@@ -422,7 +400,7 @@ class MiniAppHandler(SimpleHTTPRequestHandler):
             )
 
         # ==========================================
-        # باقي ملفات Mini App
+        # 📄 ملفات Mini App
         # ==========================================
 
         return os.path.join(
@@ -430,10 +408,6 @@ class MiniAppHandler(SimpleHTTPRequestHandler):
             "mini_app",
             path
         )
-
-    # ==========================================
-    # إخفاء Logs العادية
-    # ==========================================
 
     def log_message(self, format, *args):
         return
@@ -456,12 +430,11 @@ def start_web_server():
         os.path.abspath(__file__)
     )
 
-    # حفظ المسار الأساسي داخل الـ Handler
-    MiniAppHandler.base_path = base_path
+    # ==========================================
+    # 📁 المسار الأساسي
+    # ==========================================
 
-    # ==========================================
-    # المسارات
-    # ==========================================
+    MiniAppHandler.base_path = base_path
 
     mini_app_path = os.path.join(
         base_path,
@@ -471,9 +444,12 @@ def start_web_server():
     images_path = os.path.join(
         base_path,
         "mini_app",
-        "mini_app",
         "images"
     )
+
+    # ==========================================
+    # 🌐 معلومات Mini App
+    # ==========================================
 
     print("==========================================")
     print("🌐 Mini App Server")
@@ -514,14 +490,14 @@ def start_web_server():
         )
     )
 
+    # ==========================================
+    # 🖼️ مجلد الصور
+    # ==========================================
+
     print(
         "🖼️ images folder:",
         os.path.isdir(images_path)
     )
-
-    # ==========================================
-    # فحص الصور
-    # ==========================================
 
     for filename in [
         "bot.JPG",
@@ -542,7 +518,7 @@ def start_web_server():
         )
 
     # ==========================================
-    # تشغيل السيرفر
+    # 🚀 تشغيل السيرفر
     # ==========================================
 
     handler = MiniAppHandler
@@ -556,9 +532,11 @@ def start_web_server():
     )
 
     print("==========================================")
+
     print(
         f"🚀 Mini App running on port {port}"
     )
+
     print("==========================================")
 
     server.serve_forever()
