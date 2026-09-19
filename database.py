@@ -19,6 +19,7 @@ if not DATABASE_URL:
 
 DB_POOL = None
 
+
 def get_pool():
     global DB_POOL
 
@@ -30,6 +31,7 @@ def get_pool():
         )
 
     return DB_POOL
+
 
 # ==================================================
 # Cursor يدعم ? مثل SQLite
@@ -52,7 +54,10 @@ class CompatibleCursor:
         if isinstance(query, str):
             query = query.replace("?", "%s")
 
-        return self._cursor.executemany(query, params_seq)
+        return self._cursor.executemany(
+            query,
+            params_seq
+        )
 
     def fetchone(self):
         return self._cursor.fetchone()
@@ -80,6 +85,7 @@ class CompatibleCursor:
 
     def __getattr__(self, name):
         return getattr(self._cursor, name)
+
 
 # ==================================================
 # Connection
@@ -116,7 +122,9 @@ class CompatibleConnection:
         self._closed = True
 
         try:
-            get_pool().putconn(self._connection)
+            get_pool().putconn(
+                self._connection
+            )
         except Exception:
 
             try:
@@ -125,7 +133,11 @@ class CompatibleConnection:
                 pass
 
     def __getattr__(self, name):
-        return getattr(self._connection, name)
+        return getattr(
+            self._connection,
+            name
+        )
+
 
 # ==================================================
 # الاتصال بقاعدة البيانات
@@ -138,9 +150,13 @@ def connect():
     conn = pool_instance.getconn()
 
     try:
-        # التأكد أن الاتصال ما زال صالحًا
+
         if conn.closed:
-            pool_instance.putconn(conn, close=True)
+            pool_instance.putconn(
+                conn,
+                close=True
+            )
+
             conn = pool_instance.getconn()
 
         return CompatibleConnection(conn)
@@ -148,11 +164,15 @@ def connect():
     except Exception:
 
         try:
-            pool_instance.putconn(conn, close=True)
+            pool_instance.putconn(
+                conn,
+                close=True
+            )
         except Exception:
             pass
 
         raise
+
 
 # ==================================================
 # إنشاء الجداول
@@ -165,9 +185,9 @@ def create_tables():
 
     try:
 
-        # =====================
+        # ==================================================
         # المستخدمين
-        # =====================
+        # ==================================================
 
         cur.execute("""
         CREATE TABLE IF NOT EXISTS users
@@ -200,9 +220,9 @@ def create_tables():
         DO UPDATE SET rank = 'Dev'
         """)
 
-        # =====================
+        # ==================================================
         # الردود العادية
-        # =====================
+        # ==================================================
 
         cur.execute("""
         CREATE TABLE IF NOT EXISTS replies
@@ -215,9 +235,9 @@ def create_tables():
         )
         """)
 
-        # =====================
+        # ==================================================
         # الردود المميزة
-        # =====================
+        # ==================================================
 
         cur.execute("""
         CREATE TABLE IF NOT EXISTS special_replies
@@ -230,9 +250,9 @@ def create_tables():
         )
         """)
 
-        # =====================
+        # ==================================================
         # النقاط
-        # =====================
+        # ==================================================
 
         cur.execute("""
         CREATE TABLE IF NOT EXISTS points
@@ -242,9 +262,9 @@ def create_tables():
         )
         """)
 
-        # =====================
+        # ==================================================
         # الألعاب
-        # =====================
+        # ==================================================
 
         cur.execute("""
         CREATE TABLE IF NOT EXISTS games
@@ -255,9 +275,9 @@ def create_tables():
         )
         """)
 
-        # =====================
+        # ==================================================
         # أسئلة الألعاب
-        # =====================
+        # ==================================================
 
         cur.execute("""
         CREATE TABLE IF NOT EXISTS game_questions
@@ -271,9 +291,9 @@ def create_tables():
         )
         """)
 
-        # =====================
+        # ==================================================
         # إعدادات الألعاب
-        # =====================
+        # ==================================================
 
         cur.execute("""
         CREATE TABLE IF NOT EXISTS games_settings
@@ -297,9 +317,9 @@ def create_tables():
         ON CONFLICT (id) DO NOTHING
         """)
 
-        # =====================
+        # ==================================================
         # سجل الفائزين
-        # =====================
+        # ==================================================
 
         cur.execute("""
         CREATE TABLE IF NOT EXISTS winners
@@ -312,9 +332,9 @@ def create_tables():
         )
         """)
 
-        # =====================
+        # ==================================================
         # سلسلة الانتصارات
-        # =====================
+        # ==================================================
 
         cur.execute("""
         CREATE TABLE IF NOT EXISTS win_streaks
@@ -324,9 +344,9 @@ def create_tables():
         )
         """)
 
-        # =====================
+        # ==================================================
         # الجوائز اليومية
-        # =====================
+        # ==================================================
 
         cur.execute("""
         CREATE TABLE IF NOT EXISTS daily_rewards
@@ -336,9 +356,9 @@ def create_tables():
         )
         """)
 
-        # =====================
+        # ==================================================
         # الرتب
-        # =====================
+        # ==================================================
 
         cur.execute("""
         CREATE TABLE IF NOT EXISTS ranks
@@ -348,9 +368,9 @@ def create_tables():
         )
         """)
 
-        # =====================
+        # ==================================================
         # المشرفين
-        # =====================
+        # ==================================================
 
         cur.execute("""
         CREATE TABLE IF NOT EXISTS admins
@@ -360,9 +380,13 @@ def create_tables():
         )
         """)
 
-        # =====================
-        # الحظر
-        # =====================
+        # ==================================================
+        # الحظر العام
+        #
+        # هذا الجدول موجود أصلًا في مشروعك.
+        # لا نستخدمه لنظام عقوبات القروبات الجديد
+        # لأنه لا يحتوي chat_id.
+        # ==================================================
 
         cur.execute("""
         CREATE TABLE IF NOT EXISTS bans
@@ -375,9 +399,9 @@ def create_tables():
         )
         """)
 
-        # =====================
-        # الكتم
-        # =====================
+        # ==================================================
+        # الكتم العام
+        # ==================================================
 
         cur.execute("""
         CREATE TABLE IF NOT EXISTS mutes
@@ -390,9 +414,9 @@ def create_tables():
         )
         """)
 
-        # =====================
+        # ==================================================
         # سجل الإدارة
-        # =====================
+        # ==================================================
 
         cur.execute("""
         CREATE TABLE IF NOT EXISTS moderation_logs
@@ -405,9 +429,9 @@ def create_tables():
         )
         """)
 
-        # =====================
+        # ==================================================
         # السجل الإداري
-        # =====================
+        # ==================================================
 
         cur.execute("""
         CREATE TABLE IF NOT EXISTS admin_logs
@@ -420,9 +444,9 @@ def create_tables():
         )
         """)
 
-        # =====================
+        # ==================================================
         # قفل الأوامر
-        # =====================
+        # ==================================================
 
         cur.execute("""
         CREATE TABLE IF NOT EXISTS command_locks
@@ -432,9 +456,9 @@ def create_tables():
         )
         """)
 
-        # =====================
+        # ==================================================
         # الأوامر المضافة
-        # =====================
+        # ==================================================
 
         cur.execute("""
         CREATE TABLE IF NOT EXISTS custom_commands
@@ -445,9 +469,9 @@ def create_tables():
         )
         """)
 
-        # =====================
+        # ==================================================
         # المطورين
-        # =====================
+        # ==================================================
 
         cur.execute("""
         CREATE TABLE IF NOT EXISTS developers
@@ -459,9 +483,9 @@ def create_tables():
         )
         """)
 
-        # =====================
+        # ==================================================
         # صلاحيات المطورين
-        # =====================
+        # ==================================================
 
         cur.execute("""
         CREATE TABLE IF NOT EXISTS developer_permissions
@@ -478,9 +502,9 @@ def create_tables():
         )
         """)
 
-        # =====================
+        # ==================================================
         # صلاحيات المستخدمين
-        # =====================
+        # ==================================================
 
         cur.execute("""
         CREATE TABLE IF NOT EXISTS user_permissions
@@ -497,9 +521,9 @@ def create_tables():
         )
         """)
 
-        # =====================
+        # ==================================================
         # إعدادات القروبات
-        # =====================
+        # ==================================================
 
         cur.execute("""
         CREATE TABLE IF NOT EXISTS group_settings
@@ -509,9 +533,9 @@ def create_tables():
         )
         """)
 
-        # =====================
+        # ==================================================
         # إعدادات الحماية
-        # =====================
+        # ==================================================
 
         cur.execute("""
         CREATE TABLE IF NOT EXISTS protection_settings
@@ -529,9 +553,9 @@ def create_tables():
         )
         """)
 
-        # =====================
+        # ==================================================
         # الكلمات المحظورة
-        # =====================
+        # ==================================================
 
         cur.execute("""
         CREATE TABLE IF NOT EXISTS blocked_words
@@ -547,9 +571,9 @@ def create_tables():
         )
         """)
 
-        # =====================
+        # ==================================================
         # إعدادات الكلمات المحظورة
-        # =====================
+        # ==================================================
 
         cur.execute("""
         CREATE TABLE IF NOT EXISTS blocked_words_settings
@@ -560,9 +584,9 @@ def create_tables():
         )
         """)
 
-        # =====================
+        # ==================================================
         # رسائل البوت
-        # =====================
+        # ==================================================
 
         cur.execute("""
         CREATE TABLE IF NOT EXISTS bot_messages
@@ -572,9 +596,9 @@ def create_tables():
         )
         """)
 
-        # =====================
+        # ==================================================
         # أزرار اللوحات
-        # =====================
+        # ==================================================
 
         cur.execute("""
         CREATE TABLE IF NOT EXISTS panel_buttons
@@ -590,9 +614,9 @@ def create_tables():
         )
         """)
 
-        # =====================
+        # ==================================================
         # بيانات المطور والمالك
-        # =====================
+        # ==================================================
 
         cur.execute("""
         CREATE TABLE IF NOT EXISTS profile_settings
@@ -603,9 +627,9 @@ def create_tables():
         )
         """)
 
-        # =====================
+        # ==================================================
         # المطور الأساسي
-        # =====================
+        # ==================================================
 
         cur.execute("""
         INSERT INTO developers
@@ -621,9 +645,9 @@ def create_tables():
         ON CONFLICT (user_id) DO NOTHING
         """)
 
-        # =====================
+        # ==================================================
         # صلاحيات المستخدمين لكل قروب
-        # =====================
+        # ==================================================
 
         cur.execute("""
         CREATE TABLE IF NOT EXISTS group_user_permissions
@@ -654,6 +678,9 @@ def create_tables():
         )
         """)
 
+        # ==================================================
+        # إعدادات البداية
+        # ==================================================
 
         cur.execute("""
         CREATE TABLE IF NOT EXISTS start_settings
@@ -680,6 +707,10 @@ def create_tables():
         ON CONFLICT (id) DO NOTHING
         """)
 
+        # ==================================================
+        # أزرار البداية
+        # ==================================================
+
         cur.execute("""
         CREATE TABLE IF NOT EXISTS start_buttons
         (
@@ -690,8 +721,10 @@ def create_tables():
         )
         """)
 
+        # ==================================================
+        # صور البداية
+        # ==================================================
 
-        
         cur.execute("""
         CREATE TABLE IF NOT EXISTS start_images
         (
@@ -700,6 +733,10 @@ def create_tables():
             image_order INTEGER DEFAULT 0
         )
         """)
+
+        # ==================================================
+        # صلاحيات البداية
+        # ==================================================
 
         cur.execute("""
         CREATE TABLE IF NOT EXISTS start_access
@@ -710,7 +747,119 @@ def create_tables():
         )
         """)
 
-        
+        # ==================================================
+        # إعدادات الإشراف
+        # ==================================================
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS moderation_settings
+        (
+            chat_id BIGINT PRIMARY KEY,
+            durations_enabled INTEGER DEFAULT 0,
+            reasons_enabled INTEGER DEFAULT 0
+        )
+        """)
+
+        # ==================================================
+        # كتم البوت
+        #
+        # الكتم هنا خاص بكل قروب.
+        # ==================================================
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS bot_mutes
+        (
+            chat_id BIGINT,
+            user_id BIGINT,
+            username TEXT,
+            first_name TEXT,
+            until_time TEXT,
+            reason TEXT,
+            by_user BIGINT,
+
+            PRIMARY KEY
+            (
+                chat_id,
+                user_id
+            )
+        )
+        """)
+
+        # ==================================================
+        # التقييد
+        # ==================================================
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS restrictions
+        (
+            chat_id BIGINT,
+            user_id BIGINT,
+            username TEXT,
+            first_name TEXT,
+            until_time TEXT,
+            reason TEXT,
+            by_user BIGINT,
+
+            PRIMARY KEY
+            (
+                chat_id,
+                user_id
+            )
+        )
+        """)
+
+        # ==================================================
+        # حظر Telegram
+        # ==================================================
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS moderation_bans
+        (
+            chat_id BIGINT,
+            user_id BIGINT,
+            username TEXT,
+            first_name TEXT,
+            until_time TEXT,
+            reason TEXT,
+            by_user BIGINT,
+
+            PRIMARY KEY
+            (
+                chat_id,
+                user_id
+            )
+        )
+        """)
+
+        # ==================================================
+        # فهارس لتحسين البحث
+        # ==================================================
+
+        cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_users_username
+        ON users (username)
+        """)
+
+        cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_bot_mutes_username
+        ON bot_mutes (chat_id, username)
+        """)
+
+        cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_restrictions_username
+        ON restrictions (chat_id, username)
+        """)
+
+        cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_moderation_bans_username
+        ON moderation_bans (chat_id, username)
+        """)
+
+        cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_moderation_logs_user
+        ON moderation_logs (user_id)
+        """)
+
         conn.commit()
 
     except Exception:
