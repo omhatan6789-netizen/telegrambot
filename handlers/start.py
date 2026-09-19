@@ -107,71 +107,53 @@ def _build_start_text_and_entities(
     user,
     user_data
 ):
+    """
+    يستبدل متغيرات الستارت ويصحح مواقع MessageEntity
+    بعد تغير طول النص.
+    """
+
     replacements = _get_start_replacements(
         user,
         user_data
     )
 
-    if not original_text:
-        return original_text, []
+    # نحتفظ بمعلومات كل استبدال في النص القديم
+    replacements_info = []
 
-    # نبني النص الجديد مع معرفة:
-    # كل مكان من النص القديم أين أصبح في النص الجديد.
-    parts = []
-    position_map = []
+    final_text = original_text
 
-    old_position = 0
-    new_position = 0
+    # نبحث عن كل المتغيرات الموجودة فعليًا
+    for key, value in replacements.items():
 
-    while old_position < len(original_text):
-        matched_key = None
+        start = 0
 
-        for key in replacements:
-            if original_text.startswith(
+        while True:
+            position = original_text.find(
                 key,
-                old_position
-            ):
-                matched_key = key
-                break
-
-        if matched_key is not None:
-            value = replacements[matched_key]
-
-            parts.append(value)
-
-            old_length = len(matched_key)
-            new_length = len(value)
-
-            for index in range(old_length):
-                if new_length:
-                    mapped = min(
-                        index,
-                        new_length - 1
-                    )
-                    position_map.append(
-                        new_position + mapped
-                    )
-                else:
-                    position_map.append(
-                        new_position
-                    )
-
-            old_position += old_length
-            new_position += new_length
-
-        else:
-            char = original_text[old_position]
-
-            parts.append(char)
-
-            position_map.append(
-                new_position
+                start
             )
 
-            old_position += 1
-            new_position += 1
+            if position == -1:
+                break
 
-    final_text = "".join(parts)
+            replacements_info.append({
+                "start": position,
+                "end": position + len(key),
+                "old_length": _utf16_length(key),
+                "new_length": _utf16_length(value),
+            })
+
+            start = position + len(key)
+
+        final_text = final_text.replace(
+            key,
+            value
+        )
+
+    # ترتيب الاستبدالات حسب موقعها في النص الأصلي
+    replacements_info.sort(
+        key=lambda item: item["start"]
+    )
 
     entities = []
 
@@ -183,78 +165,58 @@ def _build_start_text_and_entities(
         if not entity:
             continue
 
-        old_offset_utf16 = entity.offset or 0
-        old_length_utf16 = entity.length or 0
+        old_offset = entity.offset or 0
+        old_length = entity.length or 0
 
-        # نحول UTF-16 إلى Python index
-        old_offset = 0
-        old_units = 0
+        new_offset = old_offset
 
-        for index, char in enumerate(original_text):
-            char_units = _utf16_length(char)
+        # تعديل الـ offset حسب المتغيرات الموجودة قبله
+        for replacement in replacements_info:
 
-            if old_units >= old_offset_utf16:
-                old_offset = index
-                break
-
-            old_units += char_units
-
-        else:
-            old_offset = len(original_text)
-
-        old_end_utf16 = (
-            old_offset_utf16 +
-            old_length_utf16
-        )
-
-        old_end = len(original_text)
-        current_units = 0
-
-        for index, char in enumerate(original_text):
-            char_units = _utf16_length(char)
-
-            if current_units >= old_end_utf16:
-                old_end = index
-                break
-
-            current_units += char_units
-
-        if old_end < old_offset:
-            continue
-
-        if old_offset >= len(position_map):
-            continue
-
-        new_offset = position_map[old_offset]
-
-        if old_end > 0 and old_end - 1 < len(position_map):
-            new_end = (
-                position_map[old_end - 1]
-                + len(
-                    final_text[
-                        position_map[old_end - 1]:
-                        position_map[old_end - 1] + 1
-                    ].encode("utf-16-le")
-                ) // 2
-            )
-        else:
-            new_end = new_offset
-
-        # نحول Python index الجديد إلى UTF-16 offset
-        new_offset_utf16 = _utf16_length(
-            final_text[:new_offset]
-        )
-
-        new_length_utf16 = (
-            _utf16_length(
-                final_text[
-                    new_offset:new_end
+            replacement_start_utf16 = _utf16_length(
+                original_text[
+                    :replacement["start"]
                 ]
             )
-        )
 
-        entity.offset = new_offset_utf16
-        entity.length = new_length_utf16
+            if replacement_start_utf16 < old_offset:
+                difference = (
+                    replacement["new_length"]
+                    - replacement["old_length"]
+                )
+
+                new_offset += difference
+
+        entity.offset = new_offset
+
+        # إذا كانت الـ entity نفسها تغطي متغيرًا،
+        # نحاول تعديل طولها أيضًا.
+        old_end = old_offset + old_length
+        new_length = old_length
+
+        for replacement in replacements_info:
+
+            replacement_start_utf16 = _utf16_length(
+                original_text[
+                    :replacement["start"]
+                ]
+            )
+
+            replacement_end_utf16 = (
+                replacement_start_utf16
+                + replacement["old_length"]
+            )
+
+            if (
+                replacement_start_utf16 >= old_offset
+                and replacement_end_utf16 <= old_end
+            ):
+                new_length += (
+                    replacement["new_length"]
+                    - replacement["old_length"]
+                )
+
+        entity.length = new_length
 
         if entity.length > 0:
             entities.append(entity)
@@ -308,6 +270,7 @@ async def start(
             f"حياك الله {user.first_name} 🤍\n"
             "في البوت الجديد ⭐"
         )
+
         entities_json = "[]"
 
     # جلب بيانات المستخدم من الكاش
@@ -315,23 +278,36 @@ async def start(
         user.id
     )
 
-    # قراءة الـ entities الأصلية
+    # قراءة الـ entities المحفوظة
     try:
         raw_entities = json.loads(
             entities_json or "[]"
         )
+
     except Exception:
         raw_entities = []
 
-    # استبدال المتغيرات مع إصلاح أماكن التنسيقات
-    final_text, entities = (
-        _build_start_text_and_entities(
+    # استبدال المتغيرات مع تصحيح أماكن التنسيقات
+    try:
+        final_text, entities = (
+            _build_start_text_and_entities(
+                message_text,
+                raw_entities,
+                user,
+                user_data
+            )
+        )
+
+    except Exception:
+        # في حال وجود entity قديمة أو تالفة،
+        # لا نخلي /start يتعطل بالكامل.
+        final_text = _replace_start_variables(
             message_text,
-            raw_entities,
             user,
             user_data
         )
-    )
+
+        entities = []
 
     # إنشاء الأزرار
     reply_markup = _build_start_keyboard(
