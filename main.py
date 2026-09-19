@@ -196,7 +196,6 @@ from handlers.profile_replies import (
 # ==================================================
 
 from handlers.moderation import (
-    create_moderation_tables,
     check_user,
     ban_user,
     unban_user,
