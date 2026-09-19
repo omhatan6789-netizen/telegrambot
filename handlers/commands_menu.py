@@ -424,16 +424,10 @@ async def commands_menu_start(
     if not update.message:
         return
 
-    if update.effective_chat.type != "private":
-        return
-
     await update.message.reply_text(
-
         "📋 <b>أوامر بوت نواف</b>\n\n"
         "اختر القسم الذي تريد معرفة أوامره:",
-
         parse_mode="HTML",
-
         reply_markup=main_menu_keyboard()
     )
 
