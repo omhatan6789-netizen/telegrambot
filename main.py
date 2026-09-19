@@ -620,7 +620,6 @@ def main():
 
     create_tables()
     create_profile_reply_tables()
-    create_moderation_tables()
     patch_inline_keyboard_buttons()
     register_existing_panel_buttons()
 
