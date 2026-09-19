@@ -6,7 +6,10 @@ from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
 )
-from telegram.ext import ContextTypes
+from telegram.ext import (
+    ContextTypes,
+    ApplicationHandlerStop,
+)
 
 from database import connect
 
@@ -15,6 +18,10 @@ OWNER_ID = 8453977662
 
 sessions = {}
 
+
+# =========================================================
+# التحقق من صلاحية الوصول
+# =========================================================
 
 def _is_allowed(user):
     if not user:
@@ -27,7 +34,8 @@ def _is_allowed(user):
     cur = conn.cursor()
 
     try:
-        cur.execute("""
+        cur.execute(
+            """
             SELECT 1
             FROM start_access
             WHERE user_id = ?
@@ -36,12 +44,14 @@ def _is_allowed(user):
                     AND username = ?
                )
             LIMIT 1
-        """, (
-            user.id,
-            user.username.lower()
-            if user.username
-            else None
-        ))
+            """,
+            (
+                user.id,
+                user.username.lower()
+                if user.username
+                else None
+            )
+        )
 
         return cur.fetchone() is not None
 
@@ -50,15 +60,17 @@ def _is_allowed(user):
         conn.close()
 
 
+# =========================================================
+# القائمة الرئيسية
+# =========================================================
+
 def _main_keyboard():
     return InlineKeyboardMarkup([
         [
             InlineKeyboardButton(
                 "تعديل رسالة البدء",
                 callback_data="startedit:message"
-            )
-        ],
-        [
+            ),
             InlineKeyboardButton(
                 "اضافة ازرار",
                 callback_data="startedit:buttons"
@@ -68,9 +80,7 @@ def _main_keyboard():
             InlineKeyboardButton(
                 "المسموحين بالوصول",
                 callback_data="startedit:access"
-            )
-        ],
-        [
+            ),
             InlineKeyboardButton(
                 "اضافة صورة",
                 callback_data="startedit:image"
@@ -79,15 +89,32 @@ def _main_keyboard():
     ])
 
 
+# =========================================================
+# زر الرجوع للقائمة
+# =========================================================
+
+def _back_keyboard():
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(
+                "↩️ الرجوع للقائمة",
+                callback_data="startedit:menu"
+            )
+        ]
+    ])
+
+
+# =========================================================
+# قائمة الأزرار
+# =========================================================
+
 def _buttons_keyboard():
     return InlineKeyboardMarkup([
         [
             InlineKeyboardButton(
                 "اضف زر",
                 callback_data="startedit:add_button"
-            )
-        ],
-        [
+            ),
             InlineKeyboardButton(
                 "تعديل ترتيب زر",
                 callback_data="startedit:order_button"
@@ -97,179 +124,34 @@ def _buttons_keyboard():
             InlineKeyboardButton(
                 "حذف زر",
                 callback_data="startedit:delete_button"
-            )
-        ],
-        [
+            ),
             InlineKeyboardButton(
-                "رجوع",
+                "↩️ الرجوع للقائمة",
                 callback_data="startedit:menu"
             )
         ],
     ])
 
 
-async def start_editor_command(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-    if update.effective_chat.type != "private":
-        return
-
-    user = update.effective_user
-
-    if not _is_allowed(user):
-        return
-
-    await update.message.reply_text(
-        "اهلًا بك عزيزي المطور 🎖️\n"
-        "هذي قائمة تعديل الستارت❗️",
-        reply_markup=_main_keyboard()
-    )
-
-
-async def start_editor_callback(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-    query = update.callback_query
-    await query.answer()
-
-    user = query.from_user
-
-    if not _is_allowed(user):
-        return
-
-    data = query.data
-
-    if data == "startedit:menu":
-        await query.edit_message_text(
-            "اهلًا بك عزيزي المطور 🎖️\n"
-            "هذي قائمة تعديل الستارت❗️",
-            reply_markup=_main_keyboard()
-        )
-        return
-
-    if data == "startedit:message":
-        sessions[user.id] = {
-            "action": "message"
-        }
-
-        await query.edit_message_text(
-            "حسنًا ارسل الرسالة"
-        )
-        return
-
-    if data == "startedit:buttons":
-        await query.edit_message_text(
-            "اختر العملية التي تريدها:",
-            reply_markup=_buttons_keyboard()
-        )
-        return
-
-    if data == "startedit:add_button":
-        sessions[user.id] = {
-            "action": "button_text"
-        }
-
-        await query.edit_message_text(
-            "ارسل اسم الزر:"
-        )
-        return
-
-    if data == "startedit:order_button":
-        conn = connect()
-        cur = conn.cursor()
-
-        try:
-            cur.execute("""
-                SELECT id, button_text
-                FROM start_buttons
-                ORDER BY button_order ASC, id ASC
-            """)
-            buttons = cur.fetchall()
-        finally:
-            cur.close()
-            conn.close()
-
-        if not buttons:
-            await query.edit_message_text(
-                "ما فيه أزرار مضافة حاليًا.",
-                reply_markup=_buttons_keyboard()
-            )
-            return
-
-        text = "أزرارك الحالية:\n\n"
-
-        for index, button in enumerate(buttons, 1):
-            text += f"{index}. {button[1]}\n"
-
-        text += "\nارسل رقم الزر الذي تريد تغيير ترتيبه:"
-
-        sessions[user.id] = {
-            "action": "order_select",
-            "buttons": buttons
-        }
-
-        await query.edit_message_text(text)
-        return
-
-    if data == "startedit:delete_button":
-        conn = connect()
-        cur = conn.cursor()
-
-        try:
-            cur.execute("""
-                SELECT id, button_text
-                FROM start_buttons
-                ORDER BY button_order ASC, id ASC
-            """)
-            buttons = cur.fetchall()
-        finally:
-            cur.close()
-            conn.close()
-
-        if not buttons:
-            await query.edit_message_text(
-                "ما فيه أزرار مضافة حاليًا.",
-                reply_markup=_buttons_keyboard()
-            )
-            return
-
-        text = "أزرارك الحالية:\n\n"
-
-        for index, button in enumerate(buttons, 1):
-            text += f"{index}. {button[1]}\n"
-
-        text += "\nارسل رقم الزر الذي تريد حذفه:"
-
-        sessions[user.id] = {
-            "action": "delete_button",
-            "buttons": buttons
-        }
-
-        await query.edit_message_text(text)
-        return
-
-    if data == "startedit:access":
-        await _show_access(query)
-        return
-
-    if data == "startedit:image":
-        await _show_images(query)
-        return
-
+# =========================================================
+# قائمة المسموحين
+# =========================================================
 
 async def _show_access(query):
     conn = connect()
     cur = conn.cursor()
 
     try:
-        cur.execute("""
+        cur.execute(
+            """
             SELECT id, user_id, username
             FROM start_access
             ORDER BY id ASC
-        """)
+            """
+        )
+
         rows = cur.fetchall()
+
     finally:
         cur.close()
         conn.close()
@@ -291,9 +173,7 @@ async def _show_access(query):
             InlineKeyboardButton(
                 "اضافة شخص",
                 callback_data="startedit:access_add"
-            )
-        ],
-        [
+            ),
             InlineKeyboardButton(
                 "حذف شخص",
                 callback_data="startedit:access_delete"
@@ -301,10 +181,10 @@ async def _show_access(query):
         ],
         [
             InlineKeyboardButton(
-                "رجوع",
+                "↩️ الرجوع للقائمة",
                 callback_data="startedit:menu"
             )
-        ],
+        ]
     ])
 
     await query.edit_message_text(
@@ -313,17 +193,25 @@ async def _show_access(query):
     )
 
 
+# =========================================================
+# قائمة الصور
+# =========================================================
+
 async def _show_images(query):
     conn = connect()
     cur = conn.cursor()
 
     try:
-        cur.execute("""
+        cur.execute(
+            """
             SELECT id, image_order
             FROM start_images
             ORDER BY image_order ASC, id ASC
-        """)
+            """
+        )
+
         rows = cur.fetchall()
+
     finally:
         cur.close()
         conn.close()
@@ -339,9 +227,7 @@ async def _show_images(query):
             InlineKeyboardButton(
                 "اضف صورة",
                 callback_data="startedit:image_add"
-            )
-        ],
-        [
+            ),
             InlineKeyboardButton(
                 "حذف صورة",
                 callback_data="startedit:image_delete"
@@ -351,14 +237,12 @@ async def _show_images(query):
             InlineKeyboardButton(
                 "حذف كل الصور",
                 callback_data="startedit:image_delete_all"
-            )
-        ],
-        [
+            ),
             InlineKeyboardButton(
-                "رجوع",
+                "↩️ الرجوع للقائمة",
                 callback_data="startedit:menu"
             )
-        ],
+        ]
     ])
 
     await query.edit_message_text(
@@ -367,10 +251,252 @@ async def _show_images(query):
     )
 
 
+# =========================================================
+# أمر تعديل الستارت
+# =========================================================
+
+async def start_editor_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+    if not update.message:
+        return
+
+    if update.effective_chat.type != "private":
+        return
+
+    user = update.effective_user
+
+    if not _is_allowed(user):
+        raise ApplicationHandlerStop
+
+    sessions.pop(user.id, None)
+
+    await update.message.reply_text(
+        "اهلًا بك عزيزي المطور 🎖️\n"
+        "هذي قائمة تعديل الستارت❗️",
+        reply_markup=_main_keyboard()
+    )
+
+    raise ApplicationHandlerStop
+
+
+# =========================================================
+# أزرار محرر الستارت
+# =========================================================
+
+async def start_editor_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+    query = update.callback_query
+
+    await query.answer()
+
+    user = query.from_user
+
+    if not _is_allowed(user):
+        raise ApplicationHandlerStop
+
+    data = query.data
+
+    # -----------------------------------------------------
+    # القائمة الرئيسية
+    # -----------------------------------------------------
+
+    if data == "startedit:menu":
+        sessions.pop(user.id, None)
+
+        await query.edit_message_text(
+            "اهلًا بك عزيزي المطور 🎖️\n"
+            "هذي قائمة تعديل الستارت❗️",
+            reply_markup=_main_keyboard()
+        )
+
+        raise ApplicationHandlerStop
+
+    # -----------------------------------------------------
+    # تعديل رسالة البدء
+    # -----------------------------------------------------
+
+    if data == "startedit:message":
+        sessions[user.id] = {
+            "action": "message"
+        }
+
+        await query.edit_message_text(
+            "حسنًا ارسل الرسالة",
+            reply_markup=_back_keyboard()
+        )
+
+        raise ApplicationHandlerStop
+
+    # -----------------------------------------------------
+    # قائمة الأزرار
+    # -----------------------------------------------------
+
+    if data == "startedit:buttons":
+        sessions.pop(user.id, None)
+
+        await query.edit_message_text(
+            "اختر العملية التي تريدها:",
+            reply_markup=_buttons_keyboard()
+        )
+
+        raise ApplicationHandlerStop
+
+    # -----------------------------------------------------
+    # إضافة زر
+    # -----------------------------------------------------
+
+    if data == "startedit:add_button":
+        sessions[user.id] = {
+            "action": "button_text"
+        }
+
+        await query.edit_message_text(
+            "حسنًا ارسل اسم الزر",
+            reply_markup=_back_keyboard()
+        )
+
+        raise ApplicationHandlerStop
+
+    # -----------------------------------------------------
+    # تعديل ترتيب زر
+    # -----------------------------------------------------
+
+    if data == "startedit:order_button":
+
+        conn = connect()
+        cur = conn.cursor()
+
+        try:
+            cur.execute(
+                """
+                SELECT id, button_text
+                FROM start_buttons
+                ORDER BY button_order ASC, id ASC
+                """
+            )
+
+            buttons = cur.fetchall()
+
+        finally:
+            cur.close()
+            conn.close()
+
+        if not buttons:
+            await query.edit_message_text(
+                "ما فيه أزرار مضافة حاليًا.",
+                reply_markup=_buttons_keyboard()
+            )
+
+            raise ApplicationHandlerStop
+
+        text = "أزرارك الحالية:\n\n"
+
+        for index, button in enumerate(buttons, 1):
+            text += f"{index}. {button[1]}\n"
+
+        text += "\nارسل رقم الزر الذي تريد تغيير ترتيبه:"
+
+        sessions[user.id] = {
+            "action": "order_select",
+            "buttons": buttons
+        }
+
+        await query.edit_message_text(
+            text,
+            reply_markup=_back_keyboard()
+        )
+
+        raise ApplicationHandlerStop
+
+    # -----------------------------------------------------
+    # حذف زر
+    # -----------------------------------------------------
+
+    if data == "startedit:delete_button":
+
+        conn = connect()
+        cur = conn.cursor()
+
+        try:
+            cur.execute(
+                """
+                SELECT id, button_text
+                FROM start_buttons
+                ORDER BY button_order ASC, id ASC
+                """
+            )
+
+            buttons = cur.fetchall()
+
+        finally:
+            cur.close()
+            conn.close()
+
+        if not buttons:
+            await query.edit_message_text(
+                "ما فيه أزرار مضافة حاليًا.",
+                reply_markup=_buttons_keyboard()
+            )
+
+            raise ApplicationHandlerStop
+
+        text = "أزرارك الحالية:\n\n"
+
+        for index, button in enumerate(buttons, 1):
+            text += f"{index}. {button[1]}\n"
+
+        text += "\nارسل رقم الزر الذي تريد حذفه:"
+
+        sessions[user.id] = {
+            "action": "delete_button",
+            "buttons": buttons
+        }
+
+        await query.edit_message_text(
+            text,
+            reply_markup=_back_keyboard()
+        )
+
+        raise ApplicationHandlerStop
+
+    # -----------------------------------------------------
+    # المسموحين
+    # -----------------------------------------------------
+
+    if data == "startedit:access":
+        sessions.pop(user.id, None)
+
+        await _show_access(query)
+
+        raise ApplicationHandlerStop
+
+    # -----------------------------------------------------
+    # الصور
+    # -----------------------------------------------------
+
+    if data == "startedit:image":
+        sessions.pop(user.id, None)
+
+        await _show_images(query)
+
+        raise ApplicationHandlerStop
+
+
+# =========================================================
+# رسائل محرر الستارت
+# =========================================================
+
 async def start_editor_message(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
+    if not update.message:
+        return
+
     if update.effective_chat.type != "private":
         return
 
@@ -388,14 +514,17 @@ async def start_editor_message(
 
     if action == "message":
         await _save_start_message(update)
-        return
+        raise ApplicationHandlerStop
 
     if action == "button_text":
+
         if not update.message.text:
             await update.message.reply_text(
-                "ارسل اسم الزر كنص."
+                "ارسل اسم الزر كنص.",
+                reply_markup=_back_keyboard()
             )
-            return
+
+            raise ApplicationHandlerStop
 
         sessions[user.id] = {
             "action": "button_url",
@@ -403,45 +532,51 @@ async def start_editor_message(
         }
 
         await update.message.reply_text(
-            "الآن ارسل الرابط أو يوزر التليجرام:\n\n"
+            "حسنًا، الآن ارسل الرابط أو يوزر التليجرام:\n\n"
             "مثال:\n"
             "https://example.com\n"
-            "@username"
+            "@username",
+            reply_markup=_back_keyboard()
         )
-        return
+
+        raise ApplicationHandlerStop
 
     if action == "button_url":
         await _save_button(update)
-        return
+        raise ApplicationHandlerStop
 
     if action == "order_select":
         await _select_order_button(update)
-        return
+        raise ApplicationHandlerStop
 
     if action == "order_position":
         await _save_button_order(update)
-        return
+        raise ApplicationHandlerStop
 
     if action == "delete_button":
         await _delete_button(update)
-        return
+        raise ApplicationHandlerStop
 
     if action == "access_add":
         await _add_access(update)
-        return
+        raise ApplicationHandlerStop
 
     if action == "access_delete":
         await _delete_access(update)
-        return
+        raise ApplicationHandlerStop
 
     if action == "image_add":
         await _add_image(update)
-        return
+        raise ApplicationHandlerStop
 
     if action == "image_delete":
         await _delete_image(update)
-        return
+        raise ApplicationHandlerStop
 
+
+# =========================================================
+# حفظ رسالة الستارت
+# =========================================================
 
 async def _save_start_message(update):
     message = update.message
@@ -450,7 +585,8 @@ async def _save_start_message(update):
 
     if not text:
         await message.reply_text(
-            "الرسالة ما تحتوي على نص أو كابشن."
+            "الرسالة ما تحتوي على نص أو كابشن.",
+            reply_markup=_back_keyboard()
         )
         return
 
@@ -469,18 +605,21 @@ async def _save_start_message(update):
     cur = conn.cursor()
 
     try:
-        cur.execute("""
+        cur.execute(
+            """
             UPDATE start_settings
             SET message_text = ?,
                 message_entities = ?
             WHERE id = 1
-        """, (
-            text,
-            json.dumps(
-                entity_data,
-                ensure_ascii=False
+            """,
+            (
+                text,
+                json.dumps(
+                    entity_data,
+                    ensure_ascii=False
+                )
             )
-        ))
+        )
 
         conn.commit()
 
@@ -495,19 +634,34 @@ async def _save_start_message(update):
     sessions.pop(update.effective_user.id, None)
 
     await message.reply_text(
-        "تم تعديل رسالة البدء بنجاح ✅"
+        "تم تعديل رسالة البدء بنجاح ✅",
+        reply_markup=_back_keyboard()
     )
 
 
+# =========================================================
+# حفظ الزر
+# =========================================================
+
 async def _save_button(update):
-    url = update.message.text.strip()
+    message = update.message
+
+    if not message.text:
+        await message.reply_text(
+            "ارسل الرابط أو اليوزر كنص.",
+            reply_markup=_back_keyboard()
+        )
+        return
+
+    url = message.text.strip()
 
     if url.startswith("@"):
         username = url[1:].strip()
 
         if not username:
-            await update.message.reply_text(
-                "يوزر غير صحيح."
+            await message.reply_text(
+                "يوزر غير صحيح.",
+                reply_markup=_back_keyboard()
             )
             return
 
@@ -518,8 +672,9 @@ async def _save_button(update):
         url,
         re.IGNORECASE
     ):
-        await update.message.reply_text(
-            "ارسل رابط يبدأ بـ https:// أو يوزر يبدأ بـ @"
+        await message.reply_text(
+            "ارسل رابط يبدأ بـ https:// أو يوزر يبدأ بـ @",
+            reply_markup=_back_keyboard()
         )
         return
 
@@ -531,14 +686,17 @@ async def _save_button(update):
     cur = conn.cursor()
 
     try:
-        cur.execute("""
+        cur.execute(
+            """
             SELECT COALESCE(MAX(button_order), 0)
             FROM start_buttons
-        """)
+            """
+        )
 
         max_order = cur.fetchone()[0] or 0
 
-        cur.execute("""
+        cur.execute(
+            """
             INSERT INTO start_buttons
             (
                 button_text,
@@ -546,11 +704,13 @@ async def _save_button(update):
                 button_order
             )
             VALUES (?, ?, ?)
-        """, (
-            button_text,
-            url,
-            max_order + 1
-        ))
+            """,
+            (
+                button_text,
+                url,
+                max_order + 1
+            )
+        )
 
         conn.commit()
 
@@ -564,17 +724,26 @@ async def _save_button(update):
 
     sessions.pop(update.effective_user.id, None)
 
-    await update.message.reply_text(
-        "تمت إضافة الزر بنجاح ✅"
+    await message.reply_text(
+        "تمت إضافة الزر بنجاح ✅",
+        reply_markup=_back_keyboard()
     )
 
 
+# =========================================================
+# اختيار زر للترتيب
+# =========================================================
+
 async def _select_order_button(update):
     try:
-        number = int(update.message.text.strip())
-    except ValueError:
+        number = int(
+            update.message.text.strip()
+        )
+
+    except (ValueError, AttributeError):
         await update.message.reply_text(
-            "ارسل رقم الزر فقط."
+            "ارسل رقم الزر فقط.",
+            reply_markup=_back_keyboard()
         )
         return
 
@@ -584,7 +753,8 @@ async def _select_order_button(update):
 
     if number < 1 or number > len(buttons):
         await update.message.reply_text(
-            "رقم الزر غير صحيح."
+            "رقم الزر غير صحيح.",
+            reply_markup=_back_keyboard()
         )
         return
 
@@ -600,18 +770,25 @@ async def _select_order_button(update):
     await update.message.reply_text(
         f"الزر المحدد: {selected[1]}\n\n"
         "ارسل الترتيب الجديد.\n"
-        "مثال: 1"
+        "مثال: 1",
+        reply_markup=_back_keyboard()
     )
 
+
+# =========================================================
+# حفظ ترتيب الزر
+# =========================================================
 
 async def _save_button_order(update):
     try:
         new_position = int(
             update.message.text.strip()
         )
-    except ValueError:
+
+    except (ValueError, AttributeError):
         await update.message.reply_text(
-            "ارسل رقم الترتيب فقط."
+            "ارسل رقم الترتيب فقط.",
+            reply_markup=_back_keyboard()
         )
         return
 
@@ -623,7 +800,8 @@ async def _save_button_order(update):
 
     if new_position < 1 or new_position > len(buttons):
         await update.message.reply_text(
-            "الترتيب غير صحيح."
+            "الترتيب غير صحيح.",
+            reply_markup=_back_keyboard()
         )
         return
 
@@ -651,14 +829,17 @@ async def _save_button_order(update):
 
     try:
         for index, button in enumerate(ordered, 1):
-            cur.execute("""
+            cur.execute(
+                """
                 UPDATE start_buttons
                 SET button_order = ?
                 WHERE id = ?
-            """, (
-                index,
-                button[0]
-            ))
+                """,
+                (
+                    index,
+                    button[0]
+                )
+            )
 
         conn.commit()
 
@@ -673,16 +854,25 @@ async def _save_button_order(update):
     sessions.pop(update.effective_user.id, None)
 
     await update.message.reply_text(
-        "تم تعديل ترتيب الزر بنجاح ✅"
+        "تم تعديل ترتيب الزر بنجاح ✅",
+        reply_markup=_back_keyboard()
     )
 
 
+# =========================================================
+# حذف الزر
+# =========================================================
+
 async def _delete_button(update):
     try:
-        number = int(update.message.text.strip())
-    except ValueError:
+        number = int(
+            update.message.text.strip()
+        )
+
+    except (ValueError, AttributeError):
         await update.message.reply_text(
-            "ارسل رقم الزر فقط."
+            "ارسل رقم الزر فقط.",
+            reply_markup=_back_keyboard()
         )
         return
 
@@ -692,7 +882,8 @@ async def _delete_button(update):
 
     if number < 1 or number > len(buttons):
         await update.message.reply_text(
-            "رقم الزر غير صحيح."
+            "رقم الزر غير صحيح.",
+            reply_markup=_back_keyboard()
         )
         return
 
@@ -702,28 +893,36 @@ async def _delete_button(update):
     cur = conn.cursor()
 
     try:
-        cur.execute("""
+        cur.execute(
+            """
             DELETE FROM start_buttons
             WHERE id = ?
-        """, (button_id,))
+            """,
+            (button_id,)
+        )
 
-        cur.execute("""
+        cur.execute(
+            """
             SELECT id
             FROM start_buttons
             ORDER BY button_order ASC, id ASC
-        """)
+            """
+        )
 
         remaining = cur.fetchall()
 
         for index, row in enumerate(remaining, 1):
-            cur.execute("""
+            cur.execute(
+                """
                 UPDATE start_buttons
                 SET button_order = ?
                 WHERE id = ?
-            """, (
-                index,
-                row[0]
-            ))
+                """,
+                (
+                    index,
+                    row[0]
+                )
+            )
 
         conn.commit()
 
@@ -738,16 +937,22 @@ async def _delete_button(update):
     sessions.pop(update.effective_user.id, None)
 
     await update.message.reply_text(
-        "تم حذف الزر بنجاح ✅"
+        "تم حذف الزر بنجاح ✅",
+        reply_markup=_back_keyboard()
     )
 
+
+# =========================================================
+# إضافة صورة
+# =========================================================
 
 async def _add_image(update):
     message = update.message
 
     if not message.photo:
         await message.reply_text(
-            "ارسل صورة."
+            "ارسل صورة.",
+            reply_markup=_back_keyboard()
         )
         return
 
@@ -757,24 +962,29 @@ async def _add_image(update):
     cur = conn.cursor()
 
     try:
-        cur.execute("""
+        cur.execute(
+            """
             SELECT COALESCE(MAX(image_order), 0)
             FROM start_images
-        """)
+            """
+        )
 
         max_order = cur.fetchone()[0] or 0
 
-        cur.execute("""
+        cur.execute(
+            """
             INSERT INTO start_images
             (
                 file_id,
                 image_order
             )
             VALUES (?, ?)
-        """, (
-            file_id,
-            max_order + 1
-        ))
+            """,
+            (
+                file_id,
+                max_order + 1
+            )
+        )
 
         conn.commit()
 
@@ -789,16 +999,25 @@ async def _add_image(update):
     sessions.pop(update.effective_user.id, None)
 
     await message.reply_text(
-        "تمت إضافة الصورة بنجاح ✅"
+        "تمت إضافة الصورة بنجاح ✅",
+        reply_markup=_back_keyboard()
     )
 
 
+# =========================================================
+# حذف صورة
+# =========================================================
+
 async def _delete_image(update):
     try:
-        number = int(update.message.text.strip())
-    except ValueError:
+        number = int(
+            update.message.text.strip()
+        )
+
+    except (ValueError, AttributeError):
         await update.message.reply_text(
-            "ارسل رقم الصورة فقط."
+            "ارسل رقم الصورة فقط.",
+            reply_markup=_back_keyboard()
         )
         return
 
@@ -806,44 +1025,55 @@ async def _delete_image(update):
     cur = conn.cursor()
 
     try:
-        cur.execute("""
+        cur.execute(
+            """
             SELECT id
             FROM start_images
             ORDER BY image_order ASC, id ASC
-        """)
+            """
+        )
 
         images = cur.fetchall()
 
         if number < 1 or number > len(images):
             await update.message.reply_text(
-                "رقم الصورة غير صحيح."
+                "رقم الصورة غير صحيح.",
+                reply_markup=_back_keyboard()
             )
             return
 
         image_id = images[number - 1][0]
 
-        cur.execute("""
+        cur.execute(
+            """
             DELETE FROM start_images
             WHERE id = ?
-        """, (image_id,))
+            """,
+            (image_id,)
+        )
 
-        cur.execute("""
+        cur.execute(
+            """
             SELECT id
             FROM start_images
             ORDER BY image_order ASC, id ASC
-        """)
+            """
+        )
 
         remaining = cur.fetchall()
 
         for index, row in enumerate(remaining, 1):
-            cur.execute("""
+            cur.execute(
+                """
                 UPDATE start_images
                 SET image_order = ?
                 WHERE id = ?
-            """, (
-                index,
-                row[0]
-            ))
+                """,
+                (
+                    index,
+                    row[0]
+                )
+            )
 
         conn.commit()
 
@@ -858,23 +1088,33 @@ async def _delete_image(update):
     sessions.pop(update.effective_user.id, None)
 
     await update.message.reply_text(
-        "تم حذف الصورة بنجاح ✅"
+        "تم حذف الصورة بنجاح ✅",
+        reply_markup=_back_keyboard()
     )
 
+
+# =========================================================
+# أزرار المسموحين والصور
+# =========================================================
 
 async def start_editor_special_callback(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
     query = update.callback_query
+
     await query.answer()
 
     user = query.from_user
 
     if not _is_allowed(user):
-        return
+        raise ApplicationHandlerStop
 
     data = query.data
+
+    # -----------------------------------------------------
+    # إضافة شخص
+    # -----------------------------------------------------
 
     if data == "startedit:access_add":
         sessions[user.id] = {
@@ -885,9 +1125,15 @@ async def start_editor_special_callback(
             "ارسل أيدي الشخص أو يوزره.\n\n"
             "مثال:\n"
             "8453977662\n"
-            "@username"
+            "@username",
+            reply_markup=_back_keyboard()
         )
-        return
+
+        raise ApplicationHandlerStop
+
+    # -----------------------------------------------------
+    # حذف شخص
+    # -----------------------------------------------------
 
     if data == "startedit:access_delete":
         sessions[user.id] = {
@@ -895,9 +1141,15 @@ async def start_editor_special_callback(
         }
 
         await query.edit_message_text(
-            "ارسل أيدي الشخص أو يوزره لحذفه."
+            "ارسل أيدي الشخص أو يوزره لحذفه.",
+            reply_markup=_back_keyboard()
         )
-        return
+
+        raise ApplicationHandlerStop
+
+    # -----------------------------------------------------
+    # إضافة صورة
+    # -----------------------------------------------------
 
     if data == "startedit:image_add":
         sessions[user.id] = {
@@ -905,48 +1157,71 @@ async def start_editor_special_callback(
         }
 
         await query.edit_message_text(
-            "ارسل الصورة."
+            "ارسل الصورة.",
+            reply_markup=_back_keyboard()
         )
-        return
+
+        raise ApplicationHandlerStop
+
+    # -----------------------------------------------------
+    # حذف صورة
+    # -----------------------------------------------------
 
     if data == "startedit:image_delete":
+
         conn = connect()
         cur = conn.cursor()
 
         try:
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT id
                 FROM start_images
                 ORDER BY image_order ASC, id ASC
-            """)
+                """
+            )
+
             images = cur.fetchall()
+
         finally:
             cur.close()
             conn.close()
 
         if not images:
             await query.edit_message_text(
-                "ما فيه صور حاليًا."
+                "ما فيه صور حاليًا.",
+                reply_markup=_show_images_keyboard_fallback()
             )
-            return
+
+            raise ApplicationHandlerStop
 
         sessions[user.id] = {
             "action": "image_delete"
         }
 
         await query.edit_message_text(
-            "ارسل رقم الصورة التي تريد حذفها."
+            "ارسل رقم الصورة التي تريد حذفها.",
+            reply_markup=_back_keyboard()
         )
-        return
+
+        raise ApplicationHandlerStop
+
+    # -----------------------------------------------------
+    # حذف كل الصور
+    # -----------------------------------------------------
 
     if data == "startedit:image_delete_all":
+
         conn = connect()
         cur = conn.cursor()
 
         try:
-            cur.execute("""
+            cur.execute(
+                """
                 DELETE FROM start_images
-            """)
+                """
+            )
+
             conn.commit()
 
         except Exception:
@@ -957,11 +1232,44 @@ async def start_editor_special_callback(
             cur.close()
             conn.close()
 
+        sessions.pop(user.id, None)
+
         await query.edit_message_text(
             "تم حذف جميع صور الستارت ✅",
-            reply_markup=_main_keyboard()
+            reply_markup=_back_keyboard()
         )
 
+        raise ApplicationHandlerStop
+
+
+def _show_images_keyboard_fallback():
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(
+                "اضف صورة",
+                callback_data="startedit:image_add"
+            ),
+            InlineKeyboardButton(
+                "حذف صورة",
+                callback_data="startedit:image_delete"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "حذف كل الصور",
+                callback_data="startedit:image_delete_all"
+            ),
+            InlineKeyboardButton(
+                "↩️ الرجوع للقائمة",
+                callback_data="startedit:menu"
+            )
+        ]
+    ])
+
+
+# =========================================================
+# إضافة شخص للمسموحين
+# =========================================================
 
 async def _add_access(update):
     value = update.message.text.strip()
@@ -975,34 +1283,43 @@ async def _add_access(update):
 
             if not username:
                 await update.message.reply_text(
-                    "اليوزر غير صحيح."
+                    "اليوزر غير صحيح.",
+                    reply_markup=_back_keyboard()
                 )
                 return
 
-            cur.execute("""
+            cur.execute(
+                """
                 INSERT INTO start_access
                 (
                     username
                 )
                 VALUES (?)
-            """, (username,))
+                """,
+                (username,)
+            )
 
         else:
             try:
                 user_id = int(value)
+
             except ValueError:
                 await update.message.reply_text(
-                    "ارسل أيدي صحيح أو يوزر يبدأ بـ @."
+                    "ارسل أيدي صحيح أو يوزر يبدأ بـ @.",
+                    reply_markup=_back_keyboard()
                 )
                 return
 
-            cur.execute("""
+            cur.execute(
+                """
                 INSERT INTO start_access
                 (
                     user_id
                 )
                 VALUES (?)
-            """, (user_id,))
+                """,
+                (user_id,)
+            )
 
         conn.commit()
 
@@ -1017,9 +1334,14 @@ async def _add_access(update):
     sessions.pop(update.effective_user.id, None)
 
     await update.message.reply_text(
-        "تمت الإضافة إلى المسموحين بالوصول ✅"
+        "تمت الإضافة إلى المسموحين بالوصول ✅",
+        reply_markup=_back_keyboard()
     )
 
+
+# =========================================================
+# حذف شخص من المسموحين
+# =========================================================
 
 async def _delete_access(update):
     value = update.message.text.strip()
@@ -1031,24 +1353,32 @@ async def _delete_access(update):
         if value.startswith("@"):
             username = value[1:].strip().lower()
 
-            cur.execute("""
+            cur.execute(
+                """
                 DELETE FROM start_access
                 WHERE username = ?
-            """, (username,))
+                """,
+                (username,)
+            )
 
         else:
             try:
                 user_id = int(value)
+
             except ValueError:
                 await update.message.reply_text(
-                    "ارسل أيدي صحيح أو يوزر يبدأ بـ @."
+                    "ارسل أيدي صحيح أو يوزر يبدأ بـ @.",
+                    reply_markup=_back_keyboard()
                 )
                 return
 
-            cur.execute("""
+            cur.execute(
+                """
                 DELETE FROM start_access
                 WHERE user_id = ?
-            """, (user_id,))
+                """,
+                (user_id,)
+            )
 
         conn.commit()
 
@@ -1063,5 +1393,6 @@ async def _delete_access(update):
     sessions.pop(update.effective_user.id, None)
 
     await update.message.reply_text(
-        "تم حذف الشخص من المسموحين ✅"
+        "تم حذف الشخص من المسموحين ✅",
+        reply_markup=_back_keyboard()
     )
