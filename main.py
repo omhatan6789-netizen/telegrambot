@@ -251,6 +251,13 @@ from handlers.roles import (
 )
 
 
+from handlers.start_editor import (
+    start_editor_command,
+    start_editor_callback,
+    start_editor_special_callback,
+    start_editor_message,
+)
+
 # ==================================================
 # الردود
 # ==================================================
@@ -820,6 +827,40 @@ def main():
             permission_command
         ),
         group=-10
+    )
+
+    
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.PRIVATE
+            & filters.Regex(r"^(تعديل ستارت|الستارت)$"),
+            start_editor_command
+        ),
+        group=-8
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            start_editor_callback,
+            pattern=r"^startedit:(?:menu|message|buttons|add_button|order_button|delete_button|access|image)$"
+        ),
+        group=-7
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            start_editor_special_callback,
+            pattern=r"^startedit:(?:access_add|access_delete|image_add|image_delete|image_delete_all)$"
+        ),
+        group=-7
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.PRIVATE & ~filters.COMMAND,
+            start_editor_message
+        ),
+        group=-8
     )
     
     # ==================================================
