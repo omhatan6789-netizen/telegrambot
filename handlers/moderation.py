@@ -54,23 +54,11 @@ def has_permission(actor_id, target_id):
     if actor_id == target_id:
         return False
 
-    # ==================================================
-    # المطور الأساسي
-    # ==================================================
-
     if is_primary_developer(actor_id):
         return True
 
-    # ==================================================
-    # حماية المالك
-    # ==================================================
-
     if target_id == OWNER_ID:
         return False
-
-    # ==================================================
-    # المطور المساعد
-    # ==================================================
 
     if is_secondary_developer(actor_id):
 
@@ -78,10 +66,6 @@ def has_permission(actor_id, target_id):
             return False
 
         return True
-
-    # ==================================================
-    # الرتب
-    # ==================================================
 
     actor_rank = get_rank(actor_id)
     target_rank = get_rank(target_id)
@@ -433,7 +417,6 @@ def parse_duration(token):
         "ثانية",
         "ثواني",
     ):
-
         return amount
 
     if unit in (
@@ -441,7 +424,6 @@ def parse_duration(token):
         "دقيقة",
         "دقائق",
     ):
-
         return amount * 60
 
     if unit in (
@@ -449,7 +431,6 @@ def parse_duration(token):
         "ساعة",
         "ساعات",
     ):
-
         return amount * 60 * 60
 
     return amount * 24 * 60 * 60
@@ -536,19 +517,32 @@ def build_user(
 
 
 # ==================================================
-# البحث في users
+# تنظيف اليوزر
 # ==================================================
 
-def get_user_from_database(username):
+def clean_username(username):
 
-    clean_username = (
-        username
+    if not username:
+        return ""
+
+    return (
+        str(username)
+        .strip()
         .lstrip("@")
         .strip()
         .lower()
     )
 
-    if not clean_username:
+
+# ==================================================
+# البحث في users
+# ==================================================
+
+def get_user_from_database(username):
+
+    clean = clean_username(username)
+
+    if not clean:
         return None
 
     conn = connect()
@@ -571,7 +565,7 @@ def get_user_from_database(username):
         ) = ?
         LIMIT 1
         """, (
-            clean_username,
+            clean,
         ))
 
         row = cur.fetchone()
@@ -601,14 +595,9 @@ def get_moderation_user_from_database(
     username,
 ):
 
-    clean_username = (
-        username
-        .lstrip("@")
-        .strip()
-        .lower()
-    )
+    clean = clean_username(username)
 
-    if not clean_username:
+    if not clean:
         return None
 
     conn = connect()
@@ -639,7 +628,7 @@ def get_moderation_user_from_database(
             LIMIT 1
             """, (
                 chat_id,
-                clean_username,
+                clean,
             ))
 
             row = cur.fetchone()
@@ -662,7 +651,7 @@ def get_moderation_user_from_database(
 
 
 # ==================================================
-# البحث بالـ ID من قاعدة البيانات
+# البحث بالـ ID
 # ==================================================
 
 def get_user_by_id_from_database(
@@ -703,6 +692,62 @@ def get_user_by_id_from_database(
 
         cur.close()
         conn.close()
+
+
+# ==================================================
+# البحث باليوزر من جميع مصادر الإشراف
+# ==================================================
+
+def find_username_locally(
+    chat_id,
+    username,
+):
+
+    clean = clean_username(username)
+
+    if not clean:
+        return None
+
+    # --------------------------------------------------
+    # users
+    # --------------------------------------------------
+
+    try:
+
+        target = get_user_from_database(
+            clean
+        )
+
+        if target:
+            return target
+
+    except Exception as e:
+
+        print(
+            f"[MODERATION] users lookup error: {e}"
+        )
+
+    # --------------------------------------------------
+    # جداول العقوبات
+    # --------------------------------------------------
+
+    try:
+
+        target = get_moderation_user_from_database(
+            chat_id,
+            clean,
+        )
+
+        if target:
+            return target
+
+    except Exception as e:
+
+        print(
+            f"[MODERATION] moderation lookup error: {e}"
+        )
+
+    return None
 
 
 # ==================================================
@@ -757,6 +802,9 @@ async def resolve_target(
 
     args = parts[2:]
 
+    if not target_text:
+        return None, []
+
     # ==================================================
     # ID
     # ==================================================
@@ -789,11 +837,14 @@ async def resolve_target(
                         args,
                     )
 
-            except Exception:
-                pass
+            except Exception as e:
+
+                print(
+                    f"[MODERATION] ID get_chat_member error: {e}"
+                )
 
             # --------------------------------------------------
-            # users
+            # قاعدة البيانات
             # --------------------------------------------------
 
             try:
@@ -811,11 +862,15 @@ async def resolve_target(
                         args,
                     )
 
-            except Exception:
-                pass
+            except Exception as e:
+
+                print(
+                    f"[MODERATION] ID database error: {e}"
+                )
 
             # --------------------------------------------------
-            # المستخدم غير معروف
+            # حتى لو غير موجود، الـ ID نفسه كافٍ
+            # لعمليات Telegram
             # --------------------------------------------------
 
             return (
@@ -828,115 +883,94 @@ async def resolve_target(
                 args,
             )
 
-        except Exception:
+        except Exception as e:
+
+            print(
+                f"[MODERATION] ID resolve error: {e}"
+            )
+
             return None, []
 
     # ==================================================
+    # Username
+    #
+    # ندعم:
     # @username
+    # username
     # ==================================================
 
-    if target_text.startswith("@"):
+    username = clean_username(
+        target_text
+    )
 
-        username = (
-            target_text[1:]
-            .strip()
+    # --------------------------------------------------
+    # منع اعتبار كلمات عشوائية كيوزر
+    # --------------------------------------------------
+
+    if not username:
+        return None, []
+
+    # --------------------------------------------------
+    # البحث المحلي
+    # --------------------------------------------------
+
+    target = find_username_locally(
+        chat.id,
+        username,
+    )
+
+    if target:
+
+        return (
+            target,
+            args,
         )
 
-        if not username:
-            return None, []
+    # --------------------------------------------------
+    # محاولة Telegram كاحتياط
+    # --------------------------------------------------
 
-        # --------------------------------------------------
-        # users
-        # --------------------------------------------------
+    try:
 
-        try:
-
-            target = (
-                get_user_from_database(
-                    username
-                )
+        chat_info = (
+            await context.bot.get_chat(
+                f"@{username}"
             )
+        )
 
-            if target:
+        if getattr(
+            chat_info,
+            "id",
+            None,
+        ):
 
-                return (
-                    target,
-                    args,
-                )
-
-        except Exception:
-            pass
-
-        # --------------------------------------------------
-        # العقوبات
-        # --------------------------------------------------
-
-        try:
-
-            target = (
-                get_moderation_user_from_database(
-                    chat.id,
-                    username,
-                )
-            )
-
-            if target:
-
-                return (
-                    target,
-                    args,
-                )
-
-        except Exception:
-            pass
-
-        # --------------------------------------------------
-        # Telegram
-        #
-        # get_chat ليس مضمونًا للمستخدم العادي،
-        # لذلك نستخدمه فقط كاحتياط.
-        # --------------------------------------------------
-
-        try:
-
-            chat_info = (
-                await context.bot.get_chat(
-                    f"@{username}"
-                )
-            )
-
-            if getattr(
-                chat_info,
-                "id",
-                None,
-            ):
-
-                return (
-                    build_user(
-                        chat_info.id,
-                        getattr(
-                            chat_info,
-                            "first_name",
-                            None,
-                        ),
-                        getattr(
-                            chat_info,
-                            "username",
-                            username,
-                        ),
-                        getattr(
-                            chat_info,
-                            "is_bot",
-                            False,
-                        ),
+            return (
+                build_user(
+                    chat_info.id,
+                    getattr(
+                        chat_info,
+                        "first_name",
+                        None,
                     ),
-                    args,
-                )
+                    getattr(
+                        chat_info,
+                        "username",
+                        username,
+                    ),
+                    getattr(
+                        chat_info,
+                        "is_bot",
+                        False,
+                    ),
+                ),
+                args,
+            )
 
-        except Exception:
-            pass
+    except Exception as e:
 
-        return None, []
+        print(
+            f"[MODERATION] username Telegram lookup error: {e}"
+        )
 
     return None, []
 
@@ -1020,7 +1054,11 @@ async def get_chat_member_safe(
             user_id=user_id,
         )
 
-    except Exception:
+    except Exception as e:
+
+        print(
+            f"[MODERATION] get_chat_member error: {e}"
+        )
 
         return None
 
@@ -1104,6 +1142,11 @@ async def check_target(
     # ==================================================
 
     if target.id == actor.id:
+
+        await message.reply_text(
+            "• ما تقدر تطبق العقوبة على نفسك."
+        )
+
         return False
 
     # ==================================================
@@ -1134,14 +1177,16 @@ async def check_target(
         ):
 
             if action == "ban":
-                action_text = "تحظره"
-            else:
-                action_text = "تقيده"
 
-            await message.reply_text(
-                f"• اعذرني بس الشخص الي تبي "
-                f"{action_text} مشرف بالقروب ."
-            )
+                await message.reply_text(
+                    "• ما أقدر أحظر هذا المستخدم لأنه مشرف في القروب."
+                )
+
+            else:
+
+                await message.reply_text(
+                    "• ما أقدر أقيد هذا المستخدم لأنه مشرف في القروب."
+                )
 
             return False
 
@@ -1186,6 +1231,36 @@ async def check_target(
 
 
 # ==================================================
+# رسالة عدم العثور على المستخدم
+# ==================================================
+
+async def target_not_found_message(
+    message,
+    target_text=None,
+):
+
+    if target_text:
+
+        await message.reply_text(
+            "• ما قدرت أحدد المستخدم.\n\n"
+            f"المطلوب ↤ {escape(str(target_text))}\n\n"
+            "• جرّب الرد على رسالة الشخص مباشرة، "
+            "أو استخدم الـ ID.\n"
+            "• وإذا كنت تستخدم @username فتأكد أن "
+            "البوت سبق وشاف الشخص ومسجله في قاعدة البيانات.",
+            parse_mode="HTML",
+        )
+
+    else:
+
+        await message.reply_text(
+            "• ما قدرت أحدد المستخدم.\n\n"
+            "• جرّب الرد على رسالة الشخص مباشرة، "
+            "أو استخدم الـ ID."
+        )
+
+
+# ==================================================
 # الحظر
 # ==================================================
 
@@ -1214,8 +1289,13 @@ async def ban_user(
 
     if not target:
 
-        await message.reply_text(
-            "• ما قدرت أحدد المستخدم."
+        parts = (
+            (message.text or "").split()
+        )
+
+        await target_not_found_message(
+            message,
+            parts[1] if len(parts) > 1 else None,
         )
 
         return
@@ -1273,6 +1353,10 @@ async def ban_user(
 
     except Exception as e:
 
+        print(
+            f"[MODERATION] BAN ERROR: {e}"
+        )
+
         await message.reply_text(
             "• فشل الحظر من Telegram.\n"
             f"الخطأ ↤ {escape(str(e))}",
@@ -1282,7 +1366,7 @@ async def ban_user(
         return
 
     # ==================================================
-    # حفظ في قاعدة البيانات
+    # قاعدة البيانات
     # ==================================================
 
     conn = connect()
@@ -1332,10 +1416,6 @@ async def ban_user(
             actor.id,
         ))
 
-        # ==================================================
-        # سجل الإدارة
-        # ==================================================
-
         cur.execute("""
         INSERT INTO moderation_logs
         (
@@ -1372,10 +1452,6 @@ async def ban_user(
 
         cur.close()
         conn.close()
-
-    # ==================================================
-    # الرسالة
-    # ==================================================
 
     actor_rank = get_rank(
         actor.id
@@ -1443,8 +1519,13 @@ async def unban_user(
 
     if not target:
 
-        await message.reply_text(
-            "• ما قدرت أحدد المستخدم."
+        parts = (
+            (message.text or "").split()
+        )
+
+        await target_not_found_message(
+            message,
+            parts[1] if len(parts) > 1 else None,
         )
 
         return
@@ -1474,6 +1555,10 @@ async def unban_user(
         )
 
     except Exception as e:
+
+        print(
+            f"[MODERATION] UNBAN ERROR: {e}"
+        )
 
         await message.reply_text(
             "• فشل رفع الحظر من Telegram.\n"
@@ -1564,8 +1649,13 @@ async def mute_user(
 
     if not target:
 
-        await message.reply_text(
-            "• ما قدرت أحدد المستخدم."
+        parts = (
+            (message.text or "").split()
+        )
+
+        await target_not_found_message(
+            message,
+            parts[1] if len(parts) > 1 else None,
         )
 
         return
@@ -1740,8 +1830,13 @@ async def unmute_user(
 
     if not target:
 
-        await message.reply_text(
-            "• ما قدرت أحدد المستخدم."
+        parts = (
+            (message.text or "").split()
+        )
+
+        await target_not_found_message(
+            message,
+            parts[1] if len(parts) > 1 else None,
         )
 
         return
@@ -1843,8 +1938,13 @@ async def restrict_user(
 
     if not target:
 
-        await message.reply_text(
-            "• ما قدرت أحدد المستخدم."
+        parts = (
+            (message.text or "").split()
+        )
+
+        await target_not_found_message(
+            message,
+            parts[1] if len(parts) > 1 else None,
         )
 
         return
@@ -1886,10 +1986,6 @@ async def restrict_user(
             until_date.isoformat()
         )
 
-    # ==================================================
-    # صلاحيات مقيدة بالكامل
-    # ==================================================
-
     permissions = ChatPermissions(
         can_send_messages=False,
         can_send_audios=False,
@@ -1904,10 +2000,6 @@ async def restrict_user(
         can_invite_users=False,
     )
 
-    # ==================================================
-    # Telegram Restrict
-    # ==================================================
-
     try:
 
         await context.bot.restrict_chat_member(
@@ -1919,6 +2011,10 @@ async def restrict_user(
 
     except Exception as e:
 
+        print(
+            f"[MODERATION] RESTRICT ERROR: {e}"
+        )
+
         await message.reply_text(
             "• فشل التقييد من Telegram.\n"
             f"الخطأ ↤ {escape(str(e))}",
@@ -1926,10 +2022,6 @@ async def restrict_user(
         )
 
         return
-
-    # ==================================================
-    # قاعدة البيانات
-    # ==================================================
 
     conn = connect()
     cur = conn.cursor()
@@ -2076,8 +2168,13 @@ async def unrestrict_user(
 
     if not target:
 
-        await message.reply_text(
-            "• ما قدرت أحدد المستخدم."
+        parts = (
+            (message.text or "").split()
+        )
+
+        await target_not_found_message(
+            message,
+            parts[1] if len(parts) > 1 else None,
         )
 
         return
@@ -2121,6 +2218,10 @@ async def unrestrict_user(
         )
 
     except Exception as e:
+
+        print(
+            f"[MODERATION] UNRESTRICT ERROR: {e}"
+        )
 
         await message.reply_text(
             "• فشل رفع التقييد من Telegram.\n"
@@ -2210,8 +2311,13 @@ async def check_user(
 
     if not target:
 
-        await message.reply_text(
-            "• ما قدرت أحدد المستخدم."
+        parts = (
+            (message.text or "").split()
+        )
+
+        await target_not_found_message(
+            message,
+            parts[1] if len(parts) > 1 else None,
         )
 
         return
@@ -2705,8 +2811,6 @@ async def moderation_callback(
     ):
         return
 
-    await query.answer()
-
     list_type = data.split(
         ":",
         1,
@@ -2735,6 +2839,8 @@ async def moderation_callback(
         )
 
         return
+
+    await query.answer()
 
     await clear_moderation(
         chat.id,
