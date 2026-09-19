@@ -468,6 +468,14 @@ async def start_editor_callback(
     # -----------------------------------------------------
 
     if data == "startedit:access":
+
+        if user.id != OWNER_ID:
+            await query.answer(
+                "لا يمكنك الدخول لهذا الزر 🚨",
+                show_alert=True
+            )
+            raise ApplicationHandlerStop
+
         sessions.pop(user.id, None)
 
         await _show_access(query)
@@ -558,10 +566,20 @@ async def start_editor_message(
         raise ApplicationHandlerStop
 
     if action == "access_add":
+
+        if user.id != OWNER_ID:
+            sessions.pop(user.id, None)
+            return
+
         await _add_access(update)
         raise ApplicationHandlerStop
 
     if action == "access_delete":
+
+        if user.id != OWNER_ID:
+            sessions.pop(user.id, None)
+            return
+
         await _delete_access(update)
         raise ApplicationHandlerStop
 
@@ -1103,14 +1121,28 @@ async def start_editor_special_callback(
 ):
     query = update.callback_query
 
-    await query.answer()
-
     user = query.from_user
+    data = query.data
+
+    # -----------------------------------------------------
+    # حماية المسموحين — للمالك فقط
+    # -----------------------------------------------------
+
+    if data in (
+        "startedit:access_add",
+        "startedit:access_delete",
+    ):
+        if user.id != OWNER_ID:
+            await query.answer(
+                "لا يمكنك الدخول لهذا الزر 🚨",
+                show_alert=True
+            )
+            raise ApplicationHandlerStop
+
+    await query.answer()
 
     if not _is_allowed(user):
         raise ApplicationHandlerStop
-
-    data = query.data
 
     # -----------------------------------------------------
     # إضافة شخص
