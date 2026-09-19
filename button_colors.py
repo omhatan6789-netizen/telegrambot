@@ -33,7 +33,20 @@ def normalize_button_name(text):
     if not text:
         return ""
 
-    return " ".join(str(text).strip().split())
+    text = str(text)
+
+    # توحيد Unicode
+    import unicodedata
+    text = unicodedata.normalize("NFC", text)
+
+    # إزالة اختلافات عرض الإيموجي
+    text = text.replace("\ufe0e", "")
+    text = text.replace("\ufe0f", "")
+
+    # إزالة المسافات الزائدة
+    text = " ".join(text.strip().split())
+
+    return text
 
 
 # ==================================================
