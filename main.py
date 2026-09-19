@@ -127,15 +127,6 @@ from handlers.commands_menu import (
     commands_menu_start,
     commands_menu_callback
 )
-# ==================================================
-# لوحة الإدارة
-# ==================================================
-
-from handlers.admin_panel import (
-    admin_panel,
-    developer_panel,
-    admin_buttons
-)
 
 
 # ==================================================
@@ -2605,13 +2596,6 @@ def main():
     # الألعاب في group=-3 حتى لا تصل إليه.
     # --------------------------------------------------
 
-    app.add_handler(
-        CallbackQueryHandler(
-            admin_buttons,
-            pattern=r"^admin_"
-        ),
-        group=0
-    )
 
     app.add_handler(
         MessageHandler(
