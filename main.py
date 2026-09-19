@@ -2518,12 +2518,6 @@ def main():
     # لوحة الإدارة
     # ==================================================
 
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(r"^اوامر الادمن$"),
-            admin_panel
-        )
-    )
 
     app.add_handler(
         MessageHandler(
