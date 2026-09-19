@@ -686,7 +686,7 @@ def main():
 
            moderation_expiry_task.cancel()
 
-            try:
+           try:
                 await moderation_expiry_task
             except asyncio.CancelledError:
                 pass
