@@ -134,7 +134,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    user_data = get_user_data(user.id)
+    user_data = await get_user_data(user.id)
 
     final_text = _replace_start_variables(
         message_text,
