@@ -472,6 +472,7 @@ async def resolve_target(
     context: ContextTypes.DEFAULT_TYPE
 ):
     message = update.effective_message
+    chat = update.effective_chat
 
     if not message:
         return None, []
@@ -479,63 +480,136 @@ async def resolve_target(
     text = (message.text or "").strip()
     parts = text.split()
 
+    # --------------------------------------------------
+    # الرد على رسالة
+    # --------------------------------------------------
+
     if message.reply_to_message:
         target = message.reply_to_message.from_user
 
-        if not target:
-            return None, []
+        if target:
+            return target, parts[1:]
 
-        args = parts[1:]
-
-        return target, args
+    # --------------------------------------------------
+    # لا يوجد هدف
+    # --------------------------------------------------
 
     if len(parts) < 2:
         return None, []
 
-    target_text = parts[1]
+    target_text = parts[1].strip()
     args = parts[2:]
 
-    if target_text.startswith("@"):
+    # --------------------------------------------------
+    # ID
+    # --------------------------------------------------
+
+    if target_text.lstrip("-").isdigit():
         try:
-            chat = await context.bot.get_chat(target_text)
+            user_id = int(target_text)
 
-            target = build_user(
-                chat.id,
-                getattr(chat, "first_name", None),
-                getattr(chat, "username", None),
-                getattr(chat, "is_bot", False),
+            try:
+                member = await context.bot.get_chat_member(
+                    chat_id=chat.id,
+                    user_id=user_id,
+                )
+
+                return member.user, args
+
+            except Exception:
+                pass
+
+            return (
+                build_user(
+                    user_id,
+                    str(user_id),
+                    None,
+                    False,
+                ),
+                args,
             )
-
-            return target, args
 
         except Exception:
             return None, []
 
-    try:
-        user_id = int(target_text)
+    # --------------------------------------------------
+    # @username
+    # --------------------------------------------------
 
+    if target_text.startswith("@"):
+        username = target_text[1:].strip()
+
+        if not username:
+            return None, []
+
+        # أولاً: البحث في جدول users
         try:
-            chat = await context.bot.get_chat(user_id)
+            conn = connect()
+            cur = conn.cursor()
 
-            target = build_user(
-                user_id,
-                getattr(chat, "first_name", None),
-                getattr(chat, "username", None),
-                getattr(chat, "is_bot", False),
-            )
+            try:
+                cur.execute("""
+                SELECT user_id, username, first_name
+                FROM users
+                WHERE LOWER(username) = LOWER(?)
+                LIMIT 1
+                """, (username,))
+
+                row = cur.fetchone()
+
+            finally:
+                cur.close()
+                conn.close()
+
+            if row:
+                return (
+                    build_user(
+                        row[0],
+                        row[2],
+                        row[1],
+                        False,
+                    ),
+                    args,
+                )
 
         except Exception:
-            target = build_user(
-                user_id,
-                str(user_id),
-                None,
-                False,
+            pass
+
+        # ثانياً: تجربة Telegram
+        try:
+            chat_info = await context.bot.get_chat(
+                f"@{username}"
             )
 
-        return target, args
+            if getattr(chat_info, "id", None):
+                return (
+                    build_user(
+                        chat_info.id,
+                        getattr(
+                            chat_info,
+                            "first_name",
+                            None,
+                        ),
+                        getattr(
+                            chat_info,
+                            "username",
+                            username,
+                        ),
+                        getattr(
+                            chat_info,
+                            "is_bot",
+                            False,
+                        ),
+                    ),
+                    args,
+                )
 
-    except ValueError:
+        except Exception:
+            pass
+
         return None, []
+
+    return None, []
 
 
 def mention_user(user):
@@ -575,12 +649,33 @@ def parse_action_options(args, settings):
 # التأكد من إمكانية تنفيذ الإشراف
 # ==================================================
 
-async def check_target(update, target):
+async def check_target(
+    update,
+    target,
+    action=None
+):
     message = update.effective_message
     actor = update.effective_user
 
     if not message or not actor or not target:
         return False
+
+    # --------------------------------------------------
+    # المطور
+    # --------------------------------------------------
+
+    if (
+        is_primary_developer(target.id)
+        or is_secondary_developer(target.id)
+    ):
+        await message.reply_text(
+            "• امسح عينك وشف من الي تبي تكتمه او تحظره او تقيده ياورع!"
+        )
+        return False
+
+    # --------------------------------------------------
+    # البوت
+    # --------------------------------------------------
 
     if target.is_bot:
         await message.reply_text(
@@ -588,11 +683,42 @@ async def check_target(update, target):
         )
         return False
 
+    # --------------------------------------------------
+    # نفس الشخص
+    # --------------------------------------------------
+
     if target.id == actor.id:
         return False
 
+    # --------------------------------------------------
+    # صلاحيات النظام
+    # --------------------------------------------------
+
     if not has_permission(actor.id, target.id):
         return False
+
+    # --------------------------------------------------
+    # إذا كان حظر أو تقييد:
+    # التأكد من رتبة Telegram داخل المجموعة
+    # --------------------------------------------------
+
+    if action in ("ban", "restrict"):
+        try:
+            member = await update.effective_chat.get_member(
+                target.id
+            )
+
+            if member.status in (
+                "administrator",
+                "creator",
+            ):
+                await message.reply_text(
+                    f"• اعذرني بس الشخص الي تبي{(' تحظره' if action == 'ban' else ' تقيده')} مشرف بالقروب ."
+                )
+                return False
+
+        except Exception:
+            pass
 
     return True
 
@@ -620,7 +746,11 @@ async def ban_user(
     if not target:
         return
 
-    if not await check_target(update, target):
+    if not await check_target(
+        update,
+        target,
+        "ban",
+    ):
         return
 
     settings = get_settings(chat.id)
@@ -751,15 +881,6 @@ async def unban_user(
     if not has_permission(actor.id, target.id):
         return
 
-    try:
-        await context.bot.unban_chat_member(
-            chat_id=chat.id,
-            user_id=target.id,
-            only_if_banned=True,
-        )
-    except Exception:
-        pass
-
     conn = connect()
     cur = conn.cursor()
 
@@ -778,6 +899,15 @@ async def unban_user(
     finally:
         cur.close()
         conn.close()
+
+    try:
+        await context.bot.unban_chat_member(
+            chat_id=chat.id,
+            user_id=target.id,
+            only_if_banned=True,
+        )
+    except Exception:
+        pass
 
     await message.reply_text(
         f"• تم رفع الحظر عن {mention_user(target)}",
@@ -808,7 +938,11 @@ async def mute_user(
     if not target:
         return
 
-    if not await check_target(update, target):
+    if not await check_target(
+        update,
+        target,
+        "mute",
+    ):
         return
 
     settings = get_settings(chat.id)
@@ -974,7 +1108,11 @@ async def restrict_user(
     if not target:
         return
 
-    if not await check_target(update, target):
+    if not await check_target(
+        update,
+        target,
+        "restrict",
+    ):
         return
 
     settings = get_settings(chat.id)
