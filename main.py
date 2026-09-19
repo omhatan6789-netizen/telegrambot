@@ -633,6 +633,7 @@ def main():
     # ==================================================
 
     message_flush_task = None
+    moderation_expiry_task = None
 
 
     async def automatic_message_flush():
@@ -640,45 +641,53 @@ def main():
         while True:
 
             try:
-
-                # حفظ الرسائل المعلقة
                 await flush_user_messages()
 
             except asyncio.CancelledError:
-
-                # عند إيقاف المهمة
                 break
 
             except Exception as e:
-
                 print(
                     f"⚠️ خطأ في الحفظ التلقائي للرسائل: {e}"
                 )
 
-            # الانتظار 5 ثوانٍ قبل الفحص التالي
             await asyncio.sleep(5)
 
 
     async def post_init(application):
 
         global message_flush_task
+        global moderation_expiry_task
 
         message_flush_task = asyncio.create_task(
             automatic_message_flush()
+        )
+
+        moderation_expiry_task = asyncio.create_task(
+            moderation_expiry_loop(application)
         )
 
 
     async def post_shutdown(application):
 
         global message_flush_task
+        global moderation_expiry_task
 
-        # إيقاف مهمة الحفظ التلقائي
         if message_flush_task:
 
             message_flush_task.cancel()
 
             try:
                 await message_flush_task
+            except asyncio.CancelledError:
+                pass
+
+        if moderation_expiry_task:
+
+           moderation_expiry_task.cancel()
+
+            try:
+                await moderation_expiry_task
             except asyncio.CancelledError:
                 pass
 
@@ -2604,19 +2613,6 @@ def main():
         MessageHandler(
             filters.Regex(r"^شرح الالعاب$"),
             games_help
-        )
-    )
-
-
-    # ==================================================
-    # لوحة الإدارة
-    # ==================================================
-
-
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(r"^اوامر المطور$"),
-            developer_panel
         )
     )
 
