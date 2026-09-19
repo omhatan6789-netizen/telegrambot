@@ -1,4 +1,9 @@
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram import (
+    Update,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+    MessageEntity,
+)
 from telegram.ext import ContextTypes
 
 from database import connect
@@ -83,38 +88,19 @@ def _build_start_keyboard(buttons):
 
     rows = []
 
-    for index in range(0, len(buttons), 2):
-        row = []
-
-        first = buttons[index]
-
-        row.append(
+    for button_text, button_url in buttons:
+        rows.append([
             InlineKeyboardButton(
-                text=first[0],
-                url=first[1]
+                text=button_text,
+                url=button_url
             )
-        )
-
-        if index + 1 < len(buttons):
-            second = buttons[index + 1]
-
-            row.append(
-                InlineKeyboardButton(
-                    text=second[0],
-                    url=second[1]
-                )
-            )
-
-        rows.append(row)
+        ])
 
     return InlineKeyboardMarkup(rows)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # أي Deep Link مثل:
-    # /start commands
-    # /start whisper_xxx
-    # لا يدخل في رسالة الستارت العادية.
+    # تجاهل الـ Deep Links
     if context.args:
         return
 
@@ -123,17 +109,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     message_text, entities_json, images, buttons = await _get_start_data()
 
-    # إذا لم يتم إعداد ستارت مخصص، نستخدم الستارت القديم.
+    # الستارت الافتراضي إذا ما فيه رسالة مخصصة
     if not message_text:
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text=(
-                f"حياك الله {user.first_name} 🤍\n"
-                "في البوت الجديد ⭐"
-            )
+        message_text = (
+            f"حياك الله {user.first_name} 🤍\n"
+            "في البوت الجديد ⭐"
         )
-        return
+        entities_json = "[]"
 
+    # مهم: get_user_data دالة async
     user_data = await get_user_data(user.id)
 
     final_text = _replace_start_variables(
@@ -144,42 +128,82 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     reply_markup = _build_start_keyboard(buttons)
 
-    # نحاول إعادة الكيانات المحفوظة.
+    # استرجاع تنسيقات الرسالة
     entities = []
 
     try:
         import json
-        from telegram import MessageEntity
 
-        raw_entities = json.loads(entities_json or "[]")
+        raw_entities = json.loads(
+            entities_json or "[]"
+        )
 
         for entity_data in raw_entities:
             entity = MessageEntity.de_json(entity_data)
+
             if entity:
                 entities.append(entity)
 
     except Exception:
         entities = []
 
-    # إذا توجد صور:
-    # ترسل كلها مع بعض، ثم رسالة الستارت تحتها.
-    if images:
+    # ==========================================
+    # صورة واحدة
+    # ==========================================
+
+    if len(images) == 1:
+        await context.bot.send_photo(
+            chat_id=chat_id,
+            photo=images[0][1],
+            caption=final_text,
+            caption_entities=entities or None,
+            reply_markup=reply_markup
+        )
+        return
+
+    # ==========================================
+    # أكثر من صورة
+    # ==========================================
+
+    if len(images) > 1:
         media = []
 
         for index, image in enumerate(images):
-            media.append(
-                __import__("telegram").InputMediaPhoto(
-                    media=image[1]
+            # الكابشن يكون على آخر صورة في الألبوم
+            if index == len(images) - 1:
+                media.append(
+                    __import__("telegram").InputMediaPhoto(
+                        media=image[1],
+                        caption=final_text,
+                        caption_entities=entities or None
+                    )
                 )
+            else:
+                media.append(
+                    __import__("telegram").InputMediaPhoto(
+                        media=image[1]
+                    )
+                )
+
+        await context.bot.send_media_group(
+            chat_id=chat_id,
+            media=media
+        )
+
+        # Telegram لا يسمح بأزرار Inline Keyboard
+        # مباشرة تحت Media Group.
+        if reply_markup:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="⠀",
+                reply_markup=reply_markup
             )
 
-        try:
-            await context.bot.send_media_group(
-                chat_id=chat_id,
-                media=media
-            )
-        except Exception:
-            pass
+        return
+
+    # ==========================================
+    # بدون صورة
+    # ==========================================
 
     await context.bot.send_message(
         chat_id=chat_id,
