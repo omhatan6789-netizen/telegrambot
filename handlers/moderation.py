@@ -131,17 +131,33 @@ def has_permission(actor_id, target_id):
     if actor_id == target_id:
         return False
 
+    # ==================================================
+    # المطور الأساسي يقدر على الجميع
+    # ==================================================
+
     if is_primary_developer(actor_id):
         return True
 
+    # ==================================================
+    # حماية المالك
+    # ==================================================
+
     if target_id == OWNER_ID:
         return False
+
+    # ==================================================
+    # المطور المساعد
+    # ==================================================
 
     if is_secondary_developer(actor_id):
         if is_secondary_developer(target_id):
             return False
 
         return True
+
+    # ==================================================
+    # الرتب
+    # ==================================================
 
     actor_rank = get_rank(actor_id)
     target_rank = get_rank(target_id)
@@ -399,10 +415,13 @@ def parse_duration(token):
 
     if unit in ("ث", "ثانية", "ثواني"):
         seconds = amount
+
     elif unit in ("د", "دقيقة", "دقائق"):
         seconds = amount * 60
+
     elif unit in ("س", "ساعة", "ساعات"):
         seconds = amount * 60 * 60
+
     else:
         seconds = amount * 24 * 60 * 60
 
@@ -422,22 +441,28 @@ def format_duration(seconds):
     if days:
         if days == 1:
             return "يوم"
+
         elif days == 2:
             return "يومين"
+
         return f"{days} أيام"
 
     if hours:
         if hours == 1:
             return "ساعة"
+
         elif hours == 2:
             return "ساعتين"
+
         return f"{hours} ساعات"
 
     if minutes:
         if minutes == 1:
             return "دقيقة"
+
         elif minutes == 2:
             return "دقيقتين"
+
         return f"{minutes} دقائق"
 
     if seconds == 1:
@@ -467,6 +492,102 @@ def build_user(
     )
 
 
+# ==================================================
+# البحث عن المستخدم في قاعدة البيانات
+# ==================================================
+
+def get_user_from_database(username):
+    clean_username = username.lstrip("@").strip().lower()
+
+    if not clean_username:
+        return None
+
+    conn = connect()
+    cur = conn.cursor()
+
+    try:
+        cur.execute("""
+        SELECT user_id, username, first_name
+        FROM users
+        WHERE LOWER(REPLACE(username, '@', '')) = ?
+        LIMIT 1
+        """, (clean_username,))
+
+        row = cur.fetchone()
+
+        if not row:
+            return None
+
+        return build_user(
+            row[0],
+            row[2],
+            row[1],
+            False,
+        )
+
+    finally:
+        try:
+            cur.close()
+        except Exception:
+            pass
+
+        conn.close()
+
+
+# ==================================================
+# البحث عن المستخدم في جداول العقوبات
+# ==================================================
+
+def get_moderation_user_from_database(
+    chat_id,
+    username
+):
+    clean_username = username.lstrip("@").strip().lower()
+
+    if not clean_username:
+        return None
+
+    conn = connect()
+    cur = conn.cursor()
+
+    try:
+        for table in (
+            "bot_mutes",
+            "restrictions",
+            "moderation_bans",
+        ):
+            cur.execute(f"""
+            SELECT user_id, username, first_name
+            FROM {table}
+            WHERE chat_id = ?
+            AND LOWER(REPLACE(username, '@', '')) = ?
+            LIMIT 1
+            """, (
+                chat_id,
+                clean_username,
+            ))
+
+            row = cur.fetchone()
+
+            if row:
+                return build_user(
+                    row[0],
+                    row[2],
+                    row[1],
+                    False,
+                )
+
+        return None
+
+    finally:
+        try:
+            cur.close()
+        except Exception:
+            pass
+
+        conn.close()
+
+
 async def resolve_target(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
@@ -480,9 +601,9 @@ async def resolve_target(
     text = (message.text or "").strip()
     parts = text.split()
 
-    # --------------------------------------------------
+    # ==================================================
     # الرد على رسالة
-    # --------------------------------------------------
+    # ==================================================
 
     if message.reply_to_message:
         target = message.reply_to_message.from_user
@@ -490,9 +611,9 @@ async def resolve_target(
         if target:
             return target, parts[1:]
 
-    # --------------------------------------------------
+    # ==================================================
     # لا يوجد هدف
-    # --------------------------------------------------
+    # ==================================================
 
     if len(parts) < 2:
         return None, []
@@ -500,13 +621,18 @@ async def resolve_target(
     target_text = parts[1].strip()
     args = parts[2:]
 
-    # --------------------------------------------------
+    # ==================================================
     # ID
-    # --------------------------------------------------
+    # ==================================================
 
     if target_text.lstrip("-").isdigit():
+
         try:
             user_id = int(target_text)
+
+            # ------------------------------------------
+            # أولاً: محاولة الحصول على المستخدم كعضو
+            # ------------------------------------------
 
             try:
                 member = await context.bot.get_chat_member(
@@ -514,10 +640,86 @@ async def resolve_target(
                     user_id=user_id,
                 )
 
-                return member.user, args
+                if member and member.user:
+                    return member.user, args
 
             except Exception:
                 pass
+
+            # ------------------------------------------
+            # ثانياً: محاولة get_chat
+            # ------------------------------------------
+
+            try:
+                chat_info = await context.bot.get_chat(
+                    user_id
+                )
+
+                if getattr(chat_info, "id", None):
+                    return (
+                        build_user(
+                            chat_info.id,
+                            getattr(
+                                chat_info,
+                                "first_name",
+                                None,
+                            ),
+                            getattr(
+                                chat_info,
+                                "username",
+                                None,
+                            ),
+                            getattr(
+                                chat_info,
+                                "is_bot",
+                                False,
+                            ),
+                        ),
+                        args,
+                    )
+
+            except Exception:
+                pass
+
+            # ------------------------------------------
+            # ثالثاً: البحث في users
+            # ------------------------------------------
+
+            try:
+                conn = connect()
+                cur = conn.cursor()
+
+                try:
+                    cur.execute("""
+                    SELECT user_id, username, first_name
+                    FROM users
+                    WHERE user_id = ?
+                    LIMIT 1
+                    """, (user_id,))
+
+                    row = cur.fetchone()
+
+                finally:
+                    cur.close()
+                    conn.close()
+
+                if row:
+                    return (
+                        build_user(
+                            row[0],
+                            row[2],
+                            row[1],
+                            False,
+                        ),
+                        args,
+                    )
+
+            except Exception:
+                pass
+
+            # ------------------------------------------
+            # أخيراً: بناء مستخدم بالـ ID
+            # ------------------------------------------
 
             return (
                 build_user(
@@ -532,50 +734,52 @@ async def resolve_target(
         except Exception:
             return None, []
 
-    # --------------------------------------------------
+    # ==================================================
     # @username
-    # --------------------------------------------------
+    # ==================================================
 
     if target_text.startswith("@"):
+
         username = target_text[1:].strip()
 
         if not username:
             return None, []
 
-        # أولاً: البحث في جدول users
+        # ------------------------------------------
+        # أولاً: جدول users
+        # ------------------------------------------
+
         try:
-            conn = connect()
-            cur = conn.cursor()
+            target = get_user_from_database(username)
 
-            try:
-                cur.execute("""
-                SELECT user_id, username, first_name
-                FROM users
-                WHERE LOWER(username) = LOWER(?)
-                LIMIT 1
-                """, (username,))
-
-                row = cur.fetchone()
-
-            finally:
-                cur.close()
-                conn.close()
-
-            if row:
-                return (
-                    build_user(
-                        row[0],
-                        row[2],
-                        row[1],
-                        False,
-                    ),
-                    args,
-                )
+            if target:
+                return target, args
 
         except Exception:
             pass
 
-        # ثانياً: تجربة Telegram
+        # ------------------------------------------
+        # ثانياً: جداول العقوبات
+        #
+        # مهم لرفع الحظر/الكتم/التقييد
+        # ------------------------------------------
+
+        try:
+            target = get_moderation_user_from_database(
+                chat.id,
+                username,
+            )
+
+            if target:
+                return target, args
+
+        except Exception:
+            pass
+
+        # ------------------------------------------
+        # ثالثاً: تجربة Telegram
+        # ------------------------------------------
+
         try:
             chat_info = await context.bot.get_chat(
                 f"@{username}"
@@ -633,14 +837,19 @@ def parse_action_options(args, settings):
     remaining = list(args)
 
     if settings["durations_enabled"] and remaining:
-        parsed = parse_duration(remaining[0])
+
+        parsed = parse_duration(
+            remaining[0]
+        )
 
         if parsed:
             duration_seconds = parsed
             remaining = remaining[1:]
 
     if settings["reasons_enabled"] and remaining:
-        reason = " ".join(remaining).strip()
+        reason = " ".join(
+            remaining
+        ).strip()
 
     return duration_seconds, reason
 
@@ -656,26 +865,14 @@ async def check_target(
 ):
     message = update.effective_message
     actor = update.effective_user
+    chat = update.effective_chat
 
     if not message or not actor or not target:
         return False
 
-    # --------------------------------------------------
-    # المطور
-    # --------------------------------------------------
-
-    if (
-        is_primary_developer(target.id)
-        or is_secondary_developer(target.id)
-    ):
-        await message.reply_text(
-            "• امسح عينك وشف من الي تبي تكتمه او تحظره او تقيده ياورع!"
-        )
-        return False
-
-    # --------------------------------------------------
+    # ==================================================
     # البوت
-    # --------------------------------------------------
+    # ==================================================
 
     if target.is_bot:
         await message.reply_text(
@@ -683,44 +880,147 @@ async def check_target(
         )
         return False
 
-    # --------------------------------------------------
+    # ==================================================
+    # المطور الأساسي
+    #
+    # يقدر يعاقب أي شخص
+    # حتى المطور المساعد
+    # ==================================================
+
+    if is_primary_developer(actor.id):
+        return True
+
+    # ==================================================
+    # المطور / المطور المساعد
+    # ==================================================
+
+    if (
+        is_primary_developer(target.id)
+        or is_secondary_developer(target.id)
+    ):
+        if action == "mute":
+            text = (
+                "• امسح عينك وشف من الي تبي "
+                "تكتمه ياورع!"
+            )
+
+        elif action == "restrict":
+            text = (
+                "• امسح عينك وشف من الي تبي "
+                "تقيده ياورع!"
+            )
+
+        elif action == "ban":
+            text = (
+                "• امسح عينك وشف من الي تبي "
+                "تحظره ياورع!"
+            )
+
+        else:
+            return False
+
+        await message.reply_text(text)
+        return False
+
+    # ==================================================
     # نفس الشخص
-    # --------------------------------------------------
+    # ==================================================
 
     if target.id == actor.id:
         return False
 
-    # --------------------------------------------------
-    # صلاحيات النظام
-    # --------------------------------------------------
+    # ==================================================
+    # حماية مشرفي Telegram
+    #
+    # فقط في الحظر والتقييد
+    # ==================================================
 
-    if not has_permission(actor.id, target.id):
-        return False
-
-    # --------------------------------------------------
-    # إذا كان حظر أو تقييد:
-    # التأكد من رتبة Telegram داخل المجموعة
-    # --------------------------------------------------
-
-    if action in ("ban", "restrict"):
+    if (
+        action in ("ban", "restrict")
+        and chat
+        and chat.type in ("group", "supergroup")
+    ):
         try:
-            member = await update.effective_chat.get_member(
-                target.id
+            member = await context_bot_get_chat_member(
+                update,
+                target.id,
             )
 
-            if member.status in (
+            if member and member.status in (
                 "administrator",
                 "creator",
             ):
+                if action == "ban":
+                    action_text = "تحظره"
+                else:
+                    action_text = "تقيده"
+
                 await message.reply_text(
-                    f"• اعذرني بس الشخص الي تبي{(' تحظره' if action == 'ban' else ' تقيده')} مشرف بالقروب ."
+                    f"• اعذرني بس الشخص الي تبي "
+                    f"{action_text} مشرف بالقروب ."
                 )
                 return False
 
         except Exception:
             pass
 
+    # ==================================================
+    # الرتبة
+    # ==================================================
+
+    if not has_permission(
+        actor.id,
+        target.id,
+    ):
+        if action == "mute":
+            text = (
+                "• امسح عينك وشف من الي تبي "
+                "تكتمه ياورع!"
+            )
+
+        elif action == "restrict":
+            text = (
+                "• امسح عينك وشف من الي تبي "
+                "تقيده ياورع!"
+            )
+
+        elif action == "ban":
+            text = (
+                "• امسح عينك وشف من الي تبي "
+                "تحظره ياورع!"
+            )
+
+        else:
+            return False
+
+        await message.reply_text(text)
+        return False
+
     return True
+
+
+# ==================================================
+# جلب عضو من Telegram
+# ==================================================
+
+async def context_bot_get_chat_member(
+    update,
+    user_id
+):
+    chat = update.effective_chat
+
+    if not chat:
+        return None
+
+    context = getattr(update, "_moderation_context", None)
+
+    if context:
+        return await context.bot.get_chat_member(
+            chat_id=chat.id,
+            user_id=user_id,
+        )
+
+    return None
 
 
 # ==================================================
@@ -741,19 +1041,38 @@ async def ban_user(
     if chat.type not in ("group", "supergroup"):
         return
 
-    target, args = await resolve_target(update, context)
+    target, args = await resolve_target(
+        update,
+        context,
+    )
 
     if not target:
         return
 
-    if not await check_target(
-        update,
-        target,
-        "ban",
-    ):
+    # --------------------------------------------------
+    # وضع context مؤقتاً لفحص مشرف Telegram
+    # --------------------------------------------------
+
+    update._moderation_context = context
+
+    try:
+        allowed = await check_target(
+            update,
+            target,
+            "ban",
+        )
+    finally:
+        try:
+            del update._moderation_context
+        except Exception:
+            pass
+
+    if not allowed:
         return
 
-    settings = get_settings(chat.id)
+    settings = get_settings(
+        chat.id
+    )
 
     duration_seconds, reason = parse_action_options(
         args,
@@ -764,8 +1083,11 @@ async def ban_user(
     until_date = None
 
     if duration_seconds:
-        until_date = datetime.now(timezone.utc) + timedelta(
-            seconds=duration_seconds
+        until_date = (
+            datetime.now(timezone.utc)
+            + timedelta(
+                seconds=duration_seconds
+            )
         )
 
         until_time = until_date.isoformat()
@@ -776,6 +1098,7 @@ async def ban_user(
             user_id=target.id,
             until_date=until_date,
         )
+
     except Exception:
         return
 
@@ -827,21 +1150,34 @@ async def ban_user(
         cur.close()
         conn.close()
 
-    actor_rank = get_rank(actor.id)
-
-    text = (
-        f"تم حظرته لعيونك يـ {escape(actor_rank)}\n"
-        f"المستخدم ↤ {mention_user(target)}"
+    actor_rank = get_rank(
+        actor.id
     )
 
-    if settings["durations_enabled"] and duration_seconds:
+    text = (
+        f"تم حظرته لعيونك يـ "
+        f"{escape(actor_rank)}\n"
+        f"المستخدم ↤ "
+        f"{mention_user(target)}"
+    )
+
+    if (
+        settings["durations_enabled"]
+        and duration_seconds
+    ):
         text += (
             f"\nمدة حظره ↤ "
             f"{format_duration(duration_seconds)}"
         )
 
-    if settings["reasons_enabled"] and reason:
-        text += f"\nالسبب ↤ {escape(reason)}"
+    if (
+        settings["reasons_enabled"]
+        and reason
+    ):
+        text += (
+            f"\nالسبب ↤ "
+            f"{escape(reason)}"
+        )
 
     await message.reply_text(
         text,
@@ -867,7 +1203,10 @@ async def unban_user(
     if chat.type not in ("group", "supergroup"):
         return
 
-    target, args = await resolve_target(update, context)
+    target, args = await resolve_target(
+        update,
+        context,
+    )
 
     if not target:
         return
@@ -878,8 +1217,24 @@ async def unban_user(
         )
         return
 
-    if not has_permission(actor.id, target.id):
-        return
+    # المطور الأساسي يقدر على الجميع
+    if not is_primary_developer(actor.id):
+
+        if not has_permission(
+            actor.id,
+            target.id,
+        ):
+            return
+
+    try:
+        await context.bot.unban_chat_member(
+            chat_id=chat.id,
+            user_id=target.id,
+            only_if_banned=True,
+        )
+
+    except Exception:
+        pass
 
     conn = connect()
     cur = conn.cursor()
@@ -900,17 +1255,9 @@ async def unban_user(
         cur.close()
         conn.close()
 
-    try:
-        await context.bot.unban_chat_member(
-            chat_id=chat.id,
-            user_id=target.id,
-            only_if_banned=True,
-        )
-    except Exception:
-        pass
-
     await message.reply_text(
-        f"• تم رفع الحظر عن {mention_user(target)}",
+        f"• تم رفع الحظر عن "
+        f"{mention_user(target)}",
         parse_mode="HTML",
     )
 
@@ -933,7 +1280,10 @@ async def mute_user(
     if chat.type not in ("group", "supergroup"):
         return
 
-    target, args = await resolve_target(update, context)
+    target, args = await resolve_target(
+        update,
+        context,
+    )
 
     if not target:
         return
@@ -945,7 +1295,9 @@ async def mute_user(
     ):
         return
 
-    settings = get_settings(chat.id)
+    settings = get_settings(
+        chat.id
+    )
 
     duration_seconds, reason = parse_action_options(
         args,
@@ -957,7 +1309,9 @@ async def mute_user(
     if duration_seconds:
         until_time = (
             datetime.now(timezone.utc)
-            + timedelta(seconds=duration_seconds)
+            + timedelta(
+                seconds=duration_seconds
+            )
         ).isoformat()
 
     conn = connect()
@@ -1013,14 +1367,23 @@ async def mute_user(
         f"{mention_user(target)}"
     )
 
-    if settings["durations_enabled"] and duration_seconds:
+    if (
+        settings["durations_enabled"]
+        and duration_seconds
+    ):
         text += (
             f"\nمدة الكتم ↤ "
             f"{format_duration(duration_seconds)}"
         )
 
-    if settings["reasons_enabled"] and reason:
-        text += f"\nالسبب ↤ {escape(reason)}"
+    if (
+        settings["reasons_enabled"]
+        and reason
+    ):
+        text += (
+            f"\nالسبب ↤ "
+            f"{escape(reason)}"
+        )
 
     await message.reply_text(
         text,
@@ -1046,7 +1409,10 @@ async def unmute_user(
     if chat.type not in ("group", "supergroup"):
         return
 
-    target, args = await resolve_target(update, context)
+    target, args = await resolve_target(
+        update,
+        context,
+    )
 
     if not target:
         return
@@ -1057,8 +1423,13 @@ async def unmute_user(
         )
         return
 
-    if not has_permission(actor.id, target.id):
-        return
+    if not is_primary_developer(actor.id):
+
+        if not has_permission(
+            actor.id,
+            target.id,
+        ):
+            return
 
     conn = connect()
     cur = conn.cursor()
@@ -1080,7 +1451,8 @@ async def unmute_user(
         conn.close()
 
     await message.reply_text(
-        f"• تم رفع الكتم عن {mention_user(target)}",
+        f"• تم رفع الكتم عن "
+        f"{mention_user(target)}",
         parse_mode="HTML",
     )
 
@@ -1103,19 +1475,34 @@ async def restrict_user(
     if chat.type not in ("group", "supergroup"):
         return
 
-    target, args = await resolve_target(update, context)
+    target, args = await resolve_target(
+        update,
+        context,
+    )
 
     if not target:
         return
 
-    if not await check_target(
-        update,
-        target,
-        "restrict",
-    ):
+    update._moderation_context = context
+
+    try:
+        allowed = await check_target(
+            update,
+            target,
+            "restrict",
+        )
+    finally:
+        try:
+            del update._moderation_context
+        except Exception:
+            pass
+
+    if not allowed:
         return
 
-    settings = get_settings(chat.id)
+    settings = get_settings(
+        chat.id
+    )
 
     duration_seconds, reason = parse_action_options(
         args,
@@ -1128,7 +1515,9 @@ async def restrict_user(
     if duration_seconds:
         until_date = (
             datetime.now(timezone.utc)
-            + timedelta(seconds=duration_seconds)
+            + timedelta(
+                seconds=duration_seconds
+            )
         )
 
         until_time = until_date.isoformat()
@@ -1154,6 +1543,7 @@ async def restrict_user(
             permissions=permissions,
             until_date=until_date,
         )
+
     except Exception:
         return
 
@@ -1207,17 +1597,27 @@ async def restrict_user(
 
     text = (
         "تم قيدته لين يهجد بعدين فكوه\n"
-        f"المستخدم ↤ {mention_user(target)}"
+        f"المستخدم ↤ "
+        f"{mention_user(target)}"
     )
 
-    if settings["durations_enabled"] and duration_seconds:
+    if (
+        settings["durations_enabled"]
+        and duration_seconds
+    ):
         text += (
             f"\nمدة تقييده ↤ "
             f"{format_duration(duration_seconds)}"
         )
 
-    if settings["reasons_enabled"] and reason:
-        text += f"\nالسبب ↤ {escape(reason)}"
+    if (
+        settings["reasons_enabled"]
+        and reason
+    ):
+        text += (
+            f"\nالسبب ↤ "
+            f"{escape(reason)}"
+        )
 
     await message.reply_text(
         text,
@@ -1243,7 +1643,10 @@ async def unrestrict_user(
     if chat.type not in ("group", "supergroup"):
         return
 
-    target, args = await resolve_target(update, context)
+    target, args = await resolve_target(
+        update,
+        context,
+    )
 
     if not target:
         return
@@ -1254,8 +1657,13 @@ async def unrestrict_user(
         )
         return
 
-    if not has_permission(actor.id, target.id):
-        return
+    if not is_primary_developer(actor.id):
+
+        if not has_permission(
+            actor.id,
+            target.id,
+        ):
+            return
 
     permissions = ChatPermissions(
         can_send_messages=True,
@@ -1277,6 +1685,7 @@ async def unrestrict_user(
             user_id=target.id,
             permissions=permissions,
         )
+
     except Exception:
         pass
 
@@ -1300,7 +1709,8 @@ async def unrestrict_user(
         conn.close()
 
     await message.reply_text(
-        f"• تم رفع التقييد عن {mention_user(target)}",
+        f"• تم رفع التقييد عن "
+        f"{mention_user(target)}",
         parse_mode="HTML",
     )
 
@@ -1322,7 +1732,10 @@ async def check_user(
     if chat.type not in ("group", "supergroup"):
         return
 
-    target, args = await resolve_target(update, context)
+    target, args = await resolve_target(
+        update,
+        context,
+    )
 
     if not target:
         return
@@ -1373,43 +1786,70 @@ async def check_user(
 
     text = (
         f"• معلومات المستخدم\n"
-        f"المستخدم ↤ {mention_user(target)}"
+        f"المستخدم ↤ "
+        f"{mention_user(target)}"
     )
 
-    rank = get_rank(target.id)
+    rank = get_rank(
+        target.id
+    )
 
     if rank:
-        text += f"\nالرتبة ↤ {escape(rank)}"
+        text += (
+            f"\nالرتبة ↤ "
+            f"{escape(rank)}"
+        )
 
     if mute:
         text += "\n\n• الحالة ↤ مكتوم"
 
         if mute[0]:
-            text += f"\nينتهي ↤ {escape(str(mute[0]))}"
+            text += (
+                f"\nينتهي ↤ "
+                f"{escape(str(mute[0]))}"
+            )
 
         if mute[1]:
-            text += f"\nالسبب ↤ {escape(str(mute[1]))}"
+            text += (
+                f"\nالسبب ↤ "
+                f"{escape(str(mute[1]))}"
+            )
 
     if restriction:
         text += "\n\n• الحالة ↤ مقيد"
 
         if restriction[0]:
-            text += f"\nينتهي ↤ {escape(str(restriction[0]))}"
+            text += (
+                f"\nينتهي ↤ "
+                f"{escape(str(restriction[0]))}"
+            )
 
         if restriction[1]:
-            text += f"\nالسبب ↤ {escape(str(restriction[1]))}"
+            text += (
+                f"\nالسبب ↤ "
+                f"{escape(str(restriction[1]))}"
+            )
 
     if ban:
         text += "\n\n• الحالة ↤ محظور"
 
         if ban[0]:
-            text += f"\nينتهي ↤ {escape(str(ban[0]))}"
+            text += (
+                f"\nينتهي ↤ "
+                f"{escape(str(ban[0]))}"
+            )
 
         if ban[1]:
-            text += f"\nالسبب ↤ {escape(str(ban[1]))}"
+            text += (
+                f"\nالسبب ↤ "
+                f"{escape(str(ban[1]))}"
+            )
 
     if not mute and not restriction and not ban:
-        text += "\n\n• الحالة ↤ لا توجد عليه عقوبة"
+        text += (
+            "\n\n• الحالة ↤ "
+            "لا توجد عليه عقوبة"
+        )
 
     await message.reply_text(
         text,
@@ -1427,11 +1867,13 @@ LIST_CONFIG = {
         "title": "المكتومين",
         "button": "مسح المكتومين",
     },
+
     "restrict": {
         "table": "restrictions",
         "title": "المقيدين",
         "button": "مسح المقيدين",
     },
+
     "ban": {
         "table": "moderation_bans",
         "title": "المحظورين",
@@ -1503,13 +1945,19 @@ async def moderation_list_command(
     else:
         lines = []
 
-        for index, row in enumerate(rows, start=1):
+        for index, row in enumerate(
+            rows,
+            start=1
+        ):
             user_id = row[0]
             username = row[1]
             first_name = row[2]
 
             if username:
-                display = f"@{escape(username)}"
+                display = (
+                    f"@{escape(username)}"
+                )
+
             else:
                 fake_user = build_user(
                     user_id,
@@ -1518,7 +1966,9 @@ async def moderation_list_command(
                     False,
                 )
 
-                display = mention_user(fake_user)
+                display = mention_user(
+                    fake_user
+                )
 
             lines.append(
                 f"{index} - {display}"
@@ -1530,7 +1980,9 @@ async def moderation_list_command(
         [
             InlineKeyboardButton(
                 config["button"],
-                callback_data=f"modclear:{list_type}",
+                callback_data=(
+                    f"modclear:{list_type}"
+                ),
             )
         ]
     ])
@@ -1574,9 +2026,16 @@ async def clear_moderation_command(
     else:
         return
 
-    minimum_rank = 3 if list_type == "ban" else 2
+    minimum_rank = (
+        3
+        if list_type == "ban"
+        else 2
+    )
 
-    if not has_group_permission(actor.id, minimum_rank):
+    if not has_group_permission(
+        actor.id,
+        minimum_rank
+    ):
         return
 
     await clear_moderation(
@@ -1616,6 +2075,7 @@ async def clear_moderation(
         users = cur.fetchall()
 
         if list_type == "ban":
+
             for row in users:
                 try:
                     await context.bot.unban_chat_member(
@@ -1627,6 +2087,7 @@ async def clear_moderation(
                     pass
 
         elif list_type == "restrict":
+
             permissions = ChatPermissions(
                 can_send_messages=True,
                 can_send_audios=True,
@@ -1687,7 +2148,10 @@ async def moderation_callback(
     if not data.startswith("modclear:"):
         return
 
-    list_type = data.split(":", 1)[1]
+    list_type = data.split(
+        ":",
+        1
+    )[1]
 
     if list_type not in LIST_CONFIG:
         return
@@ -1695,7 +2159,11 @@ async def moderation_callback(
     actor = query.from_user
     chat = query.message.chat
 
-    minimum_rank = 3 if list_type == "ban" else 2
+    minimum_rank = (
+        3
+        if list_type == "ban"
+        else 2
+    )
 
     if not has_group_permission(
         actor.id,
@@ -1763,6 +2231,7 @@ async def delete_bot_muted_messages(
         until_time = row[0]
 
         if until_time:
+
             try:
                 expiry = datetime.fromisoformat(
                     until_time
@@ -1773,7 +2242,10 @@ async def delete_bot_muted_messages(
                         tzinfo=timezone.utc
                     )
 
-                if datetime.now(timezone.utc) >= expiry:
+                if datetime.now(
+                    timezone.utc
+                ) >= expiry:
+
                     cur.execute("""
                     DELETE FROM bot_mutes
                     WHERE chat_id = ?
@@ -1792,6 +2264,7 @@ async def delete_bot_muted_messages(
 
         try:
             await message.delete()
+
         except Exception:
             pass
 
@@ -1810,10 +2283,15 @@ async def delete_bot_muted_messages(
 # تنظيف العقوبات المنتهية
 # ==================================================
 
-async def moderation_expiry_loop(application):
+async def moderation_expiry_loop(
+    application
+):
     while True:
+
         try:
-            now = datetime.now(timezone.utc).isoformat()
+            now = datetime.now(
+                timezone.utc
+            ).isoformat()
 
             conn = connect()
             cur = conn.cursor()
