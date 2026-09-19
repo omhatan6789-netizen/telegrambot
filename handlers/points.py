@@ -653,17 +653,53 @@ async def my_points(
 
     user_id = update.effective_user.id
 
-    data = await get_user_data(user_id)
+    try:
+        await flush_pending_points()
+    except Exception:
+        pass
 
-    points = (
-        data.get("points", 0)
-        if data
-        else 0
+    points = await asyncio.to_thread(
+        _get_points_from_database,
+        user_id
     )
 
     await update.message.reply_text(
         f"🏆 نقاطك الحالية: {points}"
     )
+
+
+def _get_points_from_database(user_id):
+
+    conn = connect()
+
+    try:
+
+        cur = conn.cursor()
+
+        cur.execute(
+            """
+            SELECT points
+            FROM points
+            WHERE user_id = ?
+            """,
+            (user_id,)
+        )
+
+        result = cur.fetchone()
+
+        if not result:
+            return 0
+
+        return result[0] or 0
+
+    finally:
+
+        try:
+            cur.close()
+        except Exception:
+            pass
+
+        conn.close()
 
 
 async def top_points(
