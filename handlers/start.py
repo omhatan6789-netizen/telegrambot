@@ -101,127 +101,158 @@ def _utf16_length(text):
     ) // 2
 
 
+def _load_entities(entities_json):
+    try:
+        raw_entities = json.loads(
+            entities_json or "[]"
+        )
+    except Exception:
+        return []
+
+    entities = []
+
+    for entity_data in raw_entities:
+        try:
+            entity = MessageEntity.de_json(
+                entity_data
+            )
+
+            if entity:
+                entities.append(entity)
+
+        except Exception:
+            continue
+
+    return entities
+
+
 def _build_start_text_and_entities(
     original_text,
-    raw_entities,
+    original_entities,
     user,
     user_data
 ):
-    """
-    يستبدل متغيرات الستارت ويصحح مواقع MessageEntity
-    بعد تغير طول النص.
-    """
-
     replacements = _get_start_replacements(
         user,
         user_data
     )
 
-    # نحتفظ بمعلومات كل استبدال في النص القديم
-    replacements_info = []
+    # إذا ما فيه متغيرات أصلًا، نرجع النص والـ entities
+    # كما هي بدون أي تعديل.
+    has_variables = any(
+        key in original_text
+        for key in replacements
+    )
 
-    final_text = original_text
+    if not has_variables:
+        return original_text, original_entities
 
-    # نبحث عن كل المتغيرات الموجودة فعليًا
+    # تسجيل أماكن المتغيرات في النص الأصلي
+    replacement_positions = []
+
     for key, value in replacements.items():
 
-        start = 0
+        search_from = 0
 
         while True:
             position = original_text.find(
                 key,
-                start
+                search_from
             )
 
             if position == -1:
                 break
 
-            replacements_info.append({
-                "start": position,
-                "end": position + len(key),
-                "old_length": _utf16_length(key),
-                "new_length": _utf16_length(value),
+            old_start = _utf16_length(
+                original_text[:position]
+            )
+
+            old_length = _utf16_length(key)
+            new_length = _utf16_length(value)
+
+            replacement_positions.append({
+                "start": old_start,
+                "end": old_start + old_length,
+                "old_length": old_length,
+                "new_length": new_length,
             })
 
-            start = position + len(key)
+            search_from = (
+                position + len(key)
+            )
 
+    replacement_positions.sort(
+        key=lambda item: item["start"]
+    )
+
+    final_text = original_text
+
+    # استبدال النص
+    for key, value in replacements.items():
         final_text = final_text.replace(
             key,
             value
         )
 
-    # ترتيب الاستبدالات حسب موقعها في النص الأصلي
-    replacements_info.sort(
-        key=lambda item: item["start"]
-    )
+    # نسخ الـ entities بعد تعديل offsets
+    final_entities = []
 
-    entities = []
+    for old_entity in original_entities:
 
-    for entity_data in raw_entities:
-        entity = MessageEntity.de_json(
-            entity_data
-        )
-
-        if not entity:
-            continue
-
-        old_offset = entity.offset or 0
-        old_length = entity.length or 0
+        old_offset = old_entity.offset or 0
+        old_length = old_entity.length or 0
+        old_end = old_offset + old_length
 
         new_offset = old_offset
-
-        # تعديل الـ offset حسب المتغيرات الموجودة قبله
-        for replacement in replacements_info:
-
-            replacement_start_utf16 = _utf16_length(
-                original_text[
-                    :replacement["start"]
-                ]
-            )
-
-            if replacement_start_utf16 < old_offset:
-                difference = (
-                    replacement["new_length"]
-                    - replacement["old_length"]
-                )
-
-                new_offset += difference
-
-        entity.offset = new_offset
-
-        # إذا كانت الـ entity نفسها تغطي متغيرًا،
-        # نحاول تعديل طولها أيضًا.
-        old_end = old_offset + old_length
         new_length = old_length
 
-        for replacement in replacements_info:
+        for replacement in replacement_positions:
 
-            replacement_start_utf16 = _utf16_length(
-                original_text[
-                    :replacement["start"]
-                ]
+            start = replacement["start"]
+            end = replacement["end"]
+
+            difference = (
+                replacement["new_length"]
+                - replacement["old_length"]
             )
 
-            replacement_end_utf16 = (
-                replacement_start_utf16
-                + replacement["old_length"]
-            )
+            # المتغير قبل الـ entity
+            if end <= old_offset:
+                new_offset += difference
 
-            if (
-                replacement_start_utf16 >= old_offset
-                and replacement_end_utf16 <= old_end
+            # المتغير داخل الـ entity
+            elif (
+                start >= old_offset
+                and end <= old_end
             ):
-                new_length += (
-                    replacement["new_length"]
-                    - replacement["old_length"]
-                )
+                new_length += difference
 
-        entity.length = new_length
+        # إنشاء Entity جديدة بدل تعديل الأصل
+        # حتى نحافظ على جميع الخصائص مثل:
+        # bold / italic / spoiler / underline / link / custom emoji
+        try:
+            new_entity = MessageEntity(
+                type=old_entity.type,
+                offset=new_offset,
+                length=new_length,
+                url=old_entity.url,
+                user=old_entity.user,
+                language=old_entity.language,
+                custom_emoji_id=old_entity.custom_emoji_id,
+            )
 
-        if entity.length > 0:
-            entities.append(entity)
+            final_entities.append(
+                new_entity
+            )
 
-    return final_text, entities
+        except Exception:
+            # إذا تعذر إنشاء Entity معينة،
+            # نحافظ على الأصل بدل حذف جميع التنسيقات.
+            final_entities.append(
+                old_entity
+            )
+
+    return final_text, final_entities
 
 
 def _build_start_keyboard(buttons):
@@ -278,36 +309,20 @@ async def start(
         user.id
     )
 
-    # قراءة الـ entities المحفوظة
-    try:
-        raw_entities = json.loads(
-            entities_json or "[]"
-        )
+    # تحميل تنسيقات الرسالة المحفوظة
+    entities = _load_entities(
+        entities_json
+    )
 
-    except Exception:
-        raw_entities = []
-
-    # استبدال المتغيرات مع تصحيح أماكن التنسيقات
-    try:
-        final_text, entities = (
-            _build_start_text_and_entities(
-                message_text,
-                raw_entities,
-                user,
-                user_data
-            )
-        )
-
-    except Exception:
-        # في حال وجود entity قديمة أو تالفة،
-        # لا نخلي /start يتعطل بالكامل.
-        final_text = _replace_start_variables(
+    # إنشاء النص النهائي + الحفاظ على التنسيقات
+    final_text, entities = (
+        _build_start_text_and_entities(
             message_text,
+            entities,
             user,
             user_data
         )
-
-        entities = []
+    )
 
     # إنشاء الأزرار
     reply_markup = _build_start_keyboard(
@@ -338,7 +353,6 @@ async def start(
 
         for index, image in enumerate(images):
 
-            # وضع الكابشن على آخر صورة
             if index == len(images) - 1:
                 media.append(
                     InputMediaPhoto(
