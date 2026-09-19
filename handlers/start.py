@@ -83,13 +83,29 @@ def _build_start_keyboard(buttons):
 
     rows = []
 
-    for button_text, button_url in buttons:
-        rows.append([
+    for index in range(0, len(buttons), 2):
+        row = []
+
+        first = buttons[index]
+
+        row.append(
             InlineKeyboardButton(
-                text=button_text,
-                url=button_url
+                text=first[0],
+                url=first[1]
             )
-        ])
+        )
+
+        if index + 1 < len(buttons):
+            second = buttons[index + 1]
+
+            row.append(
+                InlineKeyboardButton(
+                    text=second[0],
+                    url=second[1]
+                )
+            )
+
+        rows.append(row)
 
     return InlineKeyboardMarkup(rows)
 
