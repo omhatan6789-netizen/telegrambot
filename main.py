@@ -346,6 +346,7 @@ from handlers.button_colors import (
 from handlers.send import (
     send_command,
     delete_slash_command,
+    handle_send_media,
 )
 
 # ==================================================
@@ -760,10 +761,31 @@ def main():
 
     app.add_handler(
         MessageHandler(
+            filters.ChatType.PRIVATE
+            & ~filters.COMMAND
+            & (
+                filters.PHOTO
+                | filters.VIDEO
+                | filters.ANIMATION
+                | filters.Sticker.ALL
+                | filters.VOICE
+                | filters.AUDIO
+                | filters.Document.ALL
+            ),
+            handle_send_media,
+        ),
+        group=-28,
+    )
+    
+
+    
+
+    app.add_handler(
+        MessageHandler(
             filters.Regex(r"^/[\s\S]+$"),
             delete_slash_command,
         ),
-        group=-29,
+        group=-27,
     )
     # ==================================================
     # الأوامر المضافة
