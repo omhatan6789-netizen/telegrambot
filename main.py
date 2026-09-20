@@ -191,25 +191,6 @@ from handlers.profile_replies import (
     profile_reply_pending_handler,
 )
 
-# ==================================================
-# الحظر والكتم
-# ==================================================
-
-from handlers.moderation import (
-    check_user,
-    ban_user,
-    unban_user,
-    mute_user,
-    unmute_user,
-    restrict_user,
-    unrestrict_user,
-    moderation_settings_command,
-    moderation_list_command,
-    clear_moderation_command,
-    moderation_callback,
-    delete_bot_muted_messages,
-    moderation_expiry_loop,
-)
 
 
 # ==================================================
@@ -655,21 +636,15 @@ def main():
     async def post_init(application):
 
         global message_flush_task
-        global moderation_expiry_task
 
         message_flush_task = asyncio.create_task(
             automatic_message_flush()
-        )
-
-        moderation_expiry_task = asyncio.create_task(
-            moderation_expiry_loop(application)
         )
 
 
     async def post_shutdown(application):
 
         global message_flush_task
-        global moderation_expiry_task
 
         if message_flush_task:
 
@@ -680,14 +655,7 @@ def main():
             except asyncio.CancelledError:
                 pass
 
-        if moderation_expiry_task:
-
-           moderation_expiry_task.cancel()
-
-           try:
-                await moderation_expiry_task
-           except asyncio.CancelledError:
-                pass
+    
 
         # ==================================================
         # حفظ البيانات المعلقة قبل إيقاف البوت
@@ -1204,138 +1172,6 @@ def main():
         )
     )
 
-
-    # ==================================================
-    # نظام الإشراف الجديد
-    # ==================================================
-
-    # حذف رسائل المكتومين قبل بقية الهاندلرات
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS & filters.ALL,
-            delete_bot_muted_messages
-        ),
-        group=-30
-    )
-
-    # إعدادات المدة والأسباب
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS & filters.Regex(
-                r"^(تفعيل المدة للمشرفين|تعطيل المدة للمشرفين|تفعيل الاسباب|تعطيل الاسباب)$"
-            ),
-            moderation_settings_command
-        ),
-        group=-20
-    )
-
-    # قوائم العقوبات
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS & filters.Regex(
-                r"^(المكتومين|المقيدين|المحظورين)$"
-            ),
-            moderation_list_command
-        ),
-        group=-20
-    )
-
-    # مسح القوائم
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS & filters.Regex(
-                r"^(مسح المكتومين|مسح المقيدين|مسح المحظورين)$"
-            ),
-            clear_moderation_command
-        ),
-        group=-20
-    )
-
-    # أزرار مسح القوائم
-    app.add_handler(
-        CallbackQueryHandler(
-            moderation_callback,
-            pattern=r"^modclear:"
-        ),
-        group=-20
-    )
-
-    # كشف حالة المستخدم
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS & filters.Regex(
-                r"^كشف(?:\s|$)"
-            ),
-            check_user
-        ),
-        group=-20
-    )
-
-    # رفع الحظر
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS & filters.Regex(
-                r"^رفع الحظر(?:\s|$)"
-            ),
-            unban_user
-        ),
-        group=-20
-    )
-
-    # رفع الكتم
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS & filters.Regex(
-                r"^رفع الكتم(?:\s|$)"
-            ),
-            unmute_user
-        ),
-        group=-20
-    )
-
-    # رفع التقييد
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS & filters.Regex(
-                r"^رفع التقييد(?:\s|$)"
-            ),
-            unrestrict_user
-        ),
-        group=-20
-    )
-
-    # الحظر
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS & filters.Regex(
-                r"^حظر(?:\s|$)"
-            ),
-            ban_user
-        ),
-        group=-20
-    )
-
-    # الكتم
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS & filters.Regex(
-                r"^كتم(?:\s|$)"
-            ),
-            mute_user
-        ),
-        group=-20
-    )
-
-    # التقييد
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS & filters.Regex(
-                r"^تقييد(?:\s|$)"
-            ),
-            restrict_user
-        ),
-        group=-20
-    )
 
 
     # ==================================================
