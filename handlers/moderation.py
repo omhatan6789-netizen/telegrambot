@@ -22,6 +22,8 @@ from telegram.ext import (
     ApplicationHandlerStop,
 )
 
+from telegram.error import TelegramError
+
 from database import connect
 
 from handlers.roles import (
@@ -586,24 +588,27 @@ def get_user_from_database(username):
         conn.close()
 
 
+# ==================================================
+# البحث في أعضاء المجموعة
+# ==================================================
+
 def get_group_member_from_database(
     chat_id,
-    username
+    username,
 ):
-    clean_username = (
+
+    clean = clean_username(
         username
-        .lstrip("@")
-        .strip()
-        .lower()
     )
 
-    if not clean_username:
+    if not clean:
         return None
 
     conn = connect()
     cur = conn.cursor()
 
     try:
+
         cur.execute("""
         SELECT
             user_id,
@@ -612,12 +617,16 @@ def get_group_member_from_database(
         FROM group_members
         WHERE chat_id = ?
         AND LOWER(
-            REPLACE(username, '@', '')
+            REPLACE(
+                username,
+                '@',
+                ''
+            )
         ) = ?
         LIMIT 1
         """, (
             chat_id,
-            clean_username,
+            clean,
         ))
 
         row = cur.fetchone()
@@ -633,12 +642,14 @@ def get_group_member_from_database(
         )
 
     finally:
+
         try:
             cur.close()
         except Exception:
             pass
 
         conn.close()
+
 
 # ==================================================
 # البحث في جداول العقوبات
@@ -649,7 +660,9 @@ def get_moderation_user_from_database(
     username,
 ):
 
-    clean = clean_username(username)
+    clean = clean_username(
+        username
+    )
 
     if not clean:
         return None
@@ -749,88 +762,46 @@ def get_user_by_id_from_database(
 
 
 # ==================================================
-# البحث باليوزر من جميع مصادر الإشراف
-# ==================================================
-
-def find_username_locally(
-    chat_id,
-    username,
-):
-
-    clean = clean_username(username)
-
-    if not clean:
-        return None
-
-    # --------------------------------------------------
-    # users
-    # --------------------------------------------------
-
-    try:
-
-        target = get_user_from_database(
-            clean
-        )
-
-        if target:
-            return target
-
-    except Exception as e:
-
-        print(
-            f"[MODERATION] users lookup error: {e}"
-        )
-
-    # --------------------------------------------------
-    # جداول العقوبات
-    # --------------------------------------------------
-
-    try:
-
-        target = get_moderation_user_from_database(
-            chat_id,
-            clean,
-        )
-
-        if target:
-            return target
-
-    except Exception as e:
-
-        print(
-            f"[MODERATION] moderation lookup error: {e}"
-        )
-
-    return None
-
-
-# ==================================================
 # حل المستخدم المستهدف
 # ==================================================
 
 async def resolve_target(
     update: Update,
-    context: ContextTypes.DEFAULT_TYPE
+    context: ContextTypes.DEFAULT_TYPE,
 ):
+
     message = update.effective_message
     chat = update.effective_chat
 
     if not message:
         return None, []
 
-    text = (message.text or "").strip()
+    text = (
+        message.text or ""
+    ).strip()
+
     parts = text.split()
 
     # ==================================================
-    # الرد على رسالة
+    # 1 - الرد على رسالة
     # ==================================================
 
     if message.reply_to_message:
 
-        target = message.reply_to_message.from_user
+        replied_message = (
+            message.reply_to_message
+        )
+
+        target = replied_message.from_user
 
         if target:
-            return target, parts[1:]
+
+            # إذا كان الأمر بالرد:
+            # كتم السبب
+            # يصبح السبب من بعد كلمة كتم
+            args = parts[1:]
+
+            return target, args
 
     # ==================================================
     # لا يوجد هدف
@@ -840,78 +811,63 @@ async def resolve_target(
         return None, []
 
     target_text = parts[1].strip()
+
     args = parts[2:]
 
     # ==================================================
-    # ID
+    # 2 - ID
     # ==================================================
 
     if target_text.lstrip("-").isdigit():
 
         try:
-            user_id = int(target_text)
+
+            user_id = int(
+                target_text
+            )
+
         except Exception:
+
             return None, []
 
-        # أولاً: Telegram
+        # --------------------------------------------------
+        # محاولة جلبه من Telegram
+        # --------------------------------------------------
+
         if chat:
 
             try:
-                member = await context.bot.get_chat_member(
-                    chat_id=chat.id,
-                    user_id=user_id,
+
+                member = (
+                    await context.bot.get_chat_member(
+                        chat_id=chat.id,
+                        user_id=user_id,
+                    )
                 )
 
                 if member and member.user:
+
                     return member.user, args
 
-            except Exception:
-                pass
+            except TelegramError as e:
 
-        # ثانياً: users
-        try:
-            conn = connect()
-            cur = conn.cursor()
-
-            try:
-                cur.execute("""
-                SELECT
-                    user_id,
-                    username,
-                    first_name
-                FROM users
-                WHERE user_id = ?
-                LIMIT 1
-                """, (user_id,))
-
-                row = cur.fetchone()
-
-            finally:
-                cur.close()
-                conn.close()
-
-            if row:
-                return (
-                    build_user(
-                        row[0],
-                        row[2],
-                        row[1],
-                        False,
-                    ),
-                    args,
+                print(
+                    f"[MODERATION] ID get_chat_member: {e}"
                 )
 
-        except Exception:
-            pass
+        # --------------------------------------------------
+        # البحث في group_members
+        # --------------------------------------------------
 
-        # ثالثاً: group_members
         if chat:
 
             try:
+
                 conn = connect()
                 cur = conn.cursor()
 
                 try:
+
                     cur.execute("""
                     SELECT
                         user_id,
@@ -929,10 +885,12 @@ async def resolve_target(
                     row = cur.fetchone()
 
                 finally:
+
                     cur.close()
                     conn.close()
 
                 if row:
+
                     return (
                         build_user(
                             row[0],
@@ -943,10 +901,37 @@ async def resolve_target(
                         args,
                     )
 
-            except Exception:
-                pass
+            except Exception as e:
 
-        # آخر حل: بناء User من ID
+                print(
+                    f"[MODERATION] group_members ID error: {e}"
+                )
+
+        # --------------------------------------------------
+        # البحث في users
+        # --------------------------------------------------
+
+        try:
+
+            target = get_user_by_id_from_database(
+                user_id
+            )
+
+            if target:
+
+                return target, args
+
+        except Exception as e:
+
+            print(
+                f"[MODERATION] users ID error: {e}"
+            )
+
+        # --------------------------------------------------
+        # الأهم:
+        # ID صحيح = لا نحتاج أن يكون مسجل في DB
+        # --------------------------------------------------
+
         return (
             build_user(
                 user_id,
@@ -958,102 +943,117 @@ async def resolve_target(
         )
 
     # ==================================================
-    # Username
+    # 3 - Username
     #
     # يقبل:
     # @username
     # username
     # ==================================================
 
-    username = target_text.lstrip("@").strip()
+    username = clean_username(
+        target_text
+    )
 
     if not username:
         return None, []
 
-    # ==================================================
-    # 1 - أعضاء نفس القروب
-    # ==================================================
+    # --------------------------------------------------
+    # أولاً: كاش أعضاء المجموعة
+    # --------------------------------------------------
 
     if chat:
 
         try:
-            target = get_group_member_from_database(
-                chat.id,
-                username,
+
+            target = (
+                get_group_member_from_database(
+                    chat.id,
+                    username,
+                )
             )
 
             if target:
+
                 return target, args
 
-        except Exception:
-            pass
+        except Exception as e:
 
-    # ==================================================
-    # 2 - المستخدمين العامين
-    # ==================================================
+            print(
+                f"[MODERATION] group username error: {e}"
+            )
+
+    # --------------------------------------------------
+    # ثانياً: users
+    # --------------------------------------------------
 
     try:
+
         target = get_user_from_database(
             username
         )
 
         if target:
+
             return target, args
 
-    except Exception:
-        pass
+    except Exception as e:
 
-    # ==================================================
-    # 3 - جداول العقوبات
-    #
-    # مهم جدًا لرفع الحظر والكتم والتقييد
-    # ==================================================
+        print(
+            f"[MODERATION] users username error: {e}"
+        )
+
+    # --------------------------------------------------
+    # ثالثاً: جداول العقوبات
+    # --------------------------------------------------
 
     if chat:
 
         try:
-            target = get_moderation_user_from_database(
-                chat.id,
-                username,
+
+            target = (
+                get_moderation_user_from_database(
+                    chat.id,
+                    username,
+                )
             )
 
             if target:
+
                 return target, args
 
-        except Exception:
-            pass
+        except Exception as e:
 
-    # ==================================================
-    # 4 - Telegram كحل أخير
-    # ==================================================
+            print(
+                f"[MODERATION] moderation username error: {e}"
+            )
+
+    # --------------------------------------------------
+    # رابعاً: Telegram
+    # --------------------------------------------------
 
     try:
 
-        chat_info = await context.bot.get_chat(
+        user_info = await context.bot.get_chat(
             f"@{username}"
         )
 
-        if getattr(
-            chat_info,
-            "id",
-            None
-        ):
+        if user_info:
 
             return (
                 build_user(
-                    chat_info.id,
+                    user_info.id,
                     getattr(
-                        chat_info,
+                        user_info,
                         "first_name",
                         None,
                     ),
                     getattr(
-                        chat_info,
+                        user_info,
                         "username",
                         username,
                     ),
                     getattr(
-                        chat_info,
+                        user_info,
                         "is_bot",
                         False,
                     ),
@@ -1061,10 +1061,20 @@ async def resolve_target(
                 args,
             )
 
-    except Exception:
-        pass
+    except TelegramError as e:
+
+        print(
+            f"[MODERATION] Telegram username lookup: {e}"
+        )
+
+    except Exception as e:
+
+        print(
+            f"[MODERATION] username lookup: {e}"
+        )
 
     return None, []
+
 
 # ==================================================
 # منشن
@@ -1129,29 +1139,88 @@ def parse_action_options(
 
 
 # ==================================================
-# جلب عضو Telegram
+# فحص صلاحيات البوت
 # ==================================================
 
-async def get_chat_member_safe(
+async def check_bot_permissions(
+    update,
     context,
-    chat_id,
-    user_id,
+    action,
 ):
+
+    message = update.effective_message
+    chat = update.effective_chat
+
+    if not message or not chat:
+        return False
 
     try:
 
-        return await context.bot.get_chat_member(
-            chat_id=chat_id,
-            user_id=user_id,
+        me = await context.bot.get_me()
+
+        member = await context.bot.get_chat_member(
+            chat_id=chat.id,
+            user_id=me.id,
         )
+
+        if member.status not in (
+            "administrator",
+            "creator",
+        ):
+
+            await message.reply_text(
+                "• البوت ليس مشرفًا في المجموعة."
+            )
+
+            return False
+
+        if action == "ban":
+
+            if not getattr(
+                member,
+                "can_restrict_members",
+                False,
+            ):
+
+                await message.reply_text(
+                    "• البوت لا يملك صلاحية حظر الأعضاء."
+                )
+
+                return False
+
+        elif action == "restrict":
+
+            if not getattr(
+                member,
+                "can_restrict_members",
+                False,
+            ):
+
+                await message.reply_text(
+                    "• البوت لا يملك صلاحية تقييد الأعضاء."
+                )
+
+                return False
+
+        return True
+
+    except TelegramError as e:
+
+        await message.reply_text(
+            "• تعذر التأكد من صلاحيات البوت.\n"
+            f"الخطأ ↤ {escape(str(e))}",
+            parse_mode="HTML",
+        )
+
+        return False
 
     except Exception as e:
 
         print(
-            f"[MODERATION] get_chat_member error: {e}"
+            f"[MODERATION] bot permissions error: {e}"
         )
 
-        return None
+        return False
 
 
 # ==================================================
@@ -1162,8 +1231,9 @@ async def check_target(
     update,
     context,
     target,
-    action=None
+    action=None,
 ):
+
     message = update.effective_message
     actor = update.effective_user
     chat = update.effective_chat
@@ -1176,9 +1246,11 @@ async def check_target(
     # ==================================================
 
     if target.is_bot:
+
         await message.reply_text(
             "هذا بوت ياغبي😭😭 …"
         )
+
         return False
 
     # ==================================================
@@ -1186,10 +1258,11 @@ async def check_target(
     # ==================================================
 
     if is_primary_developer(actor.id):
+
         return True
 
     # ==================================================
-    # المطورين
+    # حماية المطورين
     # ==================================================
 
     if (
@@ -1198,27 +1271,34 @@ async def check_target(
     ):
 
         if action == "mute":
+
             text = (
                 "• امسح عينك وشف من الي تبي "
                 "تكتمه ياورع!"
             )
 
         elif action == "restrict":
+
             text = (
                 "• امسح عينك وشف من الي تبي "
                 "تقيده ياورع!"
             )
 
         elif action == "ban":
+
             text = (
                 "• امسح عينك وشف من الي تبي "
                 "تحظره ياورع!"
             )
 
         else:
+
             return False
 
-        await message.reply_text(text)
+        await message.reply_text(
+            text
+        )
+
         return False
 
     # ==================================================
@@ -1226,48 +1306,15 @@ async def check_target(
     # ==================================================
 
     if target.id == actor.id:
+
+        await message.reply_text(
+            "• ما تقدر تطبق العقوبة على نفسك."
+        )
+
         return False
 
     # ==================================================
-    # مشرف Telegram
-    # ==================================================
-
-    if (
-        action in ("ban", "restrict")
-        and chat
-        and chat.type in ("group", "supergroup")
-    ):
-
-        try:
-
-            member = await context.bot.get_chat_member(
-                chat_id=chat.id,
-                user_id=target.id,
-            )
-
-            if member and member.status in (
-                "administrator",
-                "creator",
-            ):
-
-                action_text = (
-                    "تحظره"
-                    if action == "ban"
-                    else "تقيده"
-                )
-
-                await message.reply_text(
-                    f"• اعذرني بس الشخص الي تبي "
-                    f"{action_text} مشرف بالقروب."
-                )
-
-                return False
-
-        except Exception:
-            pass
-
-    # ==================================================
-    # الرتبة
+    # التأكد من رتبة الهدف
     # ==================================================
 
     if not has_permission(
@@ -1276,34 +1323,113 @@ async def check_target(
     ):
 
         if action == "mute":
+
             text = (
                 "• امسح عينك وشف من الي تبي "
                 "تكتمه ياورع!"
             )
 
         elif action == "restrict":
+
             text = (
                 "• امسح عينك وشف من الي تبي "
                 "تقيده ياورع!"
             )
 
         elif action == "ban":
+
             text = (
                 "• امسح عينك وشف من الي تبي "
                 "تحظره ياورع!"
             )
 
         else:
+
             return False
 
-        await message.reply_text(text)
+        await message.reply_text(
+            text
+        )
+
         return False
+
+    # ==================================================
+    # كتم البوت
+    #
+    # لا نحتاج Telegram API هنا
+    # ==================================================
+
+    if action == "mute":
+
+        return True
+
+    # ==================================================
+    # الحظر / التقييد
+    # ==================================================
+
+    if action in (
+        "ban",
+        "restrict",
+    ):
+
+        if not chat:
+            return False
+
+        try:
+
+            member = (
+                await context.bot.get_chat_member(
+                    chat_id=chat.id,
+                    user_id=target.id,
+                )
+            )
+
+            if member.status in (
+                "administrator",
+                "creator",
+            ):
+
+                if action == "ban":
+
+                    await message.reply_text(
+                        "• ما أقدر أحظر هذا المستخدم لأنه مشرف في المجموعة."
+                    )
+
+                else:
+
+                    await message.reply_text(
+                        "• ما أقدر أقيد هذا المستخدم لأنه مشرف في المجموعة."
+                    )
+
+                return False
+
+        except TelegramError as e:
+
+            # إذا كان المستخدم غير موجود في المجموعة
+            # لا نمنعه من الحظر بالـ ID.
+            error_text = str(e).lower()
+
+            if (
+                "user not found" not in error_text
+                and "member not found" not in error_text
+                and "chat member not found" not in error_text
+            ):
+
+                print(
+                    f"[MODERATION] target member check: {e}"
+                )
+
+        except Exception as e:
+
+            print(
+                f"[MODERATION] target member check: {e}"
+            )
 
     return True
 
 
 # ==================================================
-# رسالة عدم العثور على المستخدم
+# عدم العثور على المستخدم
 # ==================================================
 
 async def target_not_found_message(
@@ -1313,13 +1439,16 @@ async def target_not_found_message(
 
     if target_text:
 
+        safe_target = escape(
+            str(target_text)
+        )
+
         await message.reply_text(
             "• ما قدرت أحدد المستخدم.\n\n"
-            f"المطلوب ↤ {escape(str(target_text))}\n\n"
+            f"المطلوب ↤ {safe_target}\n\n"
             "• جرّب الرد على رسالة الشخص مباشرة، "
             "أو استخدم الـ ID.\n"
-            "• وإذا كنت تستخدم @username فتأكد أن "
-            "البوت سبق وشاف الشخص ومسجله في قاعدة البيانات.",
+            "• اليوزر يقبل @username أو username.",
             parse_mode="HTML",
         )
 
@@ -1328,7 +1457,7 @@ async def target_not_found_message(
         await message.reply_text(
             "• ما قدرت أحدد المستخدم.\n\n"
             "• جرّب الرد على رسالة الشخص مباشرة، "
-            "أو استخدم الـ ID."
+            "أو استخدم الـ ID أو @username."
         )
 
 
@@ -1354,6 +1483,21 @@ async def ban_user(
     ):
         return
 
+    # ==================================================
+    # التأكد من صلاحية البوت
+    # ==================================================
+
+    if not await check_bot_permissions(
+        update,
+        context,
+        "ban",
+    ):
+        return
+
+    # ==================================================
+    # تحديد الهدف
+    # ==================================================
+
     target, args = await resolve_target(
         update,
         context,
@@ -1362,8 +1506,8 @@ async def ban_user(
     if not target:
 
         parts = (
-            (message.text or "").split()
-        )
+            message.text or ""
+        ).split()
 
         await target_not_found_message(
             message,
@@ -1372,14 +1516,16 @@ async def ban_user(
 
         return
 
-    allowed = await check_target(
+    # ==================================================
+    # فحص الهدف
+    # ==================================================
+
+    if not await check_target(
         update,
         context,
         target,
         "ban",
-    )
-
-    if not allowed:
+    ):
         return
 
     settings = get_settings(
@@ -1423,7 +1569,7 @@ async def ban_user(
             until_date=until_date,
         )
 
-    except Exception as e:
+    except TelegramError as e:
 
         print(
             f"[MODERATION] BAN ERROR: {e}"
@@ -1437,8 +1583,22 @@ async def ban_user(
 
         return
 
+    except Exception as e:
+
+        print(
+            f"[MODERATION] BAN UNKNOWN ERROR: {e}"
+        )
+
+        await message.reply_text(
+            "• حدث خطأ أثناء الحظر.\n"
+            f"الخطأ ↤ {escape(str(e))}",
+            parse_mode="HTML",
+        )
+
+        return
+
     # ==================================================
-    # قاعدة البيانات
+    # حفظ العقوبة
     # ==================================================
 
     conn = connect()
@@ -1514,11 +1674,24 @@ async def ban_user(
 
         conn.commit()
 
-    except Exception:
+    except Exception as e:
 
         conn.rollback()
 
-        raise
+        print(
+            f"[MODERATION] BAN DB ERROR: {e}"
+        )
+
+        # الحظر تم فعليًا في Telegram،
+        # لذلك لا نقول إن الحظر فشل.
+        await message.reply_text(
+            "• تم الحظر من Telegram، "
+            "لكن تعذر حفظ العقوبة في قاعدة البيانات.\n"
+            f"الخطأ ↤ {escape(str(e))}",
+            parse_mode="HTML",
+        )
+
+        return
 
     finally:
 
@@ -1584,6 +1757,10 @@ async def unban_user(
     ):
         return
 
+    # ==================================================
+    # تحديد الهدف
+    # ==================================================
+
     target, args = await resolve_target(
         update,
         context,
@@ -1592,8 +1769,8 @@ async def unban_user(
     if not target:
 
         parts = (
-            (message.text or "").split()
-        )
+            message.text or ""
+        ).split()
 
         await target_not_found_message(
             message,
@@ -1601,6 +1778,10 @@ async def unban_user(
         )
 
         return
+
+    # ==================================================
+    # البوت
+    # ==================================================
 
     if target.is_bot:
 
@@ -1610,6 +1791,10 @@ async def unban_user(
 
         return
 
+    # ==================================================
+    # الصلاحيات
+    # ==================================================
+
     if not is_primary_developer(actor.id):
 
         if not has_permission(
@@ -1617,6 +1802,10 @@ async def unban_user(
             target.id,
         ):
             return
+
+    # ==================================================
+    # Telegram
+    # ==================================================
 
     try:
 
@@ -1626,19 +1815,47 @@ async def unban_user(
             only_if_banned=True,
         )
 
-    except Exception as e:
+    except TelegramError as e:
+
+        error_text = str(e).lower()
+
+        # إذا لم يكن محظوراً أصلاً
+        # نسمح بتنظيف قاعدة البيانات
+        if (
+            "not enough rights" in error_text
+            or "administrator" in error_text
+            or "chat_admin_required" in error_text
+        ):
+
+            await message.reply_text(
+                "• فشل رفع الحظر من Telegram.\n"
+                f"الخطأ ↤ {escape(str(e))}",
+                parse_mode="HTML",
+            )
+
+            return
 
         print(
             f"[MODERATION] UNBAN ERROR: {e}"
         )
 
+    except Exception as e:
+
+        print(
+            f"[MODERATION] UNBAN UNKNOWN ERROR: {e}"
+        )
+
         await message.reply_text(
-            "• فشل رفع الحظر من Telegram.\n"
+            "• فشل رفع الحظر.\n"
             f"الخطأ ↤ {escape(str(e))}",
             parse_mode="HTML",
         )
 
         return
+
+    # ==================================================
+    # قاعدة البيانات
+    # ==================================================
 
     conn = connect()
     cur = conn.cursor()
@@ -1693,7 +1910,7 @@ async def unban_user(
 
 
 # ==================================================
-# الكتم البوتي
+# الكتم الداخلي للبوت
 # ==================================================
 
 async def mute_user(
@@ -1714,6 +1931,10 @@ async def mute_user(
     ):
         return
 
+    # ==================================================
+    # تحديد الهدف
+    # ==================================================
+
     target, args = await resolve_target(
         update,
         context,
@@ -1722,8 +1943,8 @@ async def mute_user(
     if not target:
 
         parts = (
-            (message.text or "").split()
-        )
+            message.text or ""
+        ).split()
 
         await target_not_found_message(
             message,
@@ -1731,6 +1952,10 @@ async def mute_user(
         )
 
         return
+
+    # ==================================================
+    # فحص الهدف
+    # ==================================================
 
     if not await check_target(
         update,
@@ -1763,6 +1988,10 @@ async def mute_user(
                 seconds=duration_seconds
             )
         ).isoformat()
+
+    # ==================================================
+    # حفظ الكتم
+    # ==================================================
 
     conn = connect()
     cur = conn.cursor()
@@ -1837,6 +2066,22 @@ async def mute_user(
 
         conn.commit()
 
+    except Exception as e:
+
+        conn.rollback()
+
+        print(
+            f"[MODERATION] MUTE DB ERROR: {e}"
+        )
+
+        await message.reply_text(
+            "• فشل الكتم.\n"
+            f"الخطأ ↤ {escape(str(e))}",
+            parse_mode="HTML",
+        )
+
+        return
+
     finally:
 
         cur.close()
@@ -1903,8 +2148,8 @@ async def unmute_user(
     if not target:
 
         parts = (
-            (message.text or "").split()
-        )
+            message.text or ""
+        ).split()
 
         await target_not_found_message(
             message,
@@ -1943,6 +2188,8 @@ async def unmute_user(
             target.id,
         ))
 
+        deleted_count = cur.rowcount
+
         cur.execute("""
         INSERT INTO moderation_logs
         (
@@ -1969,16 +2216,43 @@ async def unmute_user(
 
         conn.commit()
 
+    except Exception as e:
+
+        conn.rollback()
+
+        print(
+            f"[MODERATION] UNMUTE ERROR: {e}"
+        )
+
+        await message.reply_text(
+            "• فشل رفع الكتم.\n"
+            f"الخطأ ↤ {escape(str(e))}",
+            parse_mode="HTML",
+        )
+
+        return
+
     finally:
 
         cur.close()
         conn.close()
 
-    await message.reply_text(
-        f"• تم رفع الكتم عن "
-        f"{mention_user(target)}",
-        parse_mode="HTML",
-    )
+    if deleted_count:
+
+        await message.reply_text(
+            f"• تم رفع الكتم عن "
+            f"{mention_user(target)}",
+            parse_mode="HTML",
+        )
+
+    else:
+
+        await message.reply_text(
+            f"• المستخدم "
+            f"{mention_user(target)} "
+            f"غير مكتوم أصلًا.",
+            parse_mode="HTML",
+        )
 
 
 # ==================================================
@@ -2003,6 +2277,21 @@ async def restrict_user(
     ):
         return
 
+    # ==================================================
+    # صلاحية البوت
+    # ==================================================
+
+    if not await check_bot_permissions(
+        update,
+        context,
+        "restrict",
+    ):
+        return
+
+    # ==================================================
+    # تحديد الهدف
+    # ==================================================
+
     target, args = await resolve_target(
         update,
         context,
@@ -2011,8 +2300,8 @@ async def restrict_user(
     if not target:
 
         parts = (
-            (message.text or "").split()
-        )
+            message.text or ""
+        ).split()
 
         await target_not_found_message(
             message,
@@ -2020,6 +2309,10 @@ async def restrict_user(
         )
 
         return
+
+    # ==================================================
+    # فحص الهدف
+    # ==================================================
 
     if not await check_target(
         update,
@@ -2058,6 +2351,10 @@ async def restrict_user(
             until_date.isoformat()
         )
 
+    # ==================================================
+    # صلاحيات التقييد
+    # ==================================================
+
     permissions = ChatPermissions(
         can_send_messages=False,
         can_send_audios=False,
@@ -2072,6 +2369,10 @@ async def restrict_user(
         can_invite_users=False,
     )
 
+    # ==================================================
+    # Telegram Restrict
+    # ==================================================
+
     try:
 
         await context.bot.restrict_chat_member(
@@ -2081,7 +2382,7 @@ async def restrict_user(
             until_date=until_date,
         )
 
-    except Exception as e:
+    except TelegramError as e:
 
         print(
             f"[MODERATION] RESTRICT ERROR: {e}"
@@ -2094,6 +2395,24 @@ async def restrict_user(
         )
 
         return
+
+    except Exception as e:
+
+        print(
+            f"[MODERATION] RESTRICT UNKNOWN ERROR: {e}"
+        )
+
+        await message.reply_text(
+            "• حدث خطأ أثناء التقييد.\n"
+            f"الخطأ ↤ {escape(str(e))}",
+            parse_mode="HTML",
+        )
+
+        return
+
+    # ==================================================
+    # قاعدة البيانات
+    # ==================================================
 
     conn = connect()
     cur = conn.cursor()
@@ -2168,11 +2487,22 @@ async def restrict_user(
 
         conn.commit()
 
-    except Exception:
+    except Exception as e:
 
         conn.rollback()
 
-        raise
+        print(
+            f"[MODERATION] RESTRICT DB ERROR: {e}"
+        )
+
+        await message.reply_text(
+            "• تم التقييد من Telegram، "
+            "لكن تعذر حفظه في قاعدة البيانات.\n"
+            f"الخطأ ↤ {escape(str(e))}",
+            parse_mode="HTML",
+        )
+
+        return
 
     finally:
 
@@ -2241,8 +2571,8 @@ async def unrestrict_user(
     if not target:
 
         parts = (
-            (message.text or "").split()
-        )
+            message.text or ""
+        ).split()
 
         await target_not_found_message(
             message,
@@ -2267,6 +2597,10 @@ async def unrestrict_user(
         ):
             return
 
+    # ==================================================
+    # إعطاء صلاحيات الإرسال الطبيعية
+    # ==================================================
+
     permissions = ChatPermissions(
         can_send_messages=True,
         can_send_audios=True,
@@ -2289,7 +2623,7 @@ async def unrestrict_user(
             permissions=permissions,
         )
 
-    except Exception as e:
+    except TelegramError as e:
 
         print(
             f"[MODERATION] UNRESTRICT ERROR: {e}"
@@ -2302,6 +2636,24 @@ async def unrestrict_user(
         )
 
         return
+
+    except Exception as e:
+
+        print(
+            f"[MODERATION] UNRESTRICT UNKNOWN ERROR: {e}"
+        )
+
+        await message.reply_text(
+            "• حدث خطأ أثناء رفع التقييد.\n"
+            f"الخطأ ↤ {escape(str(e))}",
+            parse_mode="HTML",
+        )
+
+        return
+
+    # ==================================================
+    # قاعدة البيانات
+    # ==================================================
 
     conn = connect()
     cur = conn.cursor()
@@ -2316,6 +2668,8 @@ async def unrestrict_user(
             chat.id,
             target.id,
         ))
+
+        deleted_count = cur.rowcount
 
         cur.execute("""
         INSERT INTO moderation_logs
@@ -2348,11 +2702,21 @@ async def unrestrict_user(
         cur.close()
         conn.close()
 
-    await message.reply_text(
-        f"• تم رفع التقييد عن "
-        f"{mention_user(target)}",
-        parse_mode="HTML",
-    )
+    if deleted_count:
+
+        await message.reply_text(
+            f"• تم رفع التقييد عن "
+            f"{mention_user(target)}",
+            parse_mode="HTML",
+        )
+
+    else:
+
+        await message.reply_text(
+            f"• تم رفع التقييد عن "
+            f"{mention_user(target)}",
+            parse_mode="HTML",
+        )
 
 
 # ==================================================
@@ -2384,8 +2748,8 @@ async def check_user(
     if not target:
 
         parts = (
-            (message.text or "").split()
-        )
+            message.text or ""
+        ).split()
 
         await target_not_found_message(
             message,
@@ -2455,9 +2819,15 @@ async def check_user(
         f"{mention_user(target)}"
     )
 
-    rank = get_rank(
-        target.id
-    )
+    try:
+
+        rank = get_rank(
+            target.id
+        )
+
+    except Exception:
+
+        rank = "عضو"
 
     if rank:
 
