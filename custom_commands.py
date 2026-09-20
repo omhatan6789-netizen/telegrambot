@@ -1,3 +1,4 @@
+import time
 from telegram import Update
 from telegram.ext import (
     ContextTypes,
@@ -450,6 +451,9 @@ async def check_custom_commands(
     context: ContextTypes.DEFAULT_TYPE,
     application=None
 ):
+
+    start_time = time.perf_counter()
+    
     if not update.message:
         return False
     if not update.message.text:
@@ -556,10 +560,14 @@ async def check_custom_commands(
                     check_result,
                     context
                 )
+
+                elapsed = time.perf_counter() - start_time
+
                 print(
-                    f"🔁 الأمر المضاف: "
-                    f"{text} → {old_command}"
+                    f"⏱️ الاختصار {text} → {old_command} "
+                    f"استغرق {elapsed:.3f} ثانية"
                 )
+
                 return True
             except Exception as e:
                 print(
