@@ -22,7 +22,13 @@ from handlers import cache as _cache_module
 
 _user_cache = _cache_module._user_cache
 
+
+# =========================================================
+# قفل عملية الحفظ
+# =========================================================
+
 _flush_lock = None
+
 
 def _get_flush_lock():
     global _flush_lock
@@ -33,12 +39,20 @@ def _get_flush_lock():
     return _flush_lock
 
 
+# =========================================================
+# تحديد المستخدم لأمر ايدي
+# =========================================================
+
 async def get_id_target_user(update, context):
 
     if not update.message:
         return None
 
     message = update.message
+
+    # =====================================================
+    # الرد على رسالة
+    # =====================================================
 
     if message.reply_to_message:
 
@@ -48,6 +62,10 @@ async def get_id_target_user(update, context):
 
         if replied_user:
             return replied_user
+
+    # =====================================================
+    # قراءة النص
+    # =====================================================
 
     text = (
         message.text or ""
@@ -60,7 +78,11 @@ async def get_id_target_user(update, context):
 
     target = parts[-1].strip()
 
-    if target.isdigit():
+    # =====================================================
+    # ID
+    # =====================================================
+
+    if target.lstrip("-").isdigit():
 
         try:
 
@@ -72,12 +94,33 @@ async def get_id_target_user(update, context):
 
             return None
 
-    if target.startswith("@"):
+    # =====================================================
+    # Username
+    # =====================================================
 
+    username = target.lstrip("@")
+
+    if username:
+
+        # محاولة الكاش أولاً
+        try:
+
+            cached_user = get_cached_user(
+                username
+            )
+
+            if cached_user:
+                return cached_user
+
+        except Exception:
+
+            pass
+
+        # Telegram API
         try:
 
             return await context.bot.get_chat(
-                target
+                f"@{username}"
             )
 
         except Exception:
@@ -87,11 +130,16 @@ async def get_id_target_user(update, context):
     return None
 
 
+# =========================================================
+# إنشاء المستخدم إذا لم يكن موجوداً
+# =========================================================
+
 def _create_user_if_missing_sync(
     user_id,
     username,
     first_name,
 ):
+
     conn = connect()
 
     cur = None
@@ -155,6 +203,10 @@ def _create_user_if_missing_sync(
         conn.close()
 
 
+# =========================================================
+# أمر ايدي
+# =========================================================
+
 async def user_id_command(update, context):
 
     if not update.message:
@@ -189,6 +241,10 @@ async def user_id_command(update, context):
         "first_name",
         ""
     )
+
+    # =====================================================
+    # الكاش
+    # =====================================================
 
     cached = get_cached_user(
         user_id
@@ -248,6 +304,10 @@ async def user_id_command(update, context):
                 }
             )
 
+    # =====================================================
+    # الرتبة
+    # =====================================================
+
     try:
 
         rank = await asyncio.to_thread(
@@ -262,6 +322,10 @@ async def user_id_command(update, context):
     if not rank:
         rank = "عضو"
 
+    # =====================================================
+    # النقاط
+    # =====================================================
+
     try:
 
         points = await asyncio.to_thread(
@@ -275,6 +339,10 @@ async def user_id_command(update, context):
 
     if points is None:
         points = 0
+
+    # =====================================================
+    # تحديث الكاش
+    # =====================================================
 
     cached = get_cached_user(
         user_id
@@ -305,6 +373,10 @@ async def user_id_command(update, context):
         username=username_value,
         first_name=first_name_value,
     )
+
+    # =====================================================
+    # معلومات Telegram
+    # =====================================================
 
     username = (
         f"@{username_value}"
@@ -364,6 +436,10 @@ async def user_id_command(update, context):
 
         pass
 
+    # =====================================================
+    # تنسيق النص
+    # =====================================================
+
     safe_name = escape(
         first_name_value
         or "غير معروف"
@@ -407,6 +483,10 @@ async def user_id_command(update, context):
 📅 Joined Group 𖦹 {safe_joined_date}
 """
 
+    # =====================================================
+    # صورة البروفايل
+    # =====================================================
+
     try:
 
         photos = await context.bot.get_user_profile_photos(
@@ -437,6 +517,10 @@ async def user_id_command(update, context):
         parse_mode="HTML"
     )
 
+
+# =========================================================
+# حفظ تاريخ دخول المستخدم
+# =========================================================
 
 def _save_join_date_sync(
     user_id,
@@ -564,15 +648,77 @@ async def save_join_date(update, context):
         }
     )
 
+    # =====================================================
+    # حفظ العضو في كاش المجموعة مباشرة
+    # =====================================================
+
+    try:
+
+        conn = connect()
+        cur = conn.cursor()
+
+        cur.execute(
+            """
+            INSERT INTO group_members
+            (
+                chat_id,
+                user_id,
+                username,
+                first_name,
+                last_seen
+            )
+            VALUES (?, ?, ?, ?, ?)
+
+            ON CONFLICT (chat_id, user_id)
+            DO UPDATE SET
+
+                username = EXCLUDED.username,
+
+                first_name = EXCLUDED.first_name,
+
+                last_seen = EXCLUDED.last_seen
+            """,
+            (
+                update.effective_chat.id,
+                user.id,
+                user.username,
+                user.first_name,
+                datetime.now().isoformat(),
+            )
+        )
+
+        conn.commit()
+
+        cur.close()
+        conn.close()
+
+    except Exception as e:
+
+        print(
+            f"⚠️ خطأ أثناء حفظ عضو المجموعة: {e}"
+        )
+
+
+# =========================================================
+# كاش الرسائل
+# =========================================================
 
 _pending_messages = {}
 _pending_user_data = {}
+
+# =========================================================
+# كاش أعضاء المجموعات
+# =========================================================
 
 _pending_group_members = {}
 
 MESSAGE_BATCH_SIZE = 10
 GROUP_MEMBER_FLUSH_SIZE = 20
 
+
+# =========================================================
+# حفظ البيانات في قاعدة البيانات
+# =========================================================
 
 def _flush_user_messages_sync(
     messages,
@@ -588,10 +734,9 @@ def _flush_user_messages_sync(
 
         cur = conn.cursor()
 
-
-        # ==================================================
+        # =================================================
         # تحديث كاش أعضاء القروبات
-        # ==================================================
+        # =================================================
 
         for key, data in group_members.items():
 
@@ -631,6 +776,11 @@ def _flush_user_messages_sync(
                     last_seen,
                 )
             )
+
+        # =================================================
+        # تحديث رسائل المستخدمين
+        # =================================================
+
         for user_id, count in messages.items():
 
             data = user_data.get(
@@ -650,7 +800,7 @@ def _flush_user_messages_sync(
                         COALESCE(messages, 0) + ?,
                     username = ?,
                     first_name = ?
-                WHERE user_id=?
+                WHERE user_id = ?
                 """,
                 (
                     count,
@@ -659,6 +809,10 @@ def _flush_user_messages_sync(
                     user_id
                 )
             )
+
+            # =================================================
+            # إذا المستخدم غير موجود
+            # =================================================
 
             if cur.rowcount == 0:
 
@@ -726,6 +880,10 @@ def _flush_user_messages_sync(
         conn.close()
 
 
+# =========================================================
+# تفريغ الكاش
+# =========================================================
+
 async def flush_user_messages():
 
     global _pending_messages
@@ -742,9 +900,17 @@ async def flush_user_messages():
         ):
             return
 
+        # =================================================
+        # أخذ نسخة من البيانات
+        # =================================================
+
         messages = _pending_messages
         user_data = _pending_user_data
         group_members = _pending_group_members
+
+        # =================================================
+        # تفريغ الذاكرة
+        # =================================================
 
         _pending_messages = {}
         _pending_user_data = {}
@@ -755,11 +921,15 @@ async def flush_user_messages():
             await asyncio.to_thread(
                 _flush_user_messages_sync,
                 messages,
-                user_data
-                group_members
+                user_data,
+                group_members,
             )
 
         except Exception as e:
+
+            # =================================================
+            # استرجاع الرسائل إذا فشل الحفظ
+            # =================================================
 
             for user_id, count in messages.items():
 
@@ -771,20 +941,30 @@ async def flush_user_messages():
                     + count
                 )
 
+            # =================================================
+            # استرجاع بيانات المستخدمين
+            # =================================================
+
+            for user_id, data in user_data.items():
+
+                _pending_user_data[user_id] = data
+
+            # =================================================
+            # استرجاع أعضاء المجموعات
+            # =================================================
+
             for key, data in group_members.items():
 
                 _pending_group_members[key] = data
-
-                if user_id in user_data:
-
-                    _pending_user_data[user_id] = (
-                        user_data[user_id]
-                    )
 
             print(
                 f"⚠️ خطأ أثناء حفظ رسائل المستخدمين: {e}"
             )
 
+
+# =========================================================
+# جدولة تفريغ الكاش
+# =========================================================
 
 def _schedule_message_flush():
 
@@ -799,6 +979,10 @@ def _schedule_message_flush():
         pass
 
 
+# =========================================================
+# حفظ رسالة المستخدم
+# =========================================================
+
 async def save_user_message(
     update,
     context
@@ -812,6 +996,10 @@ async def save_user_message(
     if not chat:
         return
 
+    # =====================================================
+    # المجموعات فقط
+    # =====================================================
+
     if chat.type not in (
         "group",
         "supergroup"
@@ -823,9 +1011,16 @@ async def save_user_message(
     if not user:
         return
 
-    user_id = user.id
+    # تجاهل البوتات
+    if user.is_bot:
+        return
 
+    user_id = user.id
     chat_id = chat.id
+
+    # =====================================================
+    # إضافة العضو إلى كاش المجموعة
+    # =====================================================
 
     _pending_group_members[
         (chat_id, user_id)
@@ -835,6 +1030,10 @@ async def save_user_message(
         datetime.now().isoformat()
     )
 
+    # =====================================================
+    # عداد الرسائل
+    # =====================================================
+
     _pending_messages[user_id] = (
         _pending_messages.get(
             user_id,
@@ -843,10 +1042,18 @@ async def save_user_message(
         + 1
     )
 
+    # =====================================================
+    # بيانات المستخدم
+    # =====================================================
+
     _pending_user_data[user_id] = (
         user.username,
         user.first_name
     )
+
+    # =====================================================
+    # تحديث الكاش السريع
+    # =====================================================
 
     increment_cached_messages(
         user_id,
@@ -855,9 +1062,20 @@ async def save_user_message(
         first_name=user.first_name,
     )
 
+    # =====================================================
+    # تفريغ عند الوصول للحد
+    # =====================================================
+
     if (
         _pending_messages[user_id]
         >= MESSAGE_BATCH_SIZE
+    ):
+
+        _schedule_message_flush()
+
+    elif (
+        len(_pending_group_members)
+        >= GROUP_MEMBER_FLUSH_SIZE
     ):
 
         _schedule_message_flush()
