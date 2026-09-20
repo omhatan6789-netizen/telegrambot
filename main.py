@@ -571,6 +571,9 @@ def start_web_server():
 
 async def get_photo_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
+    if update.effective_user.id != OWNER_ID:
+        return
+
     if not update.message or not update.message.photo:
         return
 
