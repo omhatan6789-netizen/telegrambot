@@ -1093,55 +1093,35 @@ async def moderation_command(
 # ==================================================
 
 def get_active_mute(chat_id, user_id):
-
     conn = connect()
-    cur = None
+    cur = conn.cursor()
 
-    try:
+    cur.execute("""
+        SELECT until_time
+        FROM bot_mutes
+        WHERE chat_id=? AND user_id=?
+    """, (chat_id, user_id))
 
-        cur = conn.cursor()
-
-        cur.execute(
-            """
-            SELECT until_time
-            FROM bot_mutes
-            WHERE chat_id=?
-            AND user_id=?
-            """,
-            (
-                chat_id,
-                user_id
-            )
-        )
-
-        row = cur.fetchone()
-
-    finally:
-
-        if cur:
-            cur.close()
-
-        conn.close()
+    row = cur.fetchone()
+    conn.close()
 
     if not row:
-        return None
+        return False
 
-    until = iso_to_timestamp(
-        row[0]
-    )
+    until_time = row[0]
 
-    if until is not None:
+    # كتم دائم
+    if until_time is None:
+        return True
 
-        if now_timestamp() >= until:
+    # كتم مؤقت
+    until = iso_to_timestamp(until_time)
 
-            delete_mute(
-                chat_id,
-                user_id
-            )
+    if until is not None and now_timestamp() >= until:
+        delete_mute(chat_id, user_id)
+        return False
 
-            return None
-
-    return row[0]
+    return True
 
 
 def delete_mute(chat_id, user_id):
@@ -1179,12 +1159,7 @@ def delete_mute(chat_id, user_id):
 # حذف رسالة المكتوم
 # ==================================================
 
-async def check_muted_message(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-    print("🔥 CHECK MUTED اشتغلت")
-
+async def check_muted_message(update, context):
     if not update.message:
         return
 
@@ -1192,28 +1167,21 @@ async def check_muted_message(
         return
 
     user = update.effective_user
-
     if not user:
         return
 
     chat_id = update.effective_chat.id
 
-    mute = get_active_mute(
-        chat_id,
-        user.id
-    )
+    mute = get_active_mute(chat_id, user.id)
 
-    print(
-        f"👤 user={user.id} | chat={chat_id} | mute={mute}"
-    )
+    print(f"👤 user={user.id} | chat={chat_id} | mute={mute}")
 
-    if mute is None:
+    if not mute:
         return
 
     try:
         await update.message.delete()
         print("✅ تم حذف رسالة المكتوم")
-
     except Exception as e:
         print(f"❌ خطأ حذف الرسالة: {e}")
 
