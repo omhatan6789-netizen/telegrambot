@@ -903,9 +903,7 @@ def main():
 
     app.add_handler(
         MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.TEXT
-            & ~filters.COMMAND,
+            filters.ChatType.GROUPS,
             check_muted_message
         ),
         group=-30
