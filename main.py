@@ -343,6 +343,14 @@ from handlers.button_colors import (
     change_button_color_handler
 )
 
+from handlers.send import (
+    create_send_tables,
+    send_command,
+    delete_slash_command,
+    track_send_chat,
+    track_bot_membership,
+)
+
 # ==================================================
 # الهمسات
 # ==================================================
@@ -631,6 +639,7 @@ def main():
 
     create_tables()
     create_developer_panel_tables()
+    create_send_tables()
     create_profile_reply_tables()
     patch_inline_keyboard_buttons()
     register_existing_panel_buttons()
@@ -742,7 +751,24 @@ def main():
         .build()
     )
 
-    
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(
+                r"^/send(?:@[A-Za-z0-9_]+)?(?:\s+[\s\S]+)?$"
+            ),
+            send_command,
+        ),
+        group=-30,
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^/[\s\S]+$"),
+            delete_slash_command,
+        ),
+        group=-29,
+    )
     # ==================================================
     # الأوامر المضافة
     # ==================================================
