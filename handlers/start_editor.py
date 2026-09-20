@@ -494,6 +494,28 @@ async def start_editor_callback(
         raise ApplicationHandlerStop
 
 
+
+# =========================================================
+# فتح محرر الستارت من لوحة أخرى
+# =========================================================
+
+async def open_start_editor_from_panel(
+    query,
+    context
+):
+
+    user = query.from_user
+
+    if not _is_allowed(user):
+        return
+
+    sessions.pop(user.id, None)
+
+    await query.edit_message_text(
+        "اهلًا بك عزيزي المطور 🎖️\n"
+        "هذي قائمة تعديل الستارت❗️",
+        reply_markup=_main_keyboard()
+    )
 # =========================================================
 # رسائل محرر الستارت
 # =========================================================
