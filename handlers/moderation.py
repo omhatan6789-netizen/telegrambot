@@ -1174,14 +1174,11 @@ async def check_muted_message(update, context):
 
     mute = get_active_mute(chat_id, user.id)
 
-    print(f"👤 user={user.id} | chat={chat_id} | mute={mute}")
-
     if not mute:
         return
 
     try:
         await update.message.delete()
-        print("✅ تم حذف رسالة المكتوم")
     except Exception as e:
         print(f"❌ خطأ حذف الرسالة: {e}")
 
