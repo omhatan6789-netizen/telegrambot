@@ -1183,27 +1183,20 @@ async def check_muted_message(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
-    print("🔎 check_muted_message اشتغلت")
+    print("🔥 CHECK MUTED اشتغلت")
 
     if not update.message:
-        print("❌ ما فيه message")
         return
 
     if not update.effective_chat:
-        print("❌ ما فيه chat")
         return
 
     user = update.effective_user
 
     if not user:
-        print("❌ ما فيه user")
         return
 
     chat_id = update.effective_chat.id
-
-    print(
-        f"👤 user={user.id} | chat={chat_id}"
-    )
 
     mute = get_active_mute(
         chat_id,
@@ -1211,7 +1204,7 @@ async def check_muted_message(
     )
 
     print(
-        f"🔇 mute record = {mute}"
+        f"👤 user={user.id} | chat={chat_id} | mute={mute}"
     )
 
     if mute is None:
@@ -1219,15 +1212,10 @@ async def check_muted_message(
 
     try:
         await update.message.delete()
-
-        print(
-            f"✅ تم حذف رسالة المكتوم {user.id}"
-        )
+        print("✅ تم حذف رسالة المكتوم")
 
     except Exception as e:
-        print(
-            f"❌ فشل حذف رسالة المكتوم: {e}"
-        )
+        print(f"❌ خطأ حذف الرسالة: {e}")
 
 # ==================================================
 # جلب القيود
