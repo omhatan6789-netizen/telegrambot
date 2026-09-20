@@ -180,7 +180,7 @@ from handlers.moderation import (
     enable_durations_command,
     disable_durations_command,
     enable_reasons_command,
-    disable_reasons_command
+    disable_reasons_command,
 
 
     moderation_expiry_loop,
