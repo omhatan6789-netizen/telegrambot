@@ -165,6 +165,26 @@ from custom_commands import (
 )
 
 
+from handlers.moderation import (
+    moderation_command,
+    check_muted_message,
+
+    unmute_command,
+    unrestrict_command,
+    unban_command,
+    clear_restrictions_command,
+
+    moderation_lists_command,
+    clear_list_callback,
+
+    enable_durations_command,
+    disable_durations_command,
+    enable_reasons_command,
+
+    moderation_expiry_loop,
+    reveal_command,
+)
+
 # ==================================================
 # الملفات الشخصية وردود الادمن
 # ==================================================
@@ -636,15 +656,21 @@ def main():
     async def post_init(application):
 
         global message_flush_task
+        global moderation_expiry_task
 
         message_flush_task = asyncio.create_task(
             automatic_message_flush()
+        )
+
+        moderation_expiry_task = asyncio.create_task(
+            moderation_expiry_loop(application)
         )
 
 
     async def post_shutdown(application):
 
         global message_flush_task
+        global moderation_expiry_task
 
         if message_flush_task:
 
@@ -655,15 +681,16 @@ def main():
             except asyncio.CancelledError:
                 pass
 
-    
+        if moderation_expiry_task:
 
-        # ==================================================
-        # حفظ البيانات المعلقة قبل إيقاف البوت
-        # ==================================================
+            moderation_expiry_task.cancel()
 
-        # حفظ الرسائل
+            try:
+                await moderation_expiry_task
+            except asyncio.CancelledError:
+                pass
+
         try:
-
             await flush_user_messages()
 
             print(
@@ -676,10 +703,7 @@ def main():
                 f"⚠️ تعذر حفظ الرسائل عند الإيقاف: {e}"
             )
 
-
-        # حفظ النقاط
         try:
-
             await flush_pending_points()
 
             print(
@@ -875,6 +899,195 @@ def main():
         group=-5
     )   
 
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.TEXT
+            & ~filters.COMMAND,
+            check_muted_message
+        ),
+        group=-30
+    )
+
+    # --------------------------------------------------
+    # تفعيل المدة
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(
+                r"^تفعيل المدة للمشرفين$"
+            ),
+            enable_durations_command
+        ),
+        group=-20
+    )
+
+    # --------------------------------------------------
+    # تعطيل المدة
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(
+                r"^تعطيل المدة للمشرفين$"
+            ),
+            disable_durations_command
+        ),
+        group=-20
+    )
+
+    # --------------------------------------------------
+    # تفعيل الأسباب
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(
+                r"^تفعيل الاسباب$"
+            ),
+            enable_reasons_command
+        ),
+        group=-20
+    )
+    
+
+    # --------------------------------------------------
+    # تعطيل الأسباب
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(
+                r"^تعطيل الاسباب$"
+            ),
+            disable_reasons_command
+        ),
+        group=-20
+    )
+
+    # --------------------------------------------------
+    # كشف
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(
+                r"^كشف(?:\s+@[A-Za-z0-9_]+|\s+\d+)?$"
+            ),
+            reveal_command
+        ),
+        group=-19
+    )
+
+    # --------------------------------------------------
+    # كتم / تقييد / حظر
+    #
+    # يسمح بوجود مدة وهدف وسبب.
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(
+                r"^(كتم|تقييد|حظر)(?:\s+.+)?$"
+            ),
+            moderation_command
+        ),
+        group=-18
+    )
+
+    # --------------------------------------------------
+    # إلغاء الكتم
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(
+                r"^الغاء الكتم(?:\s+.+)?$"
+            ),
+            unmute_command
+        ),
+        group=-18
+    )
+
+    # --------------------------------------------------
+    # إلغاء التقييد
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(
+                r"^الغاء التقييد(?:\s+.+)?$"
+            ),
+            unrestrict_command
+        ),
+        group=-18
+    )
+
+    # --------------------------------------------------
+    # إلغاء الحظر
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(
+                r"^الغاء الحظر(?:\s+.+)?$"
+            ),
+            unban_command
+        ),
+        group=-18
+    )
+
+    # --------------------------------------------------
+    # رفع القيود
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(
+                r"^رفع القيود(?:\s+.+)?$"
+            ),
+            clear_restrictions_command
+        ),
+        group=-18
+    )
+
+    # --------------------------------------------------
+    # القوائم
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(
+                r"^(المكتومين|المقيدين|المحظورين)$"
+            ),
+            moderation_lists_command
+        ),
+        group=-18
+    )
+
+    # --------------------------------------------------
+    # أزرار مسح القوائم
+    # --------------------------------------------------
+
+    app.add_handler(
+        CallbackQueryHandler(
+            clear_list_callback,
+            pattern=r"^moderation:clear:"
+        ),
+        group=-18
+    )
     # ==================================================
     # قفل وفتح الأوامر
     # ==================================================
