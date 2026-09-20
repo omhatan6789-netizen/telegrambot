@@ -222,38 +222,6 @@ def create_tables():
 
 
         # ==================================================
-        # أعضاء القروبات
-        #
-        # يستخدم للعثور على المستخدم عن طريق
-        # @username أو username داخل نفس القروب
-        # ==================================================
-
-        cur.execute("""
-        CREATE TABLE IF NOT EXISTS group_members
-        (
-            chat_id BIGINT NOT NULL,
-            user_id BIGINT NOT NULL,
-            username TEXT,
-            first_name TEXT,
-            last_seen TEXT,
-
-            PRIMARY KEY
-            (
-                chat_id,
-                user_id
-            )
-        )
-        """)
-
-        cur.execute("""
-        CREATE INDEX IF NOT EXISTS idx_group_members_username
-        ON group_members
-        (
-            chat_id,
-            username
-        )
-        """)
-        # ==================================================
         # الردود العادية
         # ==================================================
 
