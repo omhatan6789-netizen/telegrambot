@@ -586,6 +586,60 @@ def get_user_from_database(username):
         conn.close()
 
 
+def get_group_member_from_database(
+    chat_id,
+    username
+):
+    clean_username = (
+        username
+        .lstrip("@")
+        .strip()
+        .lower()
+    )
+
+    if not clean_username:
+        return None
+
+    conn = connect()
+    cur = conn.cursor()
+
+    try:
+        cur.execute("""
+        SELECT
+            user_id,
+            username,
+            first_name
+        FROM group_members
+        WHERE chat_id = ?
+        AND LOWER(
+            REPLACE(username, '@', '')
+        ) = ?
+        LIMIT 1
+        """, (
+            chat_id,
+            clean_username,
+        ))
+
+        row = cur.fetchone()
+
+        if not row:
+            return None
+
+        return build_user(
+            row[0],
+            row[2],
+            row[1],
+            False,
+        )
+
+    finally:
+        try:
+            cur.close()
+        except Exception:
+            pass
+
+        conn.close()
+
 # ==================================================
 # البحث في جداول العقوبات
 # ==================================================
@@ -756,37 +810,27 @@ def find_username_locally(
 
 async def resolve_target(
     update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
+    context: ContextTypes.DEFAULT_TYPE
 ):
-
     message = update.effective_message
     chat = update.effective_chat
 
-    if not message or not chat:
+    if not message:
         return None, []
 
-    text = (
-        message.text or ""
-    ).strip()
-
+    text = (message.text or "").strip()
     parts = text.split()
 
     # ==================================================
-    # Reply
+    # الرد على رسالة
     # ==================================================
 
     if message.reply_to_message:
 
-        target = (
-            message.reply_to_message.from_user
-        )
+        target = message.reply_to_message.from_user
 
         if target:
-
-            return (
-                target,
-                parts[1:],
-            )
+            return target, parts[1:]
 
     # ==================================================
     # لا يوجد هدف
@@ -795,15 +839,8 @@ async def resolve_target(
     if len(parts) < 2:
         return None, []
 
-    target_text = (
-        parts[1]
-        .strip()
-    )
-
+    target_text = parts[1].strip()
     args = parts[2:]
-
-    if not target_text:
-        return None, []
 
     # ==================================================
     # ID
@@ -812,136 +849,194 @@ async def resolve_target(
     if target_text.lstrip("-").isdigit():
 
         try:
+            user_id = int(target_text)
+        except Exception:
+            return None, []
 
-            user_id = int(
-                target_text
-            )
-
-            # --------------------------------------------------
-            # Telegram
-            # --------------------------------------------------
+        # أولاً: Telegram
+        if chat:
 
             try:
-
-                member = (
-                    await context.bot.get_chat_member(
-                        chat_id=chat.id,
-                        user_id=user_id,
-                    )
+                member = await context.bot.get_chat_member(
+                    chat_id=chat.id,
+                    user_id=user_id,
                 )
 
                 if member and member.user:
+                    return member.user, args
 
-                    return (
-                        member.user,
-                        args,
-                    )
+            except Exception:
+                pass
 
-            except Exception as e:
-
-                print(
-                    f"[MODERATION] ID get_chat_member error: {e}"
-                )
-
-            # --------------------------------------------------
-            # قاعدة البيانات
-            # --------------------------------------------------
+        # ثانياً: users
+        try:
+            conn = connect()
+            cur = conn.cursor()
 
             try:
+                cur.execute("""
+                SELECT
+                    user_id,
+                    username,
+                    first_name
+                FROM users
+                WHERE user_id = ?
+                LIMIT 1
+                """, (user_id,))
 
-                target = (
-                    get_user_by_id_from_database(
-                        user_id
-                    )
+                row = cur.fetchone()
+
+            finally:
+                cur.close()
+                conn.close()
+
+            if row:
+                return (
+                    build_user(
+                        row[0],
+                        row[2],
+                        row[1],
+                        False,
+                    ),
+                    args,
                 )
 
-                if target:
+        except Exception:
+            pass
 
+        # ثالثاً: group_members
+        if chat:
+
+            try:
+                conn = connect()
+                cur = conn.cursor()
+
+                try:
+                    cur.execute("""
+                    SELECT
+                        user_id,
+                        username,
+                        first_name
+                    FROM group_members
+                    WHERE chat_id = ?
+                    AND user_id = ?
+                    LIMIT 1
+                    """, (
+                        chat.id,
+                        user_id,
+                    ))
+
+                    row = cur.fetchone()
+
+                finally:
+                    cur.close()
+                    conn.close()
+
+                if row:
                     return (
-                        target,
+                        build_user(
+                            row[0],
+                            row[2],
+                            row[1],
+                            False,
+                        ),
                         args,
                     )
 
-            except Exception as e:
+            except Exception:
+                pass
 
-                print(
-                    f"[MODERATION] ID database error: {e}"
-                )
-
-            # --------------------------------------------------
-            # حتى لو غير موجود، الـ ID نفسه كافٍ
-            # لعمليات Telegram
-            # --------------------------------------------------
-
-            return (
-                build_user(
-                    user_id,
-                    str(user_id),
-                    None,
-                    False,
-                ),
-                args,
-            )
-
-        except Exception as e:
-
-            print(
-                f"[MODERATION] ID resolve error: {e}"
-            )
-
-            return None, []
+        # آخر حل: بناء User من ID
+        return (
+            build_user(
+                user_id,
+                str(user_id),
+                None,
+                False,
+            ),
+            args,
+        )
 
     # ==================================================
     # Username
     #
-    # ندعم:
+    # يقبل:
     # @username
     # username
     # ==================================================
 
-    username = clean_username(
-        target_text
-    )
-
-    # --------------------------------------------------
-    # منع اعتبار كلمات عشوائية كيوزر
-    # --------------------------------------------------
+    username = target_text.lstrip("@").strip()
 
     if not username:
         return None, []
 
-    # --------------------------------------------------
-    # البحث المحلي
-    # --------------------------------------------------
+    # ==================================================
+    # 1 - أعضاء نفس القروب
+    # ==================================================
 
-    target = find_username_locally(
-        chat.id,
-        username,
-    )
+    if chat:
 
-    if target:
+        try:
+            target = get_group_member_from_database(
+                chat.id,
+                username,
+            )
 
-        return (
-            target,
-            args,
+            if target:
+                return target, args
+
+        except Exception:
+            pass
+
+    # ==================================================
+    # 2 - المستخدمين العامين
+    # ==================================================
+
+    try:
+        target = get_user_from_database(
+            username
         )
 
-    # --------------------------------------------------
-    # محاولة Telegram كاحتياط
-    # --------------------------------------------------
+        if target:
+            return target, args
+
+    except Exception:
+        pass
+
+    # ==================================================
+    # 3 - جداول العقوبات
+    #
+    # مهم جدًا لرفع الحظر والكتم والتقييد
+    # ==================================================
+
+    if chat:
+
+        try:
+            target = get_moderation_user_from_database(
+                chat.id,
+                username,
+            )
+
+            if target:
+                return target, args
+
+        except Exception:
+            pass
+
+    # ==================================================
+    # 4 - Telegram كحل أخير
+    # ==================================================
 
     try:
 
-        chat_info = (
-            await context.bot.get_chat(
-                f"@{username}"
-            )
+        chat_info = await context.bot.get_chat(
+            f"@{username}"
         )
 
         if getattr(
             chat_info,
             "id",
-            None,
+            None
         ):
 
             return (
@@ -966,14 +1061,10 @@ async def resolve_target(
                 args,
             )
 
-    except Exception as e:
-
-        print(
-            f"[MODERATION] username Telegram lookup error: {e}"
-        )
+    except Exception:
+        pass
 
     return None, []
-
 
 # ==================================================
 # منشن
@@ -1071,9 +1162,8 @@ async def check_target(
     update,
     context,
     target,
-    action=None,
+    action=None
 ):
-
     message = update.effective_message
     actor = update.effective_user
     chat = update.effective_chat
@@ -1086,11 +1176,9 @@ async def check_target(
     # ==================================================
 
     if target.is_bot:
-
         await message.reply_text(
             "هذا بوت ياغبي😭😭 …"
         )
-
         return False
 
     # ==================================================
@@ -1101,7 +1189,7 @@ async def check_target(
         return True
 
     # ==================================================
-    # حماية المطورين
+    # المطورين
     # ==================================================
 
     if (
@@ -1110,21 +1198,18 @@ async def check_target(
     ):
 
         if action == "mute":
-
             text = (
                 "• امسح عينك وشف من الي تبي "
                 "تكتمه ياورع!"
             )
 
         elif action == "restrict":
-
             text = (
                 "• امسح عينك وشف من الي تبي "
                 "تقيده ياورع!"
             )
 
         elif action == "ban":
-
             text = (
                 "• امسح عينك وشف من الي تبي "
                 "تحظره ياورع!"
@@ -1134,7 +1219,6 @@ async def check_target(
             return False
 
         await message.reply_text(text)
-
         return False
 
     # ==================================================
@@ -1142,53 +1226,45 @@ async def check_target(
     # ==================================================
 
     if target.id == actor.id:
-
-        await message.reply_text(
-            "• ما تقدر تطبق العقوبة على نفسك."
-        )
-
         return False
 
     # ==================================================
-    # حماية مشرف Telegram
+    # مشرف Telegram
     # ==================================================
 
     if (
-        action in (
-            "ban",
-            "restrict",
-        )
+        action in ("ban", "restrict")
         and chat
-        and chat.type in (
-            "group",
-            "supergroup",
-        )
+        and chat.type in ("group", "supergroup")
     ):
 
-        member = await get_chat_member_safe(
-            context,
-            chat.id,
-            target.id,
-        )
+        try:
 
-        if member and member.status in (
-            "administrator",
-            "creator",
-        ):
+            member = await context.bot.get_chat_member(
+                chat_id=chat.id,
+                user_id=target.id,
+            )
 
-            if action == "ban":
+            if member and member.status in (
+                "administrator",
+                "creator",
+            ):
 
-                await message.reply_text(
-                    "• ما أقدر أحظر هذا المستخدم لأنه مشرف في القروب."
+                action_text = (
+                    "تحظره"
+                    if action == "ban"
+                    else "تقيده"
                 )
 
-            else:
-
                 await message.reply_text(
-                    "• ما أقدر أقيد هذا المستخدم لأنه مشرف في القروب."
+                    f"• اعذرني بس الشخص الي تبي "
+                    f"{action_text} مشرف بالقروب."
                 )
 
-            return False
+                return False
+
+        except Exception:
+            pass
 
     # ==================================================
     # الرتبة
@@ -1200,21 +1276,18 @@ async def check_target(
     ):
 
         if action == "mute":
-
             text = (
                 "• امسح عينك وشف من الي تبي "
                 "تكتمه ياورع!"
             )
 
         elif action == "restrict":
-
             text = (
                 "• امسح عينك وشف من الي تبي "
                 "تقيده ياورع!"
             )
 
         elif action == "ban":
-
             text = (
                 "• امسح عينك وشف من الي تبي "
                 "تحظره ياورع!"
@@ -1224,7 +1297,6 @@ async def check_target(
             return False
 
         await message.reply_text(text)
-
         return False
 
     return True
