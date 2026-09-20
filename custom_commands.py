@@ -377,6 +377,7 @@ GENERIC_CALLBACK_NAMES = {
     "check_game_answer",
     "check_word_race_message",
     "check_liar_message",
+    "check_muted_message",
     "check_replies",
     "save_user_message",
     "add_reply_handler",
