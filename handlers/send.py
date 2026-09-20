@@ -1,20 +1,18 @@
 import asyncio
 import re
 
-from html import escape
-
-from telegram import (
-    Update,
-    MessageEntity,
-)
+from telegram import MessageEntity, Update
 from telegram.ext import ContextTypes
 
 from handlers.developer_panel import get_registered_chats
+from handlers.roles import get_rank
 
 
 # =========================================================
-# إعدادات
+# الإعدادات
 # =========================================================
+
+OWNER_ID = 8453977662
 
 SEND_COMMAND_RE = re.compile(
     r"^/send(?:@[A-Za-z0-9_]+)?(?:\s+([\s\S]+))?$",
@@ -27,9 +25,6 @@ SEND_COMMAND_RE = re.compile(
 # =========================================================
 
 def get_message_text(message):
-    """
-    يرجع النص أو الكابتشن الموجود في الرسالة.
-    """
     if not message:
         return ""
 
@@ -43,9 +38,6 @@ def get_message_text(message):
 
 
 def get_message_entities(message):
-    """
-    يرجع الـ entities الخاصة بالنص أو الكابتشن.
-    """
     if not message:
         return []
 
@@ -58,13 +50,19 @@ def get_message_entities(message):
     return []
 
 
+# =========================================================
+# الشخص الذي تم الرد على رسالته
+# =========================================================
+
 def get_replied_user(message):
     """
     إذا كانت رسالة /send ردًا على رسالة شخص،
-    يرجع الشخص صاحب الرسالة التي تم الرد عليها.
+    يرجع الشخص صاحب الرسالة.
 
-    لا يرجع البوت كهدف منشن إذا كان الرد على رسالة البوت نفسه.
+    إذا كانت الرسالة التي تم الرد عليها من البوت،
+    لا نعتبر البوت هدفًا للمنشن.
     """
+
     if not message or not message.reply_to_message:
         return None
 
@@ -75,7 +73,6 @@ def get_replied_user(message):
 
     user = replied_message.from_user
 
-    # لا نعتبر البوت هدفًا لـ #منشن
     if user.is_bot:
         return None
 
@@ -83,21 +80,19 @@ def get_replied_user(message):
 
 
 def get_replied_message(message):
-    """
-    يرجع الرسالة التي تم عمل Reply عليها.
-    """
     if not message:
         return None
 
     return message.reply_to_message
 
 
+# =========================================================
+# اسم الشخص
+# =========================================================
+
 def get_target_name(user):
-    """
-    اسم الشخص المستخدم في #الاسم.
-    """
     if not user:
-        return None
+        return ""
 
     if user.full_name:
         return user.full_name
@@ -111,36 +106,31 @@ def get_target_name(user):
     return str(user.id)
 
 
-def build_mention_entity(text, offset, user):
-    """
-    ينشئ Text Mention حقيقي للشخص.
-    """
-    if not user:
-        return None
+# =========================================================
+# اسم القروب / القناة
+# =========================================================
 
-    if offset < 0 or offset >= len(text):
-        return None
+def get_chat_name(chat):
+    if not chat:
+        return ""
 
-    # نأخذ الكلمة/الاسم الموجود مكان #منشن
-    end = offset
+    if getattr(chat, "title", None):
+        return chat.title
 
-    while end < len(text) and not text[end].isspace():
-        end += 1
+    if getattr(chat, "full_name", None):
+        return chat.full_name
 
-    length = end - offset
+    if getattr(chat, "username", None):
+        return f"@{chat.username}"
 
-    if length <= 0:
-        return None
-
-    return MessageEntity(
-        type=MessageEntity.TEXT_MENTION,
-        offset=offset,
-        length=length,
-        user=user,
-    )
+    return ""
 
 
-def replace_variables(
+# =========================================================
+# معالجة المتغيرات
+# =========================================================
+
+def prepare_text_and_entities(
     text,
     entities,
     *,
@@ -148,324 +138,66 @@ def replace_variables(
     replied_user=None,
 ):
     """
-    استبدال:
-        #الاسم
-        #منشن
+    المتغيرات:
 
-    عند وجود Reply على شخص:
+    عند الرد على شخص:
         #الاسم = اسم الشخص
         #منشن = منشن الشخص
 
-    عند عدم وجود Reply:
-        #الاسم = اسم القروب/القناة
-        #منشن = اسم القروب/القناة
-
-    ويرجع:
-        new_text
-        new_entities
+    بدون Reply:
+        #الاسم = اسم القروب / القناة
+        #منشن = اسم القروب / القناة
     """
 
     if not text:
-        return text, []
+        return text, list(entities or [])
 
     # -----------------------------------------------------
-    # تحديد قيم #الاسم
+    # تحديد قيم المتغيرات
     # -----------------------------------------------------
 
     if replied_user:
         name_value = get_target_name(replied_user)
-    else:
-        if chat:
-            name_value = chat.title or chat.full_name or chat.username or ""
-        else:
-            name_value = ""
-
-    # -----------------------------------------------------
-    # استبدال #الاسم
-    # -----------------------------------------------------
-
-    text = text.replace("#الاسم", name_value)
-
-    # -----------------------------------------------------
-    # #منشن
-    # -----------------------------------------------------
-    #
-    # إذا كان عندنا شخص مَرْدُود عليه:
-    # نخلي #منشن مكانه اسم الشخص ونضيف Text Mention entity.
-    #
-    # إذا ما عندنا شخص:
-    # نستخدم اسم القروب/القناة.
-    # -----------------------------------------------------
-
-    mention_user = replied_user
-
-    if mention_user:
-        mention_value = get_target_name(mention_user)
-    else:
-        mention_value = (
-            chat.title
-            if chat and chat.title
-            else (
-                chat.full_name
-                if chat and chat.full_name
-                else (
-                    f"@{chat.username}"
-                    if chat and chat.username
-                    else ""
-                )
-            )
-        )
-
-    mention_positions = []
-
-    search_from = 0
-
-    while True:
-        pos = text.find("#منشن", search_from)
-
-        if pos == -1:
-            break
-
-        mention_positions.append(pos)
-        search_from = pos + len("#منشن")
-
-    if mention_positions:
-        # نستبدل من الأخير للأول حتى لا تتغير offsets
-        for pos in reversed(mention_positions):
-            text = (
-                text[:pos]
-                + mention_value
-                + text[pos + len("#منشن"):]
-            )
-
-    # -----------------------------------------------------
-    # إعادة بناء الـ entities
-    # -----------------------------------------------------
-    #
-    # لأن استبدال النص يغير offsets،
-    # نعيد إنشاء الـ entities بناءً على النص الجديد.
-    #
-    # نستخدم entities الأصلية قدر الإمكان.
-    # -----------------------------------------------------
-
-    new_entities = []
-
-    # إذا ما فيه entities أصلًا
-    if not entities:
-        if mention_user:
-            # نحاول تحديد مواقع الاسم الناتج عن #منشن.
-            # نبحث عن الاسم داخل النص.
-            if mention_value:
-                start = 0
-
-                while True:
-                    pos = text.find(mention_value, start)
-
-                    if pos == -1:
-                        break
-
-                    new_entities.append(
-                        MessageEntity(
-                            type=MessageEntity.TEXT_MENTION,
-                            offset=pos,
-                            length=len(mention_value),
-                            user=mention_user,
-                        )
-                    )
-
-                    start = pos + len(mention_value)
-
-        return text, new_entities
-
-    # -----------------------------------------------------
-    # تحويل النص القديم والجديد بطريقة تحفظ entities
-    # -----------------------------------------------------
-
-    # هنا نعيد معالجة الـ entities مع فروقات المتغيرات.
-    #
-    # المتغيرات:
-    # #الاسم
-    # #منشن
-    #
-    # إذا كانت entity تقع بعد متغير تم تغييره،
-    # نعدل offset الخاص بها.
-    # -----------------------------------------------------
-
-    original_text = None
-
-    # لا نستطيع معرفة النص الأصلي من entity وحدها،
-    # لذلك نعتمد على message entities كما وصلت.
-    #
-    # نحسب التغييرات من النص قبل الاستبدال من جديد.
-    #
-    # يتم استدعاء هذه الدالة بالنص النهائي حاليًا،
-    # لذلك نضيف فقط Text Mention الجديد.
-    #
-    # Telegram formatting الموجود في النص العادي
-    # يبقى محفوظًا في أغلب الحالات عندما لا توجد
-    # تغييرات قبل الـ entity.
-    # -----------------------------------------------------
-
-    for entity in entities:
-        try:
-            new_entities.append(
-                MessageEntity(
-                    type=entity.type,
-                    offset=entity.offset,
-                    length=entity.length,
-                    url=entity.url,
-                    user=entity.user,
-                    language=entity.language,
-                    custom_emoji_id=entity.custom_emoji_id,
-                )
-            )
-        except TypeError:
-            # توافق مع إصدارات PTB المختلفة
-            try:
-                new_entities.append(
-                    MessageEntity(
-                        type=entity.type,
-                        offset=entity.offset,
-                        length=entity.length,
-                        url=entity.url,
-                        user=entity.user,
-                        language=entity.language,
-                        custom_emoji_id=entity.custom_emoji_id,
-                    )
-                )
-            except Exception:
-                pass
-
-    # -----------------------------------------------------
-    # إضافة Text Mention لـ #منشن
-    # -----------------------------------------------------
-
-    if mention_user and mention_value:
-        start = 0
-
-        while True:
-            pos = text.find(mention_value, start)
-
-            if pos == -1:
-                break
-
-            # نتأكد أنه ليس entity موجودة مسبقًا
-            already_exists = False
-
-            for entity in new_entities:
-                if (
-                    entity.type == MessageEntity.TEXT_MENTION
-                    and entity.offset == pos
-                    and entity.length == len(mention_value)
-                ):
-                    already_exists = True
-                    break
-
-            if not already_exists:
-                new_entities.append(
-                    MessageEntity(
-                        type=MessageEntity.TEXT_MENTION,
-                        offset=pos,
-                        length=len(mention_value),
-                        user=mention_user,
-                    )
-                )
-
-            start = pos + len(mention_value)
-
-    return text, new_entities
-
-
-# =========================================================
-# معالجة المتغيرات بطريقة أدق
-# =========================================================
-
-def prepare_text_and_entities(
-    text,
-    entities,
-    *,
-    chat,
-    replied_user,
-):
-    """
-    معالجة النص مع الحفاظ على تنسيقات Telegram قدر الإمكان.
-
-    يتم تنفيذ الاستبدالات مع تعديل offsets للـ entities.
-    """
-
-    if not text:
-        return text, []
-
-    replacements = {}
-
-    # -----------------------------------------------------
-    # #الاسم
-    # -----------------------------------------------------
-
-    if replied_user:
-        name_value = get_target_name(replied_user)
-    else:
-        name_value = (
-            chat.title
-            or chat.full_name
-            or (f"@{chat.username}" if chat.username else "")
-            if chat
-            else ""
-        )
-
-    replacements["#الاسم"] = name_value
-
-    # -----------------------------------------------------
-    # #منشن
-    # -----------------------------------------------------
-
-    if replied_user:
         mention_value = get_target_name(replied_user)
     else:
-        mention_value = (
-            chat.title
-            or chat.full_name
-            or (f"@{chat.username}" if chat.username else "")
-            if chat
-            else ""
-        )
+        name_value = get_chat_name(chat)
+        mention_value = get_chat_name(chat)
 
-    replacements["#منشن"] = mention_value
+    replacements = {
+        "#الاسم": name_value,
+        "#منشن": mention_value,
+    }
 
     # -----------------------------------------------------
-    # إنشاء خريطة للتغييرات
+    # البحث عن جميع الاستبدالات
     # -----------------------------------------------------
 
     occurrences = []
 
     for variable, value in replacements.items():
-        if value is None:
-            value = ""
-
         start = 0
 
         while True:
-            pos = text.find(variable, start)
+            position = text.find(variable, start)
 
-            if pos == -1:
+            if position == -1:
                 break
 
             occurrences.append(
                 (
-                    pos,
-                    pos + len(variable),
+                    position,
+                    position + len(variable),
                     value,
                     variable,
                 )
             )
 
-            start = pos + len(variable)
+            start = position + len(variable)
 
-    # ترتيبها
-    occurrences.sort(key=lambda x: x[0])
+    occurrences.sort(key=lambda item: item[0])
 
     # منع التداخل
-    filtered = []
+    filtered_occurrences = []
     last_end = -1
 
     for item in occurrences:
@@ -474,76 +206,75 @@ def prepare_text_and_entities(
         if start < last_end:
             continue
 
-        filtered.append(item)
+        filtered_occurrences.append(item)
         last_end = end
 
-    if not filtered:
+    # -----------------------------------------------------
+    # لا توجد متغيرات
+    # -----------------------------------------------------
+
+    if not filtered_occurrences:
         return text, list(entities or [])
 
     # -----------------------------------------------------
     # بناء النص الجديد
     # -----------------------------------------------------
 
-    new_text_parts = []
-    cursor = 0
-
-    # خريطة:
-    # old position -> new position
-    #
-    # نستخدمها لتعديل offsets.
+    parts = []
     position_map = []
 
-    new_position = 0
+    old_cursor = 0
+    new_cursor = 0
 
-    for start, end, value, variable in filtered:
-        # الجزء قبل المتغير
-        before = text[cursor:start]
+    for start, end, value, variable in filtered_occurrences:
 
-        new_text_parts.append(before)
+        # الجزء الذي قبل المتغير
+        before = text[old_cursor:start]
 
-        for i in range(cursor, start):
+        parts.append(before)
+
+        for i in range(old_cursor, start):
             position_map.append(
                 (
                     i,
-                    new_position + (i - cursor)
+                    new_cursor + (i - old_cursor),
                 )
             )
 
-        new_position += len(before)
+        new_cursor += len(before)
 
-        # قيمة المتغير
-        new_text_parts.append(value)
+        # المتغير المستبدل
+        parts.append(value)
 
-        # كل موضع داخل المتغير يشير إلى بداية القيمة الجديدة
+        # كل مواضع المتغير القديم تشير لبداية القيمة الجديدة
         for i in range(start, end):
             position_map.append(
                 (
                     i,
-                    new_position
+                    new_cursor,
                 )
             )
 
-        new_position += len(value)
-
-        cursor = end
+        new_cursor += len(value)
+        old_cursor = end
 
     # الجزء الأخير
-    tail = text[cursor:]
+    tail = text[old_cursor:]
 
-    new_text_parts.append(tail)
+    parts.append(tail)
 
-    for i in range(cursor, len(text)):
+    for i in range(old_cursor, len(text)):
         position_map.append(
             (
                 i,
-                new_position + (i - cursor)
+                new_cursor + (i - old_cursor),
             )
         )
 
-    new_text = "".join(new_text_parts)
+    new_text = "".join(parts)
 
     # -----------------------------------------------------
-    # دالة تحويل offset
+    # تحويل offsets القديمة إلى الجديدة
     # -----------------------------------------------------
 
     def map_offset(old_offset):
@@ -553,24 +284,22 @@ def prepare_text_and_entities(
         if old_offset >= len(text):
             return len(new_text)
 
-        # إذا كان offset عند بداية متغير
         for old_pos, new_pos in position_map:
             if old_pos == old_offset:
                 return new_pos
 
-        # أقرب موضع قبله
-        best = 0
+        previous = 0
 
         for old_pos, new_pos in position_map:
-            if old_pos <= old_offset:
-                best = new_pos
-            else:
+            if old_pos > old_offset:
                 break
 
-        return best
+            previous = new_pos
+
+        return previous
 
     # -----------------------------------------------------
-    # إعادة بناء entities
+    # إعادة بناء Entities
     # -----------------------------------------------------
 
     new_entities = []
@@ -611,7 +340,6 @@ def prepare_text_and_entities(
                     MessageEntity(**kwargs)
                 )
             except Exception:
-                # fallback
                 new_entities.append(
                     MessageEntity(
                         type=entity.type,
@@ -624,33 +352,52 @@ def prepare_text_and_entities(
             continue
 
     # -----------------------------------------------------
-    # إضافة Text Mention للمتغير #منشن
+    # إضافة Text Mention حقيقي لـ #منشن
     # -----------------------------------------------------
 
-    if replied_user:
+    if replied_user and mention_value:
+
         search_from = 0
 
         while True:
-            pos = new_text.find(mention_value, search_from)
-
-            if pos == -1:
-                break
-
-            # نضيف المنشن الحقيقي
-            new_entities.append(
-                MessageEntity(
-                    type=MessageEntity.TEXT_MENTION,
-                    offset=pos,
-                    length=len(mention_value),
-                    user=replied_user,
-                )
+            position = new_text.find(
+                mention_value,
+                search_from,
             )
 
-            search_from = pos + len(mention_value)
+            if position == -1:
+                break
 
-    # ترتيب entities
+            # نتأكد أن هذا الموضع ليس Entity من نفس النوع
+            already_exists = False
+
+            for entity in new_entities:
+                if (
+                    entity.type == MessageEntity.TEXT_MENTION
+                    and entity.offset == position
+                    and entity.length == len(mention_value)
+                ):
+                    already_exists = True
+                    break
+
+            if not already_exists:
+                new_entities.append(
+                    MessageEntity(
+                        type=MessageEntity.TEXT_MENTION,
+                        offset=position,
+                        length=len(mention_value),
+                        user=replied_user,
+                    )
+                )
+
+            search_from = position + len(mention_value)
+
+    # ترتيب الـ Entities
     new_entities.sort(
-        key=lambda e: (e.offset, e.length)
+        key=lambda entity: (
+            entity.offset,
+            entity.length,
+        )
     )
 
     return new_text, new_entities
@@ -661,19 +408,15 @@ def prepare_text_and_entities(
 # =========================================================
 
 def get_send_payload(message):
-    """
-    يرجع النص بعد /send.
-    """
-
     if not message:
         return None
 
-    text = message.text
-
-    if text is None:
+    if not message.text:
         return None
 
-    match = SEND_COMMAND_RE.match(text.strip())
+    match = SEND_COMMAND_RE.match(
+        message.text.strip()
+    )
 
     if not match:
         return None
@@ -699,20 +442,14 @@ async def send_message_content(
     *,
     reply_to_message_id=None,
 ):
-    """
-    إرسال النص/الوسائط الموجودة في رسالة /send.
-
-    source_message هنا هي رسالة المستخدم التي كتب فيها /send.
-    """
-
     # -----------------------------------------------------
-    # رسالة نصية
+    # نص
     # -----------------------------------------------------
 
     if source_message.text is not None:
         return await bot.send_message(
             chat_id=target_chat_id,
-            text=text,
+            text=text or " ",
             entities=entities or None,
             reply_to_message_id=reply_to_message_id,
             allow_sending_without_reply=True,
@@ -745,7 +482,7 @@ async def send_message_content(
         )
 
     # -----------------------------------------------------
-    # Animation / GIF
+    # GIF / Animation
     # -----------------------------------------------------
 
     if source_message.animation:
@@ -863,7 +600,7 @@ async def send_message_content(
         )
 
     # -----------------------------------------------------
-    # إذا لم تكن الرسالة من الأنواع السابقة
+    # Fallback
     # -----------------------------------------------------
 
     if text:
@@ -891,61 +628,93 @@ async def send_command(
     if not message:
         return
 
+    user = update.effective_user
+
+    if not user:
+        return
+
+    # =====================================================
+    # الصلاحيات
+    # =====================================================
+
     # -----------------------------------------------------
-    # التأكد أن الرسالة /send
+    # الخاص:
+    # المالك الأساسي فقط
     # -----------------------------------------------------
+
+    if message.chat.type == "private":
+
+        if user.id != OWNER_ID:
+            return
+
+    # -----------------------------------------------------
+    # القروبات والقنوات:
+    # ادمن اساسي وفوق
+    # -----------------------------------------------------
+
+    else:
+
+        rank = get_rank(user.id)
+
+        allowed_ranks = {
+            "ادمن اساسي",
+            "نائب المالك",
+            "المالك",
+            "Dev",
+        }
+
+        if rank not in allowed_ranks:
+            return
+
+    # =====================================================
+    # استخراج محتوى /send
+    # =====================================================
 
     payload = get_send_payload(message)
 
     if payload is None:
         return
 
-    # -----------------------------------------------------
-    # النص الأساسي
-    # -----------------------------------------------------
-
-    source_text = message.text or ""
-
-    # إذا كان /send نص
-    #
-    # payload يحتوي النص بعد /send
-    #
-    # لكن إذا كانت الرسالة نفسها عبارة عن وسائط مع caption
-    # نستخدم caption.
-    # -----------------------------------------------------
+    # =====================================================
+    # تحديد النص والـ Entities
+    # =====================================================
 
     if message.text is not None:
+
         original_content = payload
-        original_entities = message.entities or []
 
-        # entities الموجودة في الرسالة تشمل /send نفسه،
-        # لذلك نحتاج أخذ entities الموجودة بعد بداية payload.
-        command_match = SEND_COMMAND_RE.match(
-            source_text.strip()
-        )
+        original_entities = []
 
-        if command_match:
-            command_part = command_match.group(0)
+        payload_start = message.text.find(payload)
 
-            # نحاول تحديد بداية payload في النص الأصلي
-            payload_start = source_text.find(payload)
+        if payload and payload_start >= 0:
 
-            if payload_start >= 0:
-                adjusted_entities = []
+            for entity in message.entities or []:
 
-                for entity in message.entities or []:
-                    entity_start = entity.offset
-                    entity_end = entity.offset + entity.length
+                entity_start = entity.offset
+                entity_end = (
+                    entity.offset
+                    + entity.length
+                )
 
-                    if entity_start < payload_start:
-                        continue
+                # تجاهل entities الموجودة داخل /send
+                if entity_start < payload_start:
+                    continue
 
-                    new_offset = entity_start - payload_start
+                # تجاهل entity التي تتجاوز النص
+                if entity_end > len(message.text):
+                    continue
 
-                    if new_offset < 0:
-                        continue
+                new_offset = (
+                    entity_start
+                    - payload_start
+                )
 
-                    adjusted_entities.append(
+                if new_offset < 0:
+                    continue
+
+                try:
+                    original_entities.append(
                         MessageEntity(
                             type=entity.type,
                             offset=new_offset,
@@ -956,97 +725,121 @@ async def send_command(
                             custom_emoji_id=entity.custom_emoji_id,
                         )
                     )
-
-                original_entities = adjusted_entities
+                except Exception:
+                    pass
 
     else:
-        original_content = message.caption or ""
-        original_entities = message.caption_entities or []
 
-    # -----------------------------------------------------
+        original_content = (
+            message.caption or ""
+        )
+
+        original_entities = (
+            message.caption_entities or []
+        )
+
+    # =====================================================
     # حذف رسالة /send
-    # -----------------------------------------------------
+    # =====================================================
 
     try:
         await message.delete()
     except Exception:
         pass
 
-    # -----------------------------------------------------
-    # إذا ما فيه محتوى
-    # -----------------------------------------------------
+    # =====================================================
+    # لا يوجد محتوى
+    # =====================================================
 
-    if not original_content and not (
-        message.photo
-        or message.video
-        or message.animation
-        or message.audio
-        or message.voice
-        or message.document
-        or message.sticker
-        or message.video_note
-        or message.contact
-        or message.location
-        or message.venue
-    ):
+    has_media = any(
+        (
+            message.photo,
+            message.video,
+            message.animation,
+            message.audio,
+            message.voice,
+            message.document,
+            message.sticker,
+            message.video_note,
+            message.contact,
+            message.location,
+            message.venue,
+        )
+    )
+
+    if not original_content and not has_media:
         return
 
-    # -----------------------------------------------------
-    # هل فيه Reply على شخص؟
-    # -----------------------------------------------------
+    # =====================================================
+    # الشخص الذي تم الرد عليه
+    # =====================================================
 
-    replied_message = get_replied_message(message)
-    replied_user = get_replied_user(message)
+    replied_message = get_replied_message(
+        message
+    )
 
-    # -----------------------------------------------------
-    # المجموعة / السوبرقروب / القناة
-    # -----------------------------------------------------
+    replied_user = get_replied_user(
+        message
+    )
+
+    # =====================================================
+    # القروب / السوبرقروب / القناة
+    # =====================================================
 
     if message.chat.type in (
         "group",
         "supergroup",
         "channel",
     ):
-        target_chat_id = message.chat.id
 
-        final_text, final_entities = prepare_text_and_entities(
-            original_content,
-            original_entities,
-            chat=message.chat,
-            replied_user=replied_user,
+        final_text, final_entities = (
+            prepare_text_and_entities(
+                original_content,
+                original_entities,
+                chat=message.chat,
+                replied_user=replied_user,
+            )
         )
-
-        # -------------------------------------------------
-        # إذا كان المستخدم راد على رسالة شخص
-        # نخلي البوت يرد على نفس الرسالة
-        # -------------------------------------------------
 
         reply_to_message_id = None
 
         if replied_message:
-            reply_to_message_id = replied_message.message_id
+            reply_to_message_id = (
+                replied_message.message_id
+            )
+
+        # -------------------------------------------------
+        # إرسال مع Reply
+        # -------------------------------------------------
 
         try:
+
             await send_message_content(
                 context.bot,
-                target_chat_id,
+                message.chat.id,
                 message,
                 final_text,
                 final_entities,
-                reply_to_message_id=reply_to_message_id,
+                reply_to_message_id=(
+                    reply_to_message_id
+                ),
             )
+
         except Exception:
-            # في حال فشل الـ Reply لأي سبب،
-            # نحاول إرسال الرسالة بدون Reply.
+
+            # إذا فشل الـ Reply لأي سبب،
+            # نرسل بدون Reply.
             try:
+
                 await send_message_content(
                     context.bot,
-                    target_chat_id,
+                    message.chat.id,
                     message,
                     final_text,
                     final_entities,
                     reply_to_message_id=None,
                 )
+
             except Exception:
                 pass
 
@@ -1059,39 +852,41 @@ async def send_command(
     if message.chat.type == "private":
 
         # -------------------------------------------------
-        # جلب القروبات والقنوات من النظام الموجود
+        # استخدام نظام التسجيل الموجود أصلًا
         # في developer_panel.py
         # -------------------------------------------------
 
         try:
-            registered_chats = await asyncio.to_thread(
-                get_registered_chats
+
+            registered_chats = (
+                await asyncio.to_thread(
+                    get_registered_chats
+                )
             )
+
         except Exception:
+
             registered_chats = []
 
         # -------------------------------------------------
-        # إرسال لكل القروبات والقنوات المسجلة
+        # الإرسال لكل القروبات والقنوات
         # -------------------------------------------------
 
         for row in registered_chats:
+
             try:
+
                 chat_id = row[0]
                 chat_type = row[1]
-
-                # العنوان الموجود في سجل المطور
                 title = row[2]
                 username = row[3]
 
-                # إنشاء كائن بسيط للقناة/القروب
-                #
-                # get_registered_chats يرجع بيانات قاعدة البيانات
-                # وليس telegram.Chat.
-                #
-                # لذلك نستخدم البيانات مباشرة للمتغيرات.
+                # -------------------------------------------------
+                # كائن بسيط لاستخدام نفس دالة المتغيرات
                 # -------------------------------------------------
 
                 class RegisteredChat:
+
                     def __init__(
                         self,
                         title=None,
@@ -1110,8 +905,13 @@ async def send_command(
                 )
 
                 # -------------------------------------------------
-                # إذا كانت /send في الخاص ومردود عليها على شخص،
-                # #الاسم و#منشن يشيران لذلك الشخص.
+                # #الاسم و #منشن
+                #
+                # إذا كان /send في الخاص رداً على شخص:
+                # يتم استخدام الشخص المردود عليه.
+                #
+                # وإلا:
+                # يتم استخدام اسم القروب/القناة.
                 # -------------------------------------------------
 
                 final_text, final_entities = (
@@ -1124,10 +924,10 @@ async def send_command(
                 )
 
                 # -------------------------------------------------
-                # لا نرسل Reply في القروبات من رسالة خاصة
+                # لا نستخدم Reply هنا
                 #
-                # لأن message_id الخاص برسالة الخاص لا يوجد
-                # داخل القروب المستهدف.
+                # لأن message_id الخاص برسالة الخاص
+                # غير موجود داخل القروب المستهدف.
                 # -------------------------------------------------
 
                 await send_message_content(
@@ -1140,8 +940,8 @@ async def send_command(
                 )
 
             except Exception:
-                # إذا كان البوت لا يستطيع الإرسال لقروب/قناة معينة
-                # نكمل للباقي.
+                # إذا فشل الإرسال لقروب/قناة معينة،
+                # نستمر للباقي.
                 continue
 
         return
@@ -1170,7 +970,7 @@ async def delete_slash_command(
 
     مهم:
     لا نستخدم ApplicationHandlerStop هنا،
-    حتى تستمر أوامر Telegram بالعمل بعد حذف الرسالة.
+    حتى تستمر الأوامر بالعمل.
     """
 
     message = update.effective_message
@@ -1183,7 +983,6 @@ async def delete_slash_command(
     if not text:
         return
 
-    # يجب أن تبدأ بـ /
     if not text.startswith("/"):
         return
 
@@ -1191,7 +990,6 @@ async def delete_slash_command(
     if text == "/":
         return
 
-    # حذف الرسالة
     try:
         await message.delete()
     except Exception:
