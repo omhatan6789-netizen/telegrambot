@@ -897,11 +897,12 @@ def save_ban(
 # رسالة العقوبة
 # ==================================================
 
+
 def moderation_message(
     action,
     target,
     duration,
-    actor
+    actor_rank=None
 ):
 
     mention = mention_user(target)
@@ -916,15 +917,13 @@ def moderation_message(
     elif action == "restrict":
 
         text = (
-            "تم تقييده لين يهجد بعدين فكوه\n"
+            "تم قيَّدته لين يهجد بعدين فكوه\n"
             f"المستخدم ↤︎ {mention}"
         )
 
     else:
 
-        rank = get_rank(
-            actor.id
-        )
+        rank = actor_rank or "عضو"
 
         text = (
             f"تم حظرته لعيونك يـ "
@@ -942,11 +941,9 @@ def moderation_message(
 
     return text
 
-
 # ==================================================
 # تنفيذ العقوبة
 # ==================================================
-
 async def moderation_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
@@ -1066,14 +1063,7 @@ async def moderation_command(
 
         return
 
-    # ==================================================
-    # حفظ المستخدم
-    # ==================================================
-
-    await asyncio.to_thread(
-        save_target_user,
-        target
-    )
+    chat_id = update.effective_chat.id
 
     until_timestamp = None
 
@@ -1087,7 +1077,36 @@ async def moderation_command(
         until_timestamp
     )
 
-    chat_id = update.effective_chat.id
+    # ==================================================
+    # حفظ المستخدم
+    #
+    # هذا لا يجب أن يؤخر تنفيذ العقوبة.
+    # ==================================================
+
+    asyncio.create_task(
+        asyncio.to_thread(
+            save_target_user,
+            target
+        )
+    )
+
+    # ==================================================
+    # الرتبة الخاصة برسالة الحظر
+    #
+    # نبدأ جلبها بالخلفية من الآن حتى لا تكون
+    # بعد تنفيذ الحظر.
+    # ==================================================
+
+    actor_rank_task = None
+
+    if action == "ban":
+
+        actor_rank_task = asyncio.create_task(
+            asyncio.to_thread(
+                get_rank,
+                actor.id
+            )
+        )
 
     # ==================================================
     # الكتم
@@ -1095,14 +1114,29 @@ async def moderation_command(
 
     if action == "mute":
 
-        await asyncio.to_thread(
-            save_mute,
-            chat_id,
-            target,
-            until_time,
-            reason,
-            actor.id
+        # تحديث الكاش/قاعدة البيانات بالخلفية
+        asyncio.create_task(
+            asyncio.to_thread(
+                save_mute,
+                chat_id,
+                target,
+                until_time,
+                reason,
+                actor.id
+            )
         )
+
+        # الرسالة مباشرة
+        await update.message.reply_text(
+            moderation_message(
+                action,
+                target,
+                duration
+            ),
+            parse_mode="HTML"
+        )
+
+        return
 
     # ==================================================
     # التقييد
@@ -1132,14 +1166,29 @@ async def moderation_command(
         except Exception:
             return
 
-        await asyncio.to_thread(
-            save_restriction,
-            chat_id,
-            target,
-            until_time,
-            reason,
-            actor.id
+        # حفظ السجل بالخلفية بعد نجاح التقييد
+        asyncio.create_task(
+            asyncio.to_thread(
+                save_restriction,
+                chat_id,
+                target,
+                until_time,
+                reason,
+                actor.id
+            )
         )
+
+        # الرسالة مباشرة
+        await update.message.reply_text(
+            moderation_message(
+                action,
+                target,
+                duration
+            ),
+            parse_mode="HTML"
+        )
+
+        return
 
     # ==================================================
     # الحظر
@@ -1162,24 +1211,41 @@ async def moderation_command(
         except Exception:
             return
 
-        await asyncio.to_thread(
-            save_ban,
-            chat_id,
-            target,
-            until_time,
-            reason,
-            actor.id
+        # حفظ سجل الحظر بالخلفية
+        asyncio.create_task(
+            asyncio.to_thread(
+                save_ban,
+                chat_id,
+                target,
+                until_time,
+                reason,
+                actor.id
+            )
         )
 
-    await update.message.reply_text(
-        moderation_message(
-            action,
-            target,
-            duration,
-            actor
-        ),
-        parse_mode="HTML"
-    )
+        # لا ننتظر قاعدة البيانات لإرسال الرسالة
+        try:
+
+            actor_rank = await asyncio.wait_for(
+                actor_rank_task,
+                timeout=0.05
+            )
+
+        except Exception:
+
+            actor_rank = "عضو"
+
+        await update.message.reply_text(
+            moderation_message(
+                action,
+                target,
+                duration,
+                actor_rank
+            ),
+            parse_mode="HTML"
+        )
+
+        return
 
 
 # ==================================================
