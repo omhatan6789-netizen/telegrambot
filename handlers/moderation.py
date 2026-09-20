@@ -835,7 +835,8 @@ def save_ban(
 def moderation_message(
     action,
     target,
-    duration
+    duration,
+    actor
 ):
 
     mention = mention_user(target)
@@ -857,7 +858,7 @@ def moderation_message(
     else:
 
         rank = get_rank(
-            target.id
+            actor.id
         )
 
         text = (
@@ -925,6 +926,10 @@ async def moderation_command(
     if not target:
         return
 
+    action = parsed["action"]
+    duration = parsed["duration"]
+    reason = parsed["reason"]
+
     # ==================================================
     # البوت
     # ==================================================
@@ -942,13 +947,46 @@ async def moderation_command(
     # ==================================================
 
     if target.id == actor.id:
+
+        self_messages = {
+            "mute": "• اعرف ان الحياة صعبة بس ماتوصل لمرحلة انك تكتم نفسك 😔 .",
+            "restrict": "• اعرف ان الحياة صعبة بس ماتوصل لمرحلة انك تقيد نفسك 😔 .",
+            "ban": "• اعرف ان الحياة صعبة بس ماتوصل لمرحلة انك تحظر نفسك 😔 .",
+        }
+
+        await update.message.reply_text(
+            self_messages[action]
+        )
+
+        return
+
+    # ==================================================
+    # منع استهداف رتبة مساوية أو أعلى
+    # ==================================================
+
+    actor_level = get_rank_level(
+        actor.id
+    )
+
+    target_level = get_rank_level(
+        target.id
+    )
+
+    if target_level >= actor_level:
+
+        higher_messages = {
+            "mute": "صحصح شف من الي تبي تكتمه ياورع!",
+            "restrict": "صحصح شف من الي تبي تقيده ياورع!",
+            "ban": "صحصح شف من الي تبي تحظره ياورع!",
+        }
+
+        await update.message.reply_text(
+            higher_messages[action]
+        )
+
         return
 
     save_target_user(target)
-
-    action = parsed["action"]
-    duration = parsed["duration"]
-    reason = parsed["reason"]
 
     until_timestamp = None
 
@@ -1043,7 +1081,8 @@ async def moderation_command(
         moderation_message(
             action,
             target,
-            duration
+            duration,
+            actor
         ),
         parse_mode="HTML"
     )
