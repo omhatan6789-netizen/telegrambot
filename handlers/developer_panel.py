@@ -22,6 +22,7 @@ from handlers.moderation import (
 
 from handlers.start_editor import (
     start_editor_command,
+    open_start_editor_from_panel,
 )
 
 
@@ -1031,14 +1032,10 @@ async def developer_panel_callback(
 
         await query.answer()
 
-        # نفس نظام start_editor الحالي
         dev_sessions.pop(user.id, None)
 
-        await start_editor_command(
-            Update(
-                update.update_id,
-                message=query.message
-            ),
+        await open_start_editor_from_panel(
+            query,
             context
         )
 
