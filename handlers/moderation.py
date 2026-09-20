@@ -1178,12 +1178,10 @@ def delete_mute(chat_id, user_id):
 # ==================================================
 # حذف رسالة المكتوم
 # ==================================================
-
 async def check_muted_message(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
-
     if not update.message:
         return
 
@@ -1204,11 +1202,13 @@ async def check_muted_message(
         return
 
     try:
-
         await update.message.delete()
 
-    except Exception:
-        pass
+    except Exception as e:
+        print(
+            f"⚠️ فشل حذف رسالة المكتوم "
+            f"(chat={chat_id}, user={user.id}): {e}"
+        )
 
 
 # ==================================================
