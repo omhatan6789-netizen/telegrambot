@@ -1,12 +1,20 @@
+# =========================================================
+# handlers/developer_panel.py
+# =========================================================
+
 import asyncio
 import re
-from datetime import datetime, timezone
+
+from datetime import datetime
 
 from telegram import (
     Update,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    MessageEntity,
+    ChatPermissions,
 )
+
 from telegram.ext import (
     ContextTypes,
     ApplicationHandlerStop,
@@ -14,14 +22,14 @@ from telegram.ext import (
 
 from database import connect
 
+from handlers.cache import get_user_data
+
 from handlers.moderation import (
     get_list_rows,
     LIST_TABLES,
-    _clear_list_table,
 )
 
 from handlers.start_editor import (
-    start_editor_command,
     open_start_editor_from_panel,
 )
 
@@ -30,14 +38,47 @@ OWNER_ID = 8453977662
 
 
 # =========================================================
-# الجلسات
+# جلسات لوحة المطور
 # =========================================================
 
 dev_sessions = {}
 
 
 # =========================================================
-# إنشاء الجداول
+# أدوات عامة
+# =========================================================
+
+def _now():
+    return datetime.now()
+
+
+def _escape_html(text):
+    if text is None:
+        return ""
+
+    return (
+        str(text)
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
+
+
+def mention_html(user_id, name):
+    return (
+        f'<a href="tg://user?id={user_id}">'
+        f'{_escape_html(name or "مستخدم")}'
+        f'</a>'
+    )
+
+
+def _utf16_length(text):
+    return len((text or "").encode("utf-16-le")) // 2
+
+
+# =========================================================
+# إنشاء جداول لوحة المطور
 # =========================================================
 
 def create_developer_panel_tables():
@@ -119,10 +160,10 @@ def create_developer_panel_tables():
 
 
 # =========================================================
-# الصلاحية
+# صلاحية لوحة المطور
 # =========================================================
 
-def is_developer_allowed(user_id):
+def is_developer_allowed_sync(user_id):
 
     if not user_id:
         return False
@@ -138,7 +179,7 @@ def is_developer_allowed(user_id):
         cur.execute("""
             SELECT 1
             FROM developer_panel_access
-            WHERE user_id = ?
+            WHERE user_id=?
             LIMIT 1
         """, (user_id,))
 
@@ -150,14 +191,6 @@ def is_developer_allowed(user_id):
         conn.close()
 
 
-def is_developer_allowed_sync(user_id):
-
-    try:
-        return is_developer_allowed(user_id)
-    except Exception:
-        return False
-
-
 async def check_access(user_id):
 
     return await asyncio.to_thread(
@@ -167,7 +200,7 @@ async def check_access(user_id):
 
 
 # =========================================================
-# تسجيل /start الخاص
+# تسجيل مستخدمي /start في الخاص
 # =========================================================
 
 def register_private_start(user):
@@ -225,7 +258,10 @@ async def track_private_start(
     if not update.message.text:
         return
 
-    if not update.message.text.startswith("/start"):
+    if not re.match(
+        r"^/start(?:\s.*)?$",
+        update.message.text
+    ):
         return
 
     user = update.effective_user
@@ -246,8 +282,8 @@ async def track_private_start(
 def save_bot_chat(
     chat_id,
     chat_type,
-    title=None,
-    username=None,
+    title,
+    username,
     active=True
 ):
 
@@ -312,9 +348,9 @@ async def track_bot_chat_member(
     ):
         return
 
-    new_status = member_update.new_chat_member.status
+    status = member_update.new_chat_member.status
 
-    active = new_status not in (
+    active = status not in (
         "left",
         "kicked"
     )
@@ -364,7 +400,7 @@ def get_registered_chats(chat_type=None):
                     username
                 FROM developer_bot_chats
                 WHERE active=1
-                ORDER BY chat_type, title ASC, chat_id ASC
+                ORDER BY chat_type ASC, title ASC
             """)
 
         return cur.fetchall()
@@ -376,7 +412,7 @@ def get_registered_chats(chat_type=None):
 
 
 # =========================================================
-# المشتركين الخاص
+# مشتركو الخاص
 # =========================================================
 
 def get_private_subscribers():
@@ -392,7 +428,7 @@ def get_private_subscribers():
                 username,
                 first_name
             FROM developer_private_starts
-            ORDER BY user_id
+            ORDER BY user_id ASC
         """)
 
         return cur.fetchall()
@@ -404,37 +440,7 @@ def get_private_subscribers():
 
 
 # =========================================================
-# اسم المستخدم كمنشن
-# =========================================================
-
-def mention_html(user):
-
-    if not user:
-        return ""
-
-    name = (
-        getattr(user, "first_name", None)
-        or getattr(user, "username", None)
-        or str(user.id)
-    )
-
-    name = (
-        str(name)
-        .replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace('"', "&quot;")
-    )
-
-    return (
-        f'<a href="tg://user?id={user.id}">'
-        f'{name}'
-        f'</a>'
-    )
-
-
-# =========================================================
-# القائمة الرئيسية
+# لوحة المطور الرئيسية
 # =========================================================
 
 def developer_main_keyboard(user_id):
@@ -464,10 +470,6 @@ def developer_main_keyboard(user_id):
             InlineKeyboardButton(
                 "تعديل ستارت",
                 callback_data="devpanel:startedit"
-            ),
-            InlineKeyboardButton(
-                "المسموحين بالوصول",
-                callback_data="devpanel:access"
             )
         ],
         [
@@ -482,6 +484,15 @@ def developer_main_keyboard(user_id):
         ]
     ]
 
+    if user_id == OWNER_ID:
+
+        rows[2].append(
+            InlineKeyboardButton(
+                "المسموحين بالوصول",
+                callback_data="devpanel:access"
+            )
+        )
+
     return InlineKeyboardMarkup(rows)
 
 
@@ -489,20 +500,22 @@ async def show_developer_main(query):
 
     user = query.from_user
 
-    text = (
-        f"id=\"8ng9pi\"\n"
-        f"أهلًا يـ {mention_html(user)} 👋"
-    )
+    dev_sessions.pop(user.id, None)
 
     await query.edit_message_text(
-        text,
+        (
+            f'أهلًا يـ '
+            f'{mention_html(user.id, user.first_name)} 👋'
+        ),
         parse_mode="HTML",
-        reply_markup=developer_main_keyboard(user.id)
+        reply_markup=developer_main_keyboard(
+            user.id
+        )
     )
 
 
 # =========================================================
-# زر الرجوع
+# الرجوع
 # =========================================================
 
 def back_keyboard():
@@ -529,6 +542,9 @@ async def developer_panel_command(
     if not update.message:
         return
 
+    if not update.effective_chat:
+        return
+
     if update.effective_chat.type != "private":
         return
 
@@ -540,17 +556,23 @@ async def developer_panel_command(
     allowed = await check_access(user.id)
 
     if not allowed:
-        return
+
+        # مهم:
+        # نوقف الهاندلرات التالية حتى لا يرد
+        # custom command أو أي نظام آخر على الأمر.
+        raise ApplicationHandlerStop
 
     dev_sessions.pop(user.id, None)
 
     await update.message.reply_text(
         (
-            f"id=\"8ng9pi\"\n"
-            f"أهلًا يـ {mention_html(user)} 👋"
+            f'أهلًا يـ '
+            f'{mention_html(user.id, user.first_name)} 👋'
         ),
         parse_mode="HTML",
-        reply_markup=developer_main_keyboard(user.id)
+        reply_markup=developer_main_keyboard(
+            user.id
+        )
     )
 
     raise ApplicationHandlerStop
@@ -602,8 +624,10 @@ def get_statistics():
 
 async def show_statistics(query):
 
-    subscribers, groups, channels = await asyncio.to_thread(
-        get_statistics
+    subscribers, groups, channels = (
+        await asyncio.to_thread(
+            get_statistics
+        )
     )
 
     text = (
@@ -659,7 +683,7 @@ def broadcast_keyboard():
 async def show_broadcast_menu(query):
 
     await query.edit_message_text(
-        'id="1vuh7p"',
+        'id="wbbk55"',
         reply_markup=broadcast_keyboard()
     )
 
@@ -695,44 +719,13 @@ def private_broadcast_keyboard():
 async def show_private_broadcast_menu(query):
 
     await query.edit_message_text(
-        'id="rx11ze"',
+        'id="3xkdt3"',
         reply_markup=private_broadcast_keyboard()
     )
 
 
 # =========================================================
-# طلب رسالة إذاعة
-# =========================================================
-
-async def ask_broadcast_message(
-    query,
-    user_id,
-    broadcast_type,
-    target_user_id=None,
-    pin_enabled=False
-):
-
-    dev_sessions[user_id] = {
-        "action": "broadcast_message",
-        "broadcast_type": broadcast_type,
-        "target_user_id": target_user_id,
-        "pin_enabled": pin_enabled,
-    }
-
-    text = (
-        "حسنًا، ارسل الآن الرسالة التي تريد إذاعتها.\n\n"
-        "تقدر ترسل نص، صورة، فيديو، GIF، ملصق، "
-        "أو أي نوع رسالة يدعمه البوت."
-    )
-
-    await query.edit_message_text(
-        text,
-        reply_markup=back_keyboard()
-    )
-
-
-# =========================================================
-# التثبيت
+# خيارات الكل + التثبيت
 # =========================================================
 
 def all_broadcast_keyboard(pin_enabled):
@@ -762,7 +755,32 @@ def all_broadcast_keyboard(pin_enabled):
 
 
 # =========================================================
-# معالجة callbacks
+# طلب رسالة إذاعة
+# =========================================================
+
+async def ask_broadcast_message(
+    query,
+    user_id,
+    broadcast_type,
+    target_user_id=None,
+    pin_enabled=False
+):
+
+    dev_sessions[user_id] = {
+        "action": "broadcast_message",
+        "broadcast_type": broadcast_type,
+        "target_user_id": target_user_id,
+        "pin_enabled": pin_enabled
+    }
+
+    await query.edit_message_text(
+        "ارسل الآن رسالة الإذاعة.",
+        reply_markup=back_keyboard()
+    )
+
+
+# =========================================================
+# CALLBACK الرئيسي
 # =========================================================
 
 async def developer_panel_callback(
@@ -783,58 +801,77 @@ async def developer_panel_callback(
     allowed = await check_access(user.id)
 
     if not allowed:
+
         await query.answer()
+
         return
 
     data = query.data or ""
 
-    # -----------------------------------------------------
-    # القائمة
-    # -----------------------------------------------------
+    # =====================================================
+    # القائمة الرئيسية
+    # =====================================================
 
     if data == "devpanel:menu":
 
         await query.answer()
 
-        dev_sessions.pop(user.id, None)
-
-        await show_developer_main(query)
+        await show_developer_main(
+            query
+        )
 
         raise ApplicationHandlerStop
 
-    # -----------------------------------------------------
+    # =====================================================
     # الإحصائيات
-    # -----------------------------------------------------
+    # =====================================================
 
     if data == "devpanel:stats":
 
         await query.answer()
 
-        await show_statistics(query)
+        await show_statistics(
+            query
+        )
 
         raise ApplicationHandlerStop
 
-    # -----------------------------------------------------
+    # =====================================================
     # الإذاعة
-    # -----------------------------------------------------
+    # =====================================================
 
     if data == "devpanel:broadcast":
 
         await query.answer()
 
-        dev_sessions.pop(user.id, None)
+        dev_sessions.pop(
+            user.id,
+            None
+        )
 
-        await show_broadcast_menu(query)
+        await show_broadcast_menu(
+            query
+        )
 
         raise ApplicationHandlerStop
+
+    # =====================================================
+    # الخاص
+    # =====================================================
 
     if data == "devpanel:broadcast:private":
 
         await query.answer()
 
-        await show_private_broadcast_menu(query)
+        await show_private_broadcast_menu(
+            query
+        )
 
         raise ApplicationHandlerStop
+
+    # =====================================================
+    # المجموعات
+    # =====================================================
 
     if data == "devpanel:broadcast:groups":
 
@@ -848,6 +885,10 @@ async def developer_panel_callback(
 
         raise ApplicationHandlerStop
 
+    # =====================================================
+    # القنوات
+    # =====================================================
+
     if data == "devpanel:broadcast:channels":
 
         await query.answer()
@@ -860,25 +901,31 @@ async def developer_panel_callback(
 
         raise ApplicationHandlerStop
 
+    # =====================================================
+    # الكل
+    # =====================================================
+
     if data == "devpanel:broadcast:all":
 
         await query.answer()
 
         dev_sessions[user.id] = {
             "action": "broadcast_all_options",
-            "pin_enabled": False,
+            "pin_enabled": False
         }
 
         await query.edit_message_text(
             "إعدادات الإذاعة للكل:",
-            reply_markup=all_broadcast_keyboard(False)
+            reply_markup=all_broadcast_keyboard(
+                False
+            )
         )
 
         raise ApplicationHandlerStop
 
-    # -----------------------------------------------------
+    # =====================================================
     # الخاص للكل
-    # -----------------------------------------------------
+    # =====================================================
 
     if data == "devpanel:private:all":
 
@@ -892,9 +939,9 @@ async def developer_panel_callback(
 
         raise ApplicationHandlerStop
 
-    # -----------------------------------------------------
-    # الخاص لشخص
-    # -----------------------------------------------------
+    # =====================================================
+    # الخاص لشخص محدد
+    # =====================================================
 
     if data == "devpanel:private:specific":
 
@@ -905,7 +952,7 @@ async def developer_panel_callback(
         }
 
         await query.edit_message_text(
-            "ارسل أيدي الشخص أو يوزره.\n\n"
+            "ارسل ID الشخص أو يوزره.\n\n"
             "مثال:\n"
             "8453977662\n"
             "@username",
@@ -914,15 +961,17 @@ async def developer_panel_callback(
 
         raise ApplicationHandlerStop
 
-    # -----------------------------------------------------
+    # =====================================================
     # تبديل التثبيت
-    # -----------------------------------------------------
+    # =====================================================
 
     if data == "devpanel:all:togglepin":
 
         await query.answer()
 
-        session = dev_sessions.get(user.id)
+        session = dev_sessions.get(
+            user.id
+        )
 
         if not session:
             return
@@ -940,15 +989,17 @@ async def developer_panel_callback(
 
         raise ApplicationHandlerStop
 
-    # -----------------------------------------------------
+    # =====================================================
     # إرسال الكل
-    # -----------------------------------------------------
+    # =====================================================
 
     if data == "devpanel:all:send":
 
         await query.answer()
 
-        session = dev_sessions.get(user.id)
+        session = dev_sessions.get(
+            user.id
+        )
 
         if not session:
             return
@@ -957,17 +1008,41 @@ async def developer_panel_callback(
         session["broadcast_type"] = "all"
 
         await query.edit_message_text(
-            "حسنًا، ارسل الآن الرسالة التي تريد إذاعتها.\n\n"
-            "تقدر ترسل نص، صورة، فيديو، GIF، ملصق، "
-            "أو أي نوع رسالة يدعمه البوت.",
+            "ارسل الآن رسالة الإذاعة.",
             reply_markup=back_keyboard()
         )
 
         raise ApplicationHandlerStop
 
-    # -----------------------------------------------------
-    # المسموحين
-    # -----------------------------------------------------
+    # =====================================================
+    # تعديل ستارت
+    # =====================================================
+
+    if data == "devpanel:startedit":
+
+        await query.answer()
+
+        dev_sessions.pop(
+            user.id,
+            None
+        )
+
+        # يسمح لنظام start_editor بمعرفة أن الدخول
+        # جاء من لوحة المطور.
+        context.user_data[
+            "developer_panel_start_editor"
+        ] = True
+
+        await open_start_editor_from_panel(
+            query,
+            context
+        )
+
+        raise ApplicationHandlerStop
+
+    # =====================================================
+    # المسموحين بالوصول
+    # =====================================================
 
     if data == "devpanel:access":
 
@@ -975,12 +1050,7 @@ async def developer_panel_callback(
 
         if user.id != OWNER_ID:
 
-            await query.answer(
-                "هذا الزر للمالك فقط 🚨",
-                show_alert=True
-            )
-
-            raise ApplicationHandlerStop
+            return
 
         await show_access_panel(
             query
@@ -993,14 +1063,14 @@ async def developer_panel_callback(
         await query.answer()
 
         if user.id != OWNER_ID:
-            raise ApplicationHandlerStop
+            return
 
         dev_sessions[user.id] = {
             "action": "developer_access_add"
         }
 
         await query.edit_message_text(
-            "ارسل أيدي الشخص أو يوزره لإضافته.",
+            "ارسل ID الشخص أو يوزره لإضافته.",
             reply_markup=back_keyboard()
         )
 
@@ -1011,39 +1081,22 @@ async def developer_panel_callback(
         await query.answer()
 
         if user.id != OWNER_ID:
-            raise ApplicationHandlerStop
+            return
 
         dev_sessions[user.id] = {
             "action": "developer_access_delete"
         }
 
         await query.edit_message_text(
-            "ارسل أيدي الشخص أو يوزره لحذفه.",
+            "ارسل ID الشخص أو يوزره لحذفه.",
             reply_markup=back_keyboard()
         )
 
         raise ApplicationHandlerStop
 
-    # -----------------------------------------------------
-    # تعديل ستارت
-    # -----------------------------------------------------
-
-    if data == "devpanel:startedit":
-
-        await query.answer()
-
-        dev_sessions.pop(user.id, None)
-
-        await open_start_editor_from_panel(
-            query,
-            context
-        )
-
-        raise ApplicationHandlerStop
-
-    # -----------------------------------------------------
-    # القوائم
-    # -----------------------------------------------------
+    # =====================================================
+    # قوائم الحماية
+    # =====================================================
 
     if data.startswith("devpanel:list:"):
 
@@ -1061,11 +1114,13 @@ async def developer_panel_callback(
 
         raise ApplicationHandlerStop
 
-    # -----------------------------------------------------
+    # =====================================================
     # تأكيد المسح
-    # -----------------------------------------------------
+    # =====================================================
 
-    if data.startswith("devpanel:clear:confirm:"):
+    if data.startswith(
+        "devpanel:clear:confirm:"
+    ):
 
         await query.answer()
 
@@ -1081,7 +1136,13 @@ async def developer_panel_callback(
 
         raise ApplicationHandlerStop
 
-    if data.startswith("devpanel:clear:execute:"):
+    # =====================================================
+    # تنفيذ المسح
+    # =====================================================
+
+    if data.startswith(
+        "devpanel:clear:execute:"
+    ):
 
         await query.answer()
 
@@ -1098,9 +1159,9 @@ async def developer_panel_callback(
 
         raise ApplicationHandlerStop
 
-    # -----------------------------------------------------
+    # =====================================================
     # سجل الإذاعة
-    # -----------------------------------------------------
+    # =====================================================
 
     if data == "devpanel:logs":
 
@@ -1112,7 +1173,13 @@ async def developer_panel_callback(
 
         raise ApplicationHandlerStop
 
-    if data.startswith("devpanel:log:view:"):
+    # =====================================================
+    # رؤية الرسالة
+    # =====================================================
+
+    if data.startswith(
+        "devpanel:log:view:"
+    ):
 
         await query.answer()
 
@@ -1128,7 +1195,13 @@ async def developer_panel_callback(
 
         raise ApplicationHandlerStop
 
-    if data.startswith("devpanel:log:links:"):
+    # =====================================================
+    # روابط القروبات
+    # =====================================================
+
+    if data.startswith(
+        "devpanel:log:links:"
+    ):
 
         await query.answer()
 
@@ -1156,7 +1229,10 @@ def get_developer_access():
     try:
 
         cur.execute("""
-            SELECT user_id, username, first_name
+            SELECT
+                user_id,
+                username,
+                first_name
             FROM developer_panel_access
             ORDER BY id ASC
         """)
@@ -1183,17 +1259,28 @@ async def show_access_panel(query):
 
     else:
 
-        for index, row in enumerate(rows, 1):
+        for index, row in enumerate(
+            rows,
+            1
+        ):
 
-            user_id, username, first_name = row
+            user_id = row[0]
+            username = row[1]
+            first_name = row[2]
 
             if username:
 
-                text += f"{index}. @{username.lstrip('@')}\n"
+                text += (
+                    f"{index}. "
+                    f"@{username.lstrip('@')}\n"
+                )
 
             else:
 
-                text += f"{index}. {first_name or user_id}\n"
+                text += (
+                    f"{index}. "
+                    f"{first_name or user_id}\n"
+                )
 
     keyboard = InlineKeyboardMarkup([
         [
@@ -1231,23 +1318,35 @@ def find_user_for_access(value):
 
         if value.startswith("@"):
 
-            username = value[1:].strip().lower()
+            username = value[
+                1:
+            ].strip().lower()
 
             cur.execute("""
-                SELECT user_id, username, first_name
+                SELECT
+                    user_id,
+                    username,
+                    first_name
                 FROM users
                 WHERE LOWER(username)=?
                 LIMIT 1
-            """, (username,))
+            """, (
+                username,
+            ))
 
         elif value.isdigit():
 
             cur.execute("""
-                SELECT user_id, username, first_name
+                SELECT
+                    user_id,
+                    username,
+                    first_name
                 FROM users
                 WHERE user_id=?
                 LIMIT 1
-            """, (int(value),))
+            """, (
+                int(value),
+            ))
 
         else:
 
@@ -1263,9 +1362,9 @@ def find_user_for_access(value):
 
 def add_developer_access(
     user_id,
-    username=None,
-    first_name=None,
-    added_by=None
+    username,
+    first_name,
+    added_by
 ):
 
     conn = connect()
@@ -1348,11 +1447,13 @@ async def show_moderation_list(
     title = LIST_TABLES[kind][1]
 
     chats = await asyncio.to_thread(
-        get_registered_chats,
-        None
+        get_registered_chats
     )
 
-    text = f"• {title}\n━━━━━━━━━━━━\n\n"
+    text = (
+        f"• {title}\n"
+        "━━━━━━━━━━━━\n\n"
+    )
 
     total = 0
 
@@ -1371,29 +1472,28 @@ async def show_moderation_list(
             continue
 
         text += (
-            f"📍 {chat_title}\n"
+            f"📍 {_escape_html(chat_title)}\n"
             f"ID: <code>{chat_id}</code>\n"
         )
 
-        for index, row in enumerate(rows, 1):
+        for index, row in enumerate(
+            rows,
+            1
+        ):
 
             user_id = row[0]
             username = row[1]
             first_name = row[2]
 
-            if username:
-
-                display = f"@{username.lstrip('@')}"
-
-            else:
-
-                display = (
-                    first_name
-                    or str(user_id)
-                )
+            display = (
+                f"@{username.lstrip('@')}"
+                if username
+                else first_name or str(user_id)
+            )
 
             text += (
-                f"{index}. {display} "
+                f"{index}. "
+                f"{_escape_html(display)} "
                 f"(<code>{user_id}</code>)\n"
             )
 
@@ -1402,13 +1502,16 @@ async def show_moderation_list(
         text += "\n"
 
     if total == 0:
+
         text += "لا يوجد."
 
     keyboard = InlineKeyboardMarkup([
         [
             InlineKeyboardButton(
-                f"مسح {LIST_TABLES[kind][2].replace('مسح ', '')}",
-                callback_data=f"devpanel:clear:confirm:{kind}"
+                LIST_TABLES[kind][2],
+                callback_data=(
+                    f"devpanel:clear:confirm:{kind}"
+                )
             )
         ],
         [
@@ -1437,26 +1540,33 @@ async def confirm_clear_list(
         [
             InlineKeyboardButton(
                 "نعم، تأكيد المسح",
-                callback_data=f"devpanel:clear:execute:{kind}"
+                callback_data=(
+                    f"devpanel:clear:execute:{kind}"
+                )
             )
         ],
         [
             InlineKeyboardButton(
                 "إلغاء",
-                callback_data=f"devpanel:list:{kind}"
+                callback_data=(
+                    f"devpanel:list:{kind}"
+                )
             )
         ]
     ])
 
     await query.edit_message_text(
-        f"⚠️ هل أنت متأكد من {name} من جميع المجموعات؟\n\n"
-        "سيتم فك القيد/الحظر ثم حذف السجلات.",
+        (
+            f"⚠️ هل أنت متأكد من {name} "
+            "من جميع المجموعات؟\n\n"
+            "سيتم تنفيذ المسح على جميع السجلات."
+        ),
         reply_markup=keyboard
     )
 
 
 # =========================================================
-# مسح الحماية من جميع المجموعات
+# مسح قوائم الحماية من جميع المجموعات
 # =========================================================
 
 async def execute_clear_all_groups(
@@ -1468,8 +1578,7 @@ async def execute_clear_all_groups(
     table = LIST_TABLES[kind][0]
 
     chats = await asyncio.to_thread(
-        get_registered_chats,
-        None
+        get_registered_chats
     )
 
     total = 0
@@ -1491,8 +1600,6 @@ async def execute_clear_all_groups(
             try:
 
                 if kind == "restrict":
-
-                    from telegram import ChatPermissions
 
                     permissions = ChatPermissions(
                         can_send_messages=True,
@@ -1528,86 +1635,84 @@ async def execute_clear_all_groups(
 
             total += 1
 
-        await asyncio.to_thread(
-            _clear_list_table,
-            table,
-            chat_id
-        )
+        # حذف سجل نفس نظام الحماية
+        conn = connect()
+        cur = conn.cursor()
+
+        try:
+
+            cur.execute(
+                f"""
+                DELETE FROM {table}
+                WHERE chat_id=?
+                """,
+                (chat_id,)
+            )
+
+            conn.commit()
+
+        finally:
+
+            cur.close()
+            conn.close()
 
     await query.edit_message_text(
-        f"تم مسح {LIST_TABLES[kind][2].replace('مسح ', '')} "
-        f"من جميع المجموعات ✅\n\n"
-        f"عدد السجلات: {total}",
+        (
+            f"تم مسح {LIST_TABLES[kind][2].replace('مسح ', '')} "
+            "من جميع المجموعات ✅\n\n"
+            f"عدد السجلات: {total}"
+        ),
         reply_markup=back_keyboard()
     )
 
 
 # =========================================================
-# تحديد شخص للخاص
+# البحث عن مستخدم خاص
 # =========================================================
 
-async def resolve_private_target(
-    value,
-    context
-):
+def resolve_private_target_sync(value):
 
     value = value.strip()
 
-    if value.isdigit():
+    conn = connect()
+    cur = conn.cursor()
 
-        user_id = int(value)
+    try:
 
-        conn = connect()
-        cur = conn.cursor()
-
-        try:
+        if value.isdigit():
 
             cur.execute("""
                 SELECT user_id
                 FROM developer_private_starts
                 WHERE user_id=?
                 LIMIT 1
-            """, (user_id,))
+            """, (
+                int(value),
+            ))
 
-            row = cur.fetchone()
-
-        finally:
-
-            cur.close()
-            conn.close()
-
-        if row:
-            return user_id
-
-        return None
-
-    if value.startswith("@"):
-
-        username = value[1:].lower()
-
-        conn = connect()
-        cur = conn.cursor()
-
-        try:
+        elif value.startswith("@"):
 
             cur.execute("""
                 SELECT user_id
                 FROM developer_private_starts
                 WHERE LOWER(username)=?
                 LIMIT 1
-            """, (username,))
+            """, (
+                value[1:].lower(),
+            ))
 
-            row = cur.fetchone()
+        else:
 
-        finally:
+            return None
 
-            cur.close()
-            conn.close()
+        row = cur.fetchone()
 
-        if row:
-            return row[0]
+        return row[0] if row else None
 
-    return None
+    finally:
+
+        cur.close()
+        conn.close()
 
 
 # =========================================================
@@ -1633,43 +1738,48 @@ async def developer_panel_message(
     if not user:
         return
 
-    session = dev_sessions.get(user.id)
+    session = dev_sessions.get(
+        user.id
+    )
 
     if not session:
         return
 
-    allowed = await check_access(user.id)
+    allowed = await check_access(
+        user.id
+    )
 
     if not allowed:
 
-        dev_sessions.pop(user.id, None)
+        dev_sessions.pop(
+            user.id,
+            None
+        )
 
-        return
+        raise ApplicationHandlerStop
 
-    action = session.get("action")
+    action = session.get(
+        "action"
+    )
 
     # =====================================================
-    # إضافة مطور
+    # إضافة شخص
     # =====================================================
 
     if action == "developer_access_add":
 
         if user.id != OWNER_ID:
-            dev_sessions.pop(user.id, None)
-            return
+
+            dev_sessions.pop(
+                user.id,
+                None
+            )
+
+            raise ApplicationHandlerStop
 
         value = (
             update.message.text or ""
         ).strip()
-
-        if not value:
-
-            await update.message.reply_text(
-                "ارسل أيدي أو يوزر صحيح.",
-                reply_markup=back_keyboard()
-            )
-
-            raise ApplicationHandlerStop
 
         row = await asyncio.to_thread(
             find_user_for_access,
@@ -1679,8 +1789,8 @@ async def developer_panel_message(
         if not row:
 
             await update.message.reply_text(
-                "ما لقيت هذا المستخدم في قاعدة البيانات.\n"
-                "استخدم ID أو username لشخص مسجل عند البوت.",
+                "ما لقيت المستخدم.\n"
+                "تأكد أن الـ ID أو اليوزر صحيح.",
                 reply_markup=back_keyboard()
             )
 
@@ -1694,44 +1804,46 @@ async def developer_panel_message(
             user.id
         )
 
-        dev_sessions.pop(user.id, None)
+        dev_sessions.pop(
+            user.id,
+            None
+        )
 
         await update.message.reply_text(
-            "تمت إضافته للمسموحين بالوصول للوحة المطور ✅",
+            "تمت إضافته للمسموحين بالوصول ✅",
             reply_markup=back_keyboard()
         )
 
         raise ApplicationHandlerStop
 
     # =====================================================
-    # حذف مطور
+    # حذف شخص
     # =====================================================
 
     if action == "developer_access_delete":
 
         if user.id != OWNER_ID:
-            dev_sessions.pop(user.id, None)
-            return
+
+            dev_sessions.pop(
+                user.id,
+                None
+            )
+
+            raise ApplicationHandlerStop
 
         value = (
             update.message.text or ""
         ).strip()
-
-        if not value:
-
-            await update.message.reply_text(
-                "ارسل أيدي أو يوزر صحيح.",
-                reply_markup=back_keyboard()
-            )
-
-            raise ApplicationHandlerStop
 
         await asyncio.to_thread(
             delete_developer_access,
             value
         )
 
-        dev_sessions.pop(user.id, None)
+        dev_sessions.pop(
+            user.id,
+            None
+        )
 
         await update.message.reply_text(
             "تم حذف الشخص من المسموحين بالوصول ✅",
@@ -1741,7 +1853,7 @@ async def developer_panel_message(
         raise ApplicationHandlerStop
 
     # =====================================================
-    # تحديد شخص للإذاعة الخاصة
+    # تحديد شخص للإذاعة
     # =====================================================
 
     if action == "private_specific_target":
@@ -1750,69 +1862,54 @@ async def developer_panel_message(
             update.message.text or ""
         ).strip()
 
-        if not value:
-
-            await update.message.reply_text(
-                "ارسل ID أو username.",
-                reply_markup=back_keyboard()
-            )
-
-            raise ApplicationHandlerStop
-
-        target_id = await resolve_private_target(
-            value,
-            context
+        target_user_id = await asyncio.to_thread(
+            resolve_private_target_sync,
+            value
         )
 
-        if not target_id:
+        if not target_user_id:
 
             await update.message.reply_text(
-                "ما لقيت هذا الشخص ضمن مستخدمي البوت الذين بدأوا الخاص.",
+                "ما لقيت هذا الشخص ضمن المشتركين "
+                "الذين بدأوا البوت في الخاص.",
                 reply_markup=back_keyboard()
             )
 
             raise ApplicationHandlerStop
 
-        await ask_broadcast_message_from_message(
-            update,
-            user.id,
-            "private_specific",
-            target_id
+        dev_sessions[user.id] = {
+            "action": "broadcast_message",
+            "broadcast_type": "private_specific",
+            "target_user_id": target_user_id,
+            "pin_enabled": False
+        }
+
+        await update.message.reply_text(
+            "تمام، ارسل الآن الرسالة التي تريد إرسالها للشخص.",
+            reply_markup=back_keyboard()
         )
 
         raise ApplicationHandlerStop
 
     # =====================================================
-    # استقبال رسالة الإذاعة
+    # رسالة الإذاعة
     # =====================================================
 
     if action == "broadcast_message":
 
-        source = update.message
-
-        broadcast_type = session.get(
-            "broadcast_type"
-        )
-
-        target_user_id = session.get(
-            "target_user_id"
-        )
-
-        pin_enabled = session.get(
-            "pin_enabled",
-            False
-        )
-
         result = await execute_broadcast(
             update,
             context,
-            source,
-            broadcast_type,
-            target_user_id,
-            pin_enabled
+            update.message,
+            session.get("broadcast_type"),
+            session.get("target_user_id"),
+            session.get("pin_enabled", False)
         )
 
-        dev_sessions.pop(user.id, None)
+        dev_sessions.pop(
+            user.id,
+            None
+        )
 
         await send_broadcast_result(
             update,
@@ -1823,31 +1920,650 @@ async def developer_panel_message(
 
 
 # =========================================================
-# تحويل جلسة الرسالة
+# متغيرات الرسالة
 # =========================================================
 
-async def ask_broadcast_message_from_message(
-    update,
-    user_id,
-    broadcast_type,
-    target_user_id
+PRIVATE_VARIABLES = {
+    "#الاسم",
+    "#منشن",
+    "#يوزره",
+    "#اليوزر",
+    "#الرسائل",
+    "#الايدي",
+    "#الرتبه",
+    "#النقاط",
+}
+
+CHAT_VARIABLES = {
+    "#الاسم",
+    "#منشن",
+}
+
+
+def _build_replacements(
+    target,
+    user_data,
+    target_user
 ):
 
-    dev_sessions[user_id] = {
-        "action": "broadcast_message",
-        "broadcast_type": broadcast_type,
-        "target_user_id": target_user_id,
-        "pin_enabled": False
+    # =====================================================
+    # الخاص
+    # =====================================================
+
+    if target["chat_type"] == "private":
+
+        if target_user:
+
+            first_name = (
+                target_user.first_name
+                or target["title"]
+                or "مستخدم"
+            )
+
+            username = (
+                f"@{target_user.username}"
+                if target_user.username
+                else "لا يوجد"
+            )
+
+        else:
+
+            first_name = (
+                target["title"]
+                or "مستخدم"
+            )
+
+            username = (
+                f"@{target['username'].lstrip('@')}"
+                if target["username"]
+                else "لا يوجد"
+            )
+
+        messages = 0
+        rank = "عضو"
+        points = 0
+
+        if user_data:
+
+            messages = (
+                user_data.get(
+                    "messages",
+                    0
+                ) or 0
+            )
+
+            rank = (
+                user_data.get(
+                    "rank",
+                    "عضو"
+                )
+                or "عضو"
+            )
+
+            points = (
+                user_data.get(
+                    "points",
+                    0
+                ) or 0
+            )
+
+        return {
+            "#الاسم": first_name,
+            "#منشن": first_name,
+            "#يوزره": username,
+            "#اليوزر": username,
+            "#الرسائل": str(messages),
+            "#الايدي": str(target["user_id"]),
+            "#الرتبه": rank,
+            "#النقاط": str(points),
+        }
+
+    # =====================================================
+    # القروب / القناة
+    # =====================================================
+
+    return {
+        "#الاسم": target["title"] or "المجموعة",
+        "#منشن": target["title"] or "المجموعة",
     }
 
-    await update.message.reply_text(
-        "تمام، ارسل الآن الرسالة التي تريد إرسالها للشخص.",
-        reply_markup=back_keyboard()
+
+# =========================================================
+# استبدال المتغيرات + إعادة بناء الـ Entities
+# =========================================================
+
+def _replace_variables_with_entities(
+    text,
+    entities,
+    replacements,
+    mention_user=None
+):
+
+    if not text:
+
+        return text, entities or []
+
+    entities = entities or []
+
+    # -----------------------------------------------------
+    # جمع أماكن المتغيرات
+    # -----------------------------------------------------
+
+    replacements_positions = []
+
+    for key, value in replacements.items():
+
+        start_search = 0
+
+        while True:
+
+            position = text.find(
+                key,
+                start_search
+            )
+
+            if position == -1:
+                break
+
+            old_start = _utf16_length(
+                text[:position]
+            )
+
+            old_length = _utf16_length(
+                key
+            )
+
+            new_length = _utf16_length(
+                value
+            )
+
+            replacements_positions.append({
+                "key": key,
+                "start": old_start,
+                "end": old_start + old_length,
+                "old_length": old_length,
+                "new_length": new_length,
+                "position": position,
+            })
+
+            start_search = (
+                position + len(key)
+            )
+
+    replacements_positions.sort(
+        key=lambda x: x["start"]
+    )
+
+    # -----------------------------------------------------
+    # النص النهائي
+    # -----------------------------------------------------
+
+    final_text = text
+
+    for key, value in replacements.items():
+
+        final_text = final_text.replace(
+            key,
+            value
+        )
+
+    # -----------------------------------------------------
+    # تحويل Offset من النص القديم للجديد
+    # -----------------------------------------------------
+
+    def transform_position(
+        old_position
+    ):
+
+        new_position = old_position
+
+        for replacement in replacements_positions:
+
+            if replacement["end"] <= old_position:
+
+                new_position += (
+                    replacement["new_length"]
+                    -
+                    replacement["old_length"]
+                )
+
+        return new_position
+
+    # -----------------------------------------------------
+    # إعادة بناء الـ entities
+    # -----------------------------------------------------
+
+    final_entities = []
+
+    for old_entity in entities:
+
+        old_offset = (
+            old_entity.offset
+            or 0
+        )
+
+        old_length = (
+            old_entity.length
+            or 0
+        )
+
+        old_end = (
+            old_offset
+            +
+            old_length
+        )
+
+        new_offset = transform_position(
+            old_offset
+        )
+
+        new_length = old_length
+
+        # -------------------------------------------------
+        # تعديل طول entity إذا كان المتغير داخله
+        # -------------------------------------------------
+
+        for replacement in replacements_positions:
+
+            start = replacement["start"]
+            end = replacement["end"]
+
+            difference = (
+                replacement["new_length"]
+                -
+                replacement["old_length"]
+            )
+
+            if (
+                start >= old_offset
+                and end <= old_end
+            ):
+
+                new_length += difference
+
+        try:
+
+            entity = MessageEntity(
+                type=old_entity.type,
+                offset=new_offset,
+                length=new_length,
+                url=old_entity.url,
+                user=old_entity.user,
+                language=old_entity.language,
+                custom_emoji_id=(
+                    old_entity.custom_emoji_id
+                )
+            )
+
+            final_entities.append(
+                entity
+            )
+
+        except Exception:
+
+            final_entities.append(
+                old_entity
+            )
+
+    # -----------------------------------------------------
+    # #منشن حقيقي
+    # -----------------------------------------------------
+
+    if (
+        mention_user
+        and "#منشن" in replacements
+    ):
+
+        for replacement in replacements_positions:
+
+            if replacement["key"] != "#منشن":
+                continue
+
+            new_offset = transform_position(
+                replacement["start"]
+            )
+
+            mention_text = replacements[
+                "#منشن"
+            ]
+
+            try:
+
+                final_entities.append(
+                    MessageEntity(
+                        type="text_mention",
+                        offset=new_offset,
+                        length=_utf16_length(
+                            mention_text
+                        ),
+                        user=mention_user
+                    )
+                )
+
+            except Exception:
+                pass
+
+    # -----------------------------------------------------
+    # ترتيب entities
+    # -----------------------------------------------------
+
+    final_entities.sort(
+        key=lambda entity: (
+            entity.offset or 0,
+            -(entity.length or 0)
+        )
+    )
+
+    return (
+        final_text,
+        final_entities
     )
 
 
 # =========================================================
-# إنشاء سجل إذاعة
+# تجهيز الرسالة حسب المستلم
+# =========================================================
+
+async def prepare_broadcast_message(
+    context,
+    source,
+    target
+):
+
+    target_user = None
+    user_data = None
+
+    # =====================================================
+    # إذا كان المستلم شخص
+    # =====================================================
+
+    if target["chat_type"] == "private":
+
+        user_id = target["user_id"]
+
+        try:
+
+            target_user = await context.bot.get_chat(
+                user_id
+            )
+
+        except Exception:
+
+            target_user = None
+
+        try:
+
+            user_data = await get_user_data(
+                user_id
+            )
+
+        except Exception:
+
+            user_data = None
+
+    replacements = _build_replacements(
+        target,
+        user_data,
+        target_user
+    )
+
+    # =====================================================
+    # النص
+    # =====================================================
+
+    final_text = None
+    final_entities = []
+
+    if source.text is not None:
+
+        final_text, final_entities = (
+            _replace_variables_with_entities(
+                source.text,
+                source.entities,
+                replacements,
+                target_user
+                if target["chat_type"] == "private"
+                else None
+            )
+        )
+
+    # =====================================================
+    # الكابشن
+    # =====================================================
+
+    final_caption = None
+    final_caption_entities = []
+
+    if source.caption is not None:
+
+        final_caption, final_caption_entities = (
+            _replace_variables_with_entities(
+                source.caption,
+                source.caption_entities,
+                replacements,
+                target_user
+                if target["chat_type"] == "private"
+                else None
+            )
+        )
+
+    return {
+        "text": final_text,
+        "entities": final_entities,
+        "caption": final_caption,
+        "caption_entities": final_caption_entities,
+        "source": source,
+        "target": target,
+        "target_user": target_user,
+        "user_data": user_data,
+    }
+
+
+# =========================================================
+# إرسال الرسالة المعالجة
+# =========================================================
+
+async def send_prepared_broadcast(
+    context,
+    chat_id,
+    prepared
+):
+
+    source = prepared["source"]
+
+    # =====================================================
+    # نص
+    # =====================================================
+
+    if source.text is not None:
+
+        return await context.bot.send_message(
+            chat_id=chat_id,
+            text=prepared["text"] or "",
+            entities=(
+                prepared["entities"]
+                or None
+            ),
+        )
+
+    # =====================================================
+    # صورة
+    # =====================================================
+
+    if source.photo:
+
+        return await context.bot.send_photo(
+            chat_id=chat_id,
+            photo=source.photo[-1].file_id,
+            caption=prepared["caption"],
+            caption_entities=(
+                prepared["caption_entities"]
+                or None
+            )
+        )
+
+    # =====================================================
+    # فيديو
+    # =====================================================
+
+    if source.video:
+
+        return await context.bot.send_video(
+            chat_id=chat_id,
+            video=source.video.file_id,
+            caption=prepared["caption"],
+            caption_entities=(
+                prepared["caption_entities"]
+                or None
+            )
+        )
+
+    # =====================================================
+    # GIF / Animation
+    # =====================================================
+
+    if source.animation:
+
+        return await context.bot.send_animation(
+            chat_id=chat_id,
+            animation=source.animation.file_id,
+            caption=prepared["caption"],
+            caption_entities=(
+                prepared["caption_entities"]
+                or None
+            )
+        )
+
+    # =====================================================
+    # Sticker
+    # =====================================================
+
+    if source.sticker:
+
+        return await context.bot.send_sticker(
+            chat_id=chat_id,
+            sticker=source.sticker.file_id
+        )
+
+    # =====================================================
+    # Voice
+    # =====================================================
+
+    if source.voice:
+
+        return await context.bot.send_voice(
+            chat_id=chat_id,
+            voice=source.voice.file_id,
+            caption=prepared["caption"],
+            caption_entities=(
+                prepared["caption_entities"]
+                or None
+            )
+        )
+
+    # =====================================================
+    # Audio
+    # =====================================================
+
+    if source.audio:
+
+        return await context.bot.send_audio(
+            chat_id=chat_id,
+            audio=source.audio.file_id,
+            caption=prepared["caption"],
+            caption_entities=(
+                prepared["caption_entities"]
+                or None
+            )
+        )
+
+    # =====================================================
+    # Document
+    # =====================================================
+
+    if source.document:
+
+        return await context.bot.send_document(
+            chat_id=chat_id,
+            document=source.document.file_id,
+            caption=prepared["caption"],
+            caption_entities=(
+                prepared["caption_entities"]
+                or None
+            )
+        )
+
+    # =====================================================
+    # Video Note
+    # =====================================================
+
+    if source.video_note:
+
+        return await context.bot.send_video_note(
+            chat_id=chat_id,
+            video_note=source.video_note.file_id
+        )
+
+    # =====================================================
+    # Location
+    # =====================================================
+
+    if source.location:
+
+        return await context.bot.send_location(
+            chat_id=chat_id,
+            latitude=source.location.latitude,
+            longitude=source.location.longitude
+        )
+
+    # =====================================================
+    # Contact
+    # =====================================================
+
+    if source.contact:
+
+        return await context.bot.send_contact(
+            chat_id=chat_id,
+            phone_number=source.contact.phone_number,
+            first_name=source.contact.first_name,
+            last_name=source.contact.last_name
+        )
+
+    # =====================================================
+    # Poll
+    # =====================================================
+
+    if source.poll:
+
+        options = [
+            option.text
+            for option in source.poll.options
+        ]
+
+        return await context.bot.send_poll(
+            chat_id=chat_id,
+            question=source.poll.question,
+            options=options,
+            is_anonymous=source.poll.is_anonymous,
+            allows_multiple_answers=(
+                source.poll.allows_multiple_answers
+            ),
+            type=source.poll.type
+        )
+
+    # =====================================================
+    # fallback
+    # =====================================================
+
+    return await context.bot.copy_message(
+        chat_id=chat_id,
+        from_chat_id=source.chat.id,
+        message_id=source.message_id
+    )
+
+
+# =========================================================
+# إنشاء سجل الإذاعة
 # =========================================================
 
 def create_broadcast_log(
@@ -1901,7 +2617,7 @@ def create_broadcast_log(
 
 
 # =========================================================
-# حفظ نتيجة هدف
+# حفظ هدف الإذاعة
 # =========================================================
 
 def save_broadcast_target(
@@ -1977,30 +2693,46 @@ async def execute_broadcast(
 
     targets = []
 
+    # =====================================================
+    # الخاص
+    # =====================================================
+
     if broadcast_type == "private":
 
+        rows = await asyncio.to_thread(
+            get_private_subscribers
+        )
+
         targets = [
-            (
-                row[0],
-                "private",
-                row[2] or str(row[0]),
-                row[1] or ""
-            )
-            for row in await asyncio.to_thread(
-                get_private_subscribers
-            )
+            {
+                "chat_id": row[0],
+                "chat_type": "private",
+                "title": row[2] or str(row[0]),
+                "username": row[1] or "",
+                "user_id": row[0],
+            }
+            for row in rows
         ]
+
+    # =====================================================
+    # شخص محدد
+    # =====================================================
 
     elif broadcast_type == "private_specific":
 
         targets = [
-            (
-                target_user_id,
-                "private",
-                str(target_user_id),
-                ""
-            )
+            {
+                "chat_id": target_user_id,
+                "chat_type": "private",
+                "title": str(target_user_id),
+                "username": "",
+                "user_id": target_user_id,
+            }
         ]
+
+    # =====================================================
+    # مجموعات
+    # =====================================================
 
     elif broadcast_type == "groups":
 
@@ -2009,15 +2741,23 @@ async def execute_broadcast(
         )
 
         targets = [
-            (
-                row[0],
-                row[1],
-                row[2],
-                row[3]
-            )
+            {
+                "chat_id": row[0],
+                "chat_type": row[1],
+                "title": row[2] or str(row[0]),
+                "username": row[3] or "",
+                "user_id": None,
+            }
             for row in rows
-            if row[1] in ("group", "supergroup")
+            if row[1] in (
+                "group",
+                "supergroup"
+            )
         ]
+
+    # =====================================================
+    # قنوات
+    # =====================================================
 
     elif broadcast_type == "channels":
 
@@ -2027,14 +2767,19 @@ async def execute_broadcast(
         )
 
         targets = [
-            (
-                row[0],
-                row[1],
-                row[2],
-                row[3]
-            )
+            {
+                "chat_id": row[0],
+                "chat_type": "channel",
+                "title": row[2] or str(row[0]),
+                "username": row[3] or "",
+                "user_id": None,
+            }
             for row in rows
         ]
+
+    # =====================================================
+    # الكل
+    # =====================================================
 
     elif broadcast_type == "all":
 
@@ -2043,12 +2788,13 @@ async def execute_broadcast(
         )
 
         targets.extend([
-            (
-                row[0],
-                "private",
-                row[2] or str(row[0]),
-                row[1] or ""
-            )
+            {
+                "chat_id": row[0],
+                "chat_type": "private",
+                "title": row[2] or str(row[0]),
+                "username": row[1] or "",
+                "user_id": row[0],
+            }
             for row in private_rows
         ])
 
@@ -2057,12 +2803,13 @@ async def execute_broadcast(
         )
 
         targets.extend([
-            (
-                row[0],
-                row[1],
-                row[2],
-                row[3]
-            )
+            {
+                "chat_id": row[0],
+                "chat_type": row[1],
+                "title": row[2] or str(row[0]),
+                "username": row[3] or "",
+                "user_id": None,
+            }
             for row in chat_rows
         ])
 
@@ -2070,30 +2817,35 @@ async def execute_broadcast(
     failed = 0
     failures = []
 
-    for (
-        chat_id,
-        chat_type,
-        title,
-        username
-    ) in targets:
+    # =====================================================
+    # إرسال نسخة منفصلة لكل مستلم
+    # =====================================================
+
+    for target in targets:
 
         try:
 
-            copied = await context.bot.copy_message(
-                chat_id=chat_id,
-                from_chat_id=source.chat.id,
-                message_id=source.message_id
+            prepared = await prepare_broadcast_message(
+                context,
+                source,
+                target
             )
 
-            sent_message_id = copied.message_id
+            sent = await send_prepared_broadcast(
+                context,
+                target["chat_id"],
+                prepared
+            )
 
-            # ---------------------------------------------
+            sent_message_id = sent.message_id
+
+            # -------------------------------------------------
             # تثبيت
-            # ---------------------------------------------
+            # -------------------------------------------------
 
             if (
                 pin_enabled
-                and chat_type in (
+                and target["chat_type"] in (
                     "group",
                     "supergroup",
                     "channel"
@@ -2103,7 +2855,7 @@ async def execute_broadcast(
                 try:
 
                     await context.bot.pin_chat_message(
-                        chat_id=chat_id,
+                        chat_id=target["chat_id"],
                         message_id=sent_message_id,
                         disable_notification=True
                     )
@@ -2114,10 +2866,10 @@ async def execute_broadcast(
             await asyncio.to_thread(
                 save_broadcast_target,
                 broadcast_id,
-                chat_id,
-                chat_type,
-                title,
-                username,
+                target["chat_id"],
+                target["chat_type"],
+                target["title"],
+                target["username"],
                 sent_message_id,
                 True,
                 None
@@ -2132,10 +2884,10 @@ async def execute_broadcast(
             await asyncio.to_thread(
                 save_broadcast_target,
                 broadcast_id,
-                chat_id,
-                chat_type,
-                title,
-                username,
+                target["chat_id"],
+                target["chat_type"],
+                target["title"],
+                target["username"],
                 None,
                 False,
                 error_text
@@ -2143,7 +2895,7 @@ async def execute_broadcast(
 
             failed += 1
 
-            if chat_type in (
+            if target["chat_type"] in (
                 "group",
                 "supergroup",
                 "channel"
@@ -2151,13 +2903,13 @@ async def execute_broadcast(
 
                 link = await get_chat_link(
                     context,
-                    chat_id,
-                    username
+                    target["chat_id"],
+                    target["username"]
                 )
 
                 failures.append({
-                    "title": title or str(chat_id),
-                    "chat_id": chat_id,
+                    "title": target["title"],
+                    "chat_id": target["chat_id"],
                     "link": link
                 })
 
@@ -2181,7 +2933,10 @@ async def get_chat_link(
 
     if username:
 
-        return f"https://t.me/{username.lstrip('@')}"
+        return (
+            f"https://t.me/"
+            f"{username.lstrip('@')}"
+        )
 
     try:
 
@@ -2205,43 +2960,43 @@ async def send_broadcast_result(
     result
 ):
 
-    text = (
-        "تمت الإذاعة ✅\n\n"
-        f"نجح الإرسال: {result['success']}\n"
-        f"فشل الإرسال: {result['failed']}"
-    )
-
     await update.message.reply_text(
-        text,
+        (
+            "تمت الإذاعة ✅\n\n"
+            f"نجح الإرسال: {result['success']}\n"
+            f"فشل الإرسال: {result['failed']}"
+        ),
         reply_markup=back_keyboard()
     )
 
     if not result["failures"]:
         return
 
-    failure_text = "⚠️ تعذر الإرسال إلى:\n\n"
+    text = "⚠️ تعذر الإرسال إلى:\n\n"
 
     for item in result["failures"]:
 
-        failure_text += (
-            f"• {item['title']}\n"
+        text += (
+            f"• {_escape_html(item['title'])}\n"
             f"  ID: <code>{item['chat_id']}</code>\n"
         )
 
         if item["link"]:
-            failure_text += (
-                f"  {item['link']}\n"
+
+            text += (
+                f"  {_escape_html(item['link'])}\n"
             )
 
         else:
-            failure_text += (
+
+            text += (
                 "  الرابط: غير متوفر\n"
             )
 
-        failure_text += "\n"
+        text += "\n"
 
     await update.message.reply_text(
-        failure_text,
+        text,
         parse_mode="HTML"
     )
 
@@ -2285,7 +3040,10 @@ def broadcast_type_name(value):
         "private_specific": "الخاص - شخص محدد",
         "groups": "المجموعات",
         "channels": "القنوات",
-    }.get(value, value)
+    }.get(
+        value,
+        value
+    )
 
 
 async def show_broadcast_logs(query):
@@ -2304,7 +3062,7 @@ async def show_broadcast_logs(query):
         return
 
     text = ""
-    keyboard_rows = []
+    keyboard = []
 
     for row in rows:
 
@@ -2316,7 +3074,10 @@ async def show_broadcast_logs(query):
             created_at
         ) = row
 
-        if isinstance(created_at, datetime):
+        if isinstance(
+            created_at,
+            datetime
+        ):
 
             date_text = created_at.strftime(
                 "%Y/%m/%d"
@@ -2324,30 +3085,49 @@ async def show_broadcast_logs(query):
 
         else:
 
-            date_text = str(created_at)
+            date_text = str(
+                created_at
+            )
 
-        text += (
-            f'الاذاعة {broadcast_id} .\n\n'
-            f"• النوع: {broadcast_type_name(broadcast_type)}\n"
+        sender_mention = mention_html(
+            sender_id,
+            sender_name or str(sender_id)
+        )
+
+        entry = (
+            f"الاذاعة {broadcast_id} .\n\n"
+            f"• النوع: "
+            f"{broadcast_type_name(broadcast_type)}\n"
             f"• مُرسل الاذاعة: "
-            f'<a href="tg://user?id={sender_id}">'
-            f'{sender_name or sender_id}'
-            f"</a>\n"
+            f"{sender_mention}\n"
             f"• التاريخ: {date_text}\n\n"
         )
 
-        keyboard_rows.append([
+        # منع تجاوز حد رسالة تيليجرام
+        if len(
+            text + entry
+        ) > 3600:
+
+            break
+
+        text += entry
+
+        keyboard.append([
             InlineKeyboardButton(
                 "رؤية الرسالة",
-                callback_data=f"devpanel:log:view:{broadcast_id}"
+                callback_data=(
+                    f"devpanel:log:view:{broadcast_id}"
+                )
             ),
             InlineKeyboardButton(
                 "روابط القروبات",
-                callback_data=f"devpanel:log:links:{broadcast_id}"
+                callback_data=(
+                    f"devpanel:log:links:{broadcast_id}"
+                )
             )
         ])
 
-    keyboard_rows.append([
+    keyboard.append([
         InlineKeyboardButton(
             "↩️ رجوع للقائمة",
             callback_data="devpanel:menu"
@@ -2358,13 +3138,13 @@ async def show_broadcast_logs(query):
         text,
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(
-            keyboard_rows
+            keyboard
         )
     )
 
 
 # =========================================================
-# جلب سجل إذاعة
+# جلب إذاعة
 # =========================================================
 
 def get_broadcast(
@@ -2383,7 +3163,9 @@ def get_broadcast(
             FROM developer_broadcasts
             WHERE id=?
             LIMIT 1
-        """, (broadcast_id,))
+        """, (
+            broadcast_id,
+        ))
 
         return cur.fetchone()
 
@@ -2392,6 +3174,10 @@ def get_broadcast(
         cur.close()
         conn.close()
 
+
+# =========================================================
+# رؤية الرسالة الأصلية
+# =========================================================
 
 async def view_broadcast(
     query,
@@ -2435,7 +3221,7 @@ async def view_broadcast(
 
 
 # =========================================================
-# روابط الإذاعة
+# روابط القروبات
 # =========================================================
 
 def get_broadcast_targets(
@@ -2456,9 +3242,15 @@ def get_broadcast_targets(
                 success
             FROM developer_broadcast_targets
             WHERE broadcast_id=?
-            AND chat_type IN ('group', 'supergroup', 'channel')
+            AND chat_type IN (
+                'group',
+                'supergroup',
+                'channel'
+            )
             ORDER BY id ASC
-        """, (broadcast_id,))
+        """, (
+            broadcast_id,
+        ))
 
         return cur.fetchall()
 
@@ -2478,7 +3270,13 @@ async def show_broadcast_links(
         broadcast_id
     )
 
-    if not rows:
+    successful = [
+        row
+        for row in rows
+        if row[4]
+    ]
+
+    if not successful:
 
         await query.edit_message_text(
             "لا توجد مجموعات أو قنوات مرتبطة بهذه الإذاعة.",
@@ -2489,7 +3287,7 @@ async def show_broadcast_links(
 
     text = ""
 
-    for row in rows:
+    for row in successful:
 
         (
             chat_id,
@@ -2498,9 +3296,6 @@ async def show_broadcast_links(
             username,
             success
         ) = row
-
-        if not success:
-            continue
 
         if username:
 
@@ -2514,14 +3309,12 @@ async def show_broadcast_links(
             link = "الرابط غير متوفر"
 
         text += (
-            f"• {title or chat_id} - "
-            f"{link}\n"
+            f"• {_escape_html(title or chat_id)}\n"
+            f"  {_escape_html(link)}\n\n"
         )
-
-    if not text:
-        text = "لا توجد روابط متاحة."
 
     await query.edit_message_text(
         text,
+        parse_mode="HTML",
         reply_markup=back_keyboard()
     )
