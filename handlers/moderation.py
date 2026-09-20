@@ -13,15 +13,7 @@ from database import connect
 from handlers.roles import (
     get_rank,
     get_rank_level,
-    is_developer,
 )
-
-
-# ==================================================
-# إعدادات
-# ==================================================
-
-DEFAULT_DURATION = 60 * 60  # ساعة
 
 
 # ==================================================
@@ -370,7 +362,6 @@ async def resolve_target(
 
             return user
 
-        # محاولة get_chat للـ ID
         try:
 
             user = await context.bot.get_chat(
@@ -390,9 +381,6 @@ async def resolve_target(
 
     # ==================================================
     # Username
-    #
-    # نعتمد على users لأن Telegram Bot API
-    # لا يوفر getChat لمستخدم عادي بالـusername.
     # ==================================================
 
     username = target_value.lstrip("@").lower()
@@ -539,16 +527,15 @@ def parse_moderation_command(
 
     duration = None
     duration_index = None
+    target_index = None
 
     # ==================================================
-    # المدة
+    # البحث عن المدة
     # ==================================================
 
-    if rest:
+    for i, part in enumerate(rest):
 
-        parsed = parse_duration_token(
-            rest[0]
-        )
+        parsed = parse_duration_token(part)
 
         if parsed is not None:
 
@@ -556,17 +543,16 @@ def parse_moderation_command(
                 return None
 
             duration = parsed
-            duration_index = 0
+            duration_index = i
+            break
 
     # ==================================================
-    # الهدف
+    # البحث عن الهدف
     # ==================================================
-
-    target_index = None
 
     for i, part in enumerate(rest):
 
-        if duration_index == i:
+        if i == duration_index:
             continue
 
         clean = part.strip()
@@ -577,47 +563,36 @@ def parse_moderation_command(
             break
 
     # ==================================================
-    # إذا كان بالرد
-    # الهدف لا يحتاج وجوده في النص
+    # استخراج السبب
     # ==================================================
 
-    if target_index is None:
-        target_index = -1
+    reason_parts = []
 
-    # ==================================================
-    # السبب
-    # ==================================================
+    for i, part in enumerate(rest):
+
+        if i == duration_index:
+            continue
+
+        if i == target_index:
+            continue
+
+        reason_parts.append(part)
 
     reason = None
 
-    if target_index >= 0:
+    if reason_parts:
 
-        after_target = rest[
-            target_index + 1:
-        ]
+        if not reasons_enabled:
+            return None
 
-        if after_target:
-
-            if not reasons_enabled:
-                return None
-
-            reason = " ".join(
-                after_target
-            )
+        reason = " ".join(
+            reason_parts
+        )
 
     # ==================================================
-    # مدة مفعلة بدون مدة
+    # إذا لم يوجد هدف بالنص
+    # فهذا يعني أنه قد يكون بالرد
     # ==================================================
-
-    if durations_enabled and duration is None:
-        duration = DEFAULT_DURATION
-
-    # ==================================================
-    # إذا المدة غير مفعلة
-    # ==================================================
-
-    if not durations_enabled:
-        duration = None
 
     return {
         "action": action,
@@ -627,7 +602,7 @@ def parse_moderation_command(
 
 
 # ==================================================
-# الحصول على نص العقوبة
+# اسم العقوبة
 # ==================================================
 
 def action_name(action):
@@ -642,6 +617,29 @@ def action_name(action):
         return "الحظر"
 
     return action
+
+
+# ==================================================
+# تنسيق المدة
+# ==================================================
+
+def format_duration(seconds):
+
+    seconds = int(seconds)
+
+    if seconds % 86400 == 0:
+        amount = seconds // 86400
+        return f"{amount} يوم"
+
+    if seconds % 3600 == 0:
+        amount = seconds // 3600
+        return f"{amount} ساعة"
+
+    if seconds % 60 == 0:
+        amount = seconds // 60
+        return f"{amount} دقيقة"
+
+    return f"{seconds} ثانية"
 
 
 # ==================================================
@@ -880,29 +878,6 @@ def moderation_message(
 
 
 # ==================================================
-# تنسيق المدة
-# ==================================================
-
-def format_duration(seconds):
-
-    seconds = int(seconds)
-
-    if seconds % 86400 == 0:
-        amount = seconds // 86400
-        return f"{amount} يوم"
-
-    if seconds % 3600 == 0:
-        amount = seconds // 3600
-        return f"{amount} ساعة"
-
-    if seconds % 60 == 0:
-        amount = seconds // 60
-        return f"{amount} دقيقة"
-
-    return f"{seconds} ثانية"
-
-
-# ==================================================
 # تنفيذ العقوبة
 # ==================================================
 
@@ -1117,11 +1092,14 @@ def get_active_mute(chat_id, user_id):
     )
 
     if until is not None:
+
         if now_timestamp() >= until:
+
             delete_mute(
                 chat_id,
                 user_id
             )
+
             return None
 
     return row[0]
@@ -1189,46 +1167,6 @@ async def check_muted_message(
     try:
 
         await update.message.delete()
-
-    except Exception:
-        pass
-
-
-# ==================================================
-# إزالة القيود
-# ==================================================
-
-async def clear_user_restriction(
-    chat_id,
-    user_id
-):
-
-    try:
-
-        from telegram import ChatPermissions
-
-        permissions = ChatPermissions(
-            can_send_messages=True,
-            can_send_audios=True,
-            can_send_documents=True,
-            can_send_photos=True,
-            can_send_videos=True,
-            can_send_video_notes=True,
-            can_send_voice_notes=True,
-            can_send_polls=True,
-            can_send_other_messages=True,
-            can_add_web_page_previews=True,
-            can_change_info=False,
-            can_invite_users=True,
-            can_pin_messages=False,
-            can_manage_topics=True,
-        )
-
-        await context.bot.restrict_chat_member(
-            chat_id=chat_id,
-            user_id=user_id,
-            permissions=permissions
-        )
 
     except Exception:
         pass
@@ -1820,7 +1758,8 @@ async def moderation_lists_command(
     if not actor:
         return
 
-    if not is_admin_or_higher(actor.id):
+    # القوائم للأدمن الأساسي وفوق
+    if not is_basic_admin_or_higher(actor.id):
         return
 
     text = (
@@ -1870,8 +1809,6 @@ async def clear_list_callback(
     if not query:
         return
 
-    await query.answer()
-
     actor = query.from_user
 
     if not is_basic_admin_or_higher(actor.id):
@@ -1883,6 +1820,8 @@ async def clear_list_callback(
 
         return
 
+    await query.answer()
+
     data = query.data or ""
 
     parts = data.split(":")
@@ -1893,6 +1832,9 @@ async def clear_list_callback(
     kind = parts[2]
 
     if kind not in LIST_TABLES:
+        return
+
+    if not query.message:
         return
 
     chat_id = query.message.chat.id
@@ -1917,6 +1859,8 @@ async def clear_list_callback(
         user_id = row[0]
 
         if kind == "mute":
+
+            # الكتم داخلي، حذف السجل يكفي
             pass
 
         elif kind == "restrict":
@@ -2088,6 +2032,36 @@ async def enable_reasons_command(
 
 
 # ==================================================
+# تعطيل الأسباب
+# ==================================================
+
+async def disable_reasons_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not update.message:
+        return
+
+    actor = update.effective_user
+
+    if not actor:
+        return
+
+    if not is_admin_or_higher(actor.id):
+        return
+
+    set_reason_setting(
+        update.effective_chat.id,
+        False
+    )
+
+    await update.message.reply_text(
+        "• تم تعطيل الاسباب ."
+    )
+
+
+# ==================================================
 # إلغاء المدة تلقائيًا
 # ==================================================
 
@@ -2098,6 +2072,10 @@ async def moderation_expiry_loop(application):
         try:
 
             current = now_timestamp()
+
+            current_iso = timestamp_to_iso(
+                current
+            )
 
             conn = connect()
             cur = None
@@ -2117,9 +2095,7 @@ async def moderation_expiry_loop(application):
                     WHERE until_time IS NOT NULL
                     AND until_time <= ?
                     """,
-                    (
-                        timestamp_to_iso(current),
-                    )
+                    (current_iso,)
                 )
 
                 mute_rows = cur.fetchall()
@@ -2148,9 +2124,7 @@ async def moderation_expiry_loop(application):
                     WHERE until_time IS NOT NULL
                     AND until_time <= ?
                     """,
-                    (
-                        timestamp_to_iso(current),
-                    )
+                    (current_iso,)
                 )
 
                 restriction_rows = cur.fetchall()
@@ -2166,9 +2140,7 @@ async def moderation_expiry_loop(application):
                     WHERE until_time IS NOT NULL
                     AND until_time <= ?
                     """,
-                    (
-                        timestamp_to_iso(current),
-                    )
+                    (current_iso,)
                 )
 
                 ban_rows = cur.fetchall()
@@ -2285,14 +2257,7 @@ async def reveal_command(
     if username:
         use = "@" + username.lstrip("@")
     else:
-        use = (
-            getattr(
-                target,
-                "first_name",
-                None
-            )
-            or ""
-        )
+        use = ""
 
     rank = get_rank(
         user_id
