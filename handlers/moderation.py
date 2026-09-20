@@ -1382,7 +1382,8 @@ async def check_muted_message(
     chat_id = update.effective_chat.id
 
     # هذا أصبح سريع جدًا بعد أول فحص
-    is_muted = get_active_mute(
+    is_muted = await asyncio.to_thread(
+        get_active_mute,
         chat_id,
         user.id
     )
