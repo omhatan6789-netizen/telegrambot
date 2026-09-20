@@ -34,6 +34,7 @@ def load_custom_commands_cache():
             for old, new in rows
             if old and new
         }
+        
         return _custom_commands_cache
     finally:
         try:
@@ -53,41 +54,35 @@ def invalidate_custom_commands_cache():
     """
     global _custom_commands_cache
     _custom_commands_cache = None
+    _resolved_handlers_cache = {}
     return load_custom_commands_cache()
-def set_custom_command_cache(
-    old_command,
-    new_command
-):
-    """
-    إضافة أو تحديث أمر داخل الكاش مباشرة.
-    """
+def set_custom_command_cache(old_command, new_command):
     global _custom_commands_cache
+
     if _custom_commands_cache is None:
         _custom_commands_cache = {}
+
     if old_command and new_command:
-        _custom_commands_cache[
-            str(new_command).strip()
-        ] = str(old_command).strip()
-def remove_custom_command_cache(
-    new_command
-):
-    """
-    حذف أمر من الكاش.
-    """
+        new_command = str(new_command).strip()
+        _custom_commands_cache[new_command] = str(old_command).strip()
+
+        # إذا تغير الأمر، لا نستخدم handler قديم
+        _resolved_handlers_cache.pop(new_command, None)
+def remove_custom_command_cache(new_command):
     global _custom_commands_cache
-    if _custom_commands_cache is None:
-        return
+
     if new_command:
-        _custom_commands_cache.pop(
-            str(new_command).strip(),
-            None
-        )
+        new_command = str(new_command).strip()
+
+        if _custom_commands_cache is not None:
+            _custom_commands_cache.pop(new_command, None)
+
+        _resolved_handlers_cache.pop(new_command, None)
 def clear_custom_commands_cache():
-    """
-    تفريغ كاش الأوامر بالكامل.
-    """
     global _custom_commands_cache
+
     _custom_commands_cache = {}
+    _resolved_handlers_cache.clear()
 # ==================================================
 # إضافة أمر
 # ==================================================
@@ -446,114 +441,72 @@ def _make_fake_update(
 # ==================================================
 # تشغيل الأمر الأصلي
 # ==================================================
-async def check_custom_commands(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-    application=None
-):
-
-    start_time = time.perf_counter()
-    
+async def check_custom_commands(update, context, application=None):
     if not update.message:
         return False
+
     if not update.message.text:
         return False
+
     if not application:
         return False
+
     text = update.message.text.strip()
+
     if not text:
         return False
-    # ==================================================
-    # لا تتدخل في جلسة "اضف امر"
-    # ==================================================
+
     if (
         update.effective_user
-        and update.effective_user.id
-        in add_command_sessions
+        and update.effective_user.id in add_command_sessions
     ):
         return False
-    # ==================================================
-    # لا تتدخل في جلسة "مسح امر"
-    # ==================================================
-    if context.user_data.get(
-        "delete_command"
-    ):
+
+    if context.user_data.get("delete_command"):
         return False
-    # ==================================================
-    # البحث عن الاختصار
-    # 🚀 الآن من الكاش بدل DB
-    # ==================================================
-    old_command = get_custom_command(
-        text
-    )
+
+    old_command = get_custom_command(text)
+
     if not old_command:
         return False
+
     old_command = old_command.strip()
+
     if not old_command:
         return False
-    # ==================================================
-    # إنشاء Update بالنص الأصلي
-    # ==================================================
+
     fake_update = _make_fake_update(
         update,
         old_command,
         application
     )
+
     if not fake_update:
         return False
-    # ==================================================
-    # البحث عن Handler الأمر الأصلي
-    # ==================================================
-    for group in sorted(
-        application.handlers.keys()
-    ):
-        handlers = application.handlers[group]
-        for handler in handlers:
-            # --------------------------------------------------
-            # لا نشغل هاندلرات الأوامر المضافة
-            # --------------------------------------------------
-            callback = getattr(
-                handler,
-                "callback",
-                None
+
+    # =====================================================
+    # إذا سبق وحددنا الـhandler لهذا الأمر
+    # لا نعيد البحث في جميع الـhandlers
+    # =====================================================
+
+    handler = _resolved_handlers_cache.get(text)
+
+    if handler is not None:
+
+        try:
+            check_result = handler.check_update(
+                fake_update
             )
-            callback_name = getattr(
-                callback,
-                "__name__",
-                ""
-            )
-            if callback_name in GENERIC_CALLBACK_NAMES:
-                continue
-            # --------------------------------------------------
-            # فحص الـ Handler
-            # --------------------------------------------------
-            try:
-                check_result = (
-                    handler.check_update(
-                        fake_update
-                    )
-                )
-            except Exception as e:
-                print(
-                    f"⚠️ تعذر فحص Handler "
-                    f"{callback_name}: {e}"
-                )
-                continue
-            if not check_result:
-                continue
-            # --------------------------------------------------
-            # تشغيل الـ Handler
-            # --------------------------------------------------
-            try:
-                # مهم جدًا:
-                # تجهيز الـ context مثل Application
-                # الطبيعي قبل handle_update
+
+            if check_result:
+
                 handler.collect_additional_context(
                     context,
                     fake_update,
                     application,
                     check_result
                 )
+
                 await handler.handle_update(
                     fake_update,
                     application,
@@ -561,25 +514,92 @@ async def check_custom_commands(
                     context
                 )
 
-                elapsed = time.perf_counter() - start_time
+                return True
+
+        except Exception as e:
+
+            # إذا تغير شيء في الـhandler
+            # نحذف الكاش ونبحث مرة أخرى
+            _resolved_handlers_cache.pop(
+                text,
+                None
+            )
+
+            print(
+                f"❌ خطأ في تشغيل الأمر المضاف {text}: {e}"
+            )
+
+    # =====================================================
+    # البحث عن الـhandler مرة واحدة فقط
+    # =====================================================
+
+    for group in sorted(application.handlers.keys()):
+
+        handlers = application.handlers[group]
+
+        for current_handler in handlers:
+
+            callback = getattr(
+                current_handler,
+                "callback",
+                None
+            )
+
+            callback_name = getattr(
+                callback,
+                "__name__",
+                ""
+            )
+
+            if callback_name in GENERIC_CALLBACK_NAMES:
+                continue
+
+            try:
+
+                check_result = current_handler.check_update(
+                    fake_update
+                )
+
+            except Exception as e:
 
                 print(
-                    f"⏱️ الاختصار {text} → {old_command} "
-                    f"استغرق {elapsed:.3f} ثانية"
+                    f"⚠️ تعذر فحص Handler {callback_name}: {e}"
+                )
+
+                continue
+
+            if not check_result:
+                continue
+
+            try:
+
+                current_handler.collect_additional_context(
+                    context,
+                    fake_update,
+                    application,
+                    check_result
+                )
+
+                await current_handler.handle_update(
+                    fake_update,
+                    application,
+                    check_result,
+                    context
+                )
+
+                # نحفظ الـhandler نفسه
+                _resolved_handlers_cache[text] = (
+                    current_handler
                 )
 
                 return True
+
             except Exception as e:
+
                 print(
-                    f"❌ خطأ أثناء تشغيل الأمر "
-                    f"{old_command}: {e}"
+                    f"❌ خطأ أثناء تشغيل الأمر {old_command}: {e}"
                 )
+
                 return False
-    # ==================================================
-    # لم نجد الأمر الأصلي
-    # ==================================================
-    print(
-        f"⚠️ لم يتم العثور على الأمر: "
-        f"{old_command}"
-    )
+
     return False
