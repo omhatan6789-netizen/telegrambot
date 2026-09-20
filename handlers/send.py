@@ -21,6 +21,50 @@ SEND_COMMAND_RE = re.compile(
 
 
 # =========================================================
+# جلسات /send في الخاص
+# =========================================================
+
+send_sessions = {}
+
+
+SEND_MEDIA_TYPES = {
+    "صورة": "photo",
+    "صور": "photo",
+
+    "فيديو": "video",
+    "فديو": "video",
+
+    "gif": "animation",
+    "جي اي اف": "animation",
+    "جيف": "animation",
+
+    "ملصق": "sticker",
+    "ستيكر": "sticker",
+
+    "فويس": "voice",
+    "رسالة صوتية": "voice",
+
+    "صوت": "audio",
+    "اغنية": "audio",
+    "أغنية": "audio",
+
+    "ملف": "document",
+    "مستند": "document",
+}
+
+
+SEND_MEDIA_LABELS = {
+    "photo": "الصورة 📷",
+    "video": "الفيديو 🎥",
+    "animation": "الـ GIF 🎞️",
+    "sticker": "الملصق 🧩",
+    "voice": "الفويس 🎤",
+    "audio": "المقطع الصوتي 🎵",
+    "document": "الملف 📎",
+}
+
+
+# =========================================================
 # أدوات عامة
 # =========================================================
 
@@ -55,14 +99,6 @@ def get_message_entities(message):
 # =========================================================
 
 def get_replied_user(message):
-    """
-    إذا كانت رسالة /send ردًا على رسالة شخص،
-    يرجع الشخص صاحب الرسالة.
-
-    إذا كانت الرسالة التي تم الرد عليها من البوت،
-    لا نعتبر البوت هدفًا للمنشن.
-    """
-
     if not message or not message.reply_to_message:
         return None
 
@@ -138,23 +174,19 @@ def prepare_text_and_entities(
     replied_user=None,
 ):
     """
-    المتغيرات:
-
     عند الرد على شخص:
-        #الاسم = اسم الشخص
-        #منشن = منشن الشخص
+
+    #الاسم = اسم الشخص
+    #منشن = منشن الشخص
 
     بدون Reply:
-        #الاسم = اسم القروب / القناة
-        #منشن = اسم القروب / القناة
+
+    #الاسم = اسم القروب / القناة
+    #منشن = اسم القروب / القناة
     """
 
     if not text:
         return text, list(entities or [])
-
-    # -----------------------------------------------------
-    # تحديد قيم المتغيرات
-    # -----------------------------------------------------
 
     if replied_user:
         name_value = get_target_name(replied_user)
@@ -168,17 +200,22 @@ def prepare_text_and_entities(
         "#منشن": mention_value,
     }
 
-    # -----------------------------------------------------
-    # البحث عن جميع الاستبدالات
-    # -----------------------------------------------------
+    # =====================================================
+    # إيجاد الاستبدالات
+    # =====================================================
 
     occurrences = []
 
     for variable, value in replacements.items():
+
         start = 0
 
         while True:
-            position = text.find(variable, start)
+
+            position = text.find(
+                variable,
+                start,
+            )
 
             if position == -1:
                 break
@@ -192,35 +229,43 @@ def prepare_text_and_entities(
                 )
             )
 
-            start = position + len(variable)
+            start = (
+                position
+                + len(variable)
+            )
 
-    occurrences.sort(key=lambda item: item[0])
+    occurrences.sort(
+        key=lambda item: item[0]
+    )
 
+    # =====================================================
     # منع التداخل
+    # =====================================================
+
     filtered_occurrences = []
+
     last_end = -1
 
     for item in occurrences:
+
         start, end, value, variable = item
 
         if start < last_end:
             continue
 
         filtered_occurrences.append(item)
-        last_end = end
 
-    # -----------------------------------------------------
-    # لا توجد متغيرات
-    # -----------------------------------------------------
+        last_end = end
 
     if not filtered_occurrences:
         return text, list(entities or [])
 
-    # -----------------------------------------------------
+    # =====================================================
     # بناء النص الجديد
-    # -----------------------------------------------------
+    # =====================================================
 
     parts = []
+
     position_map = []
 
     old_cursor = 0
@@ -228,26 +273,32 @@ def prepare_text_and_entities(
 
     for start, end, value, variable in filtered_occurrences:
 
-        # الجزء الذي قبل المتغير
-        before = text[old_cursor:start]
+        before = text[
+            old_cursor:start
+        ]
 
         parts.append(before)
 
-        for i in range(old_cursor, start):
+        for i in range(
+            old_cursor,
+            start,
+        ):
             position_map.append(
                 (
                     i,
-                    new_cursor + (i - old_cursor),
+                    new_cursor
+                    + (i - old_cursor),
                 )
             )
 
         new_cursor += len(before)
 
-        # المتغير المستبدل
         parts.append(value)
 
-        # كل مواضع المتغير القديم تشير لبداية القيمة الجديدة
-        for i in range(start, end):
+        for i in range(
+            start,
+            end,
+        ):
             position_map.append(
                 (
                     i,
@@ -256,28 +307,33 @@ def prepare_text_and_entities(
             )
 
         new_cursor += len(value)
+
         old_cursor = end
 
-    # الجزء الأخير
     tail = text[old_cursor:]
 
     parts.append(tail)
 
-    for i in range(old_cursor, len(text)):
+    for i in range(
+        old_cursor,
+        len(text),
+    ):
         position_map.append(
             (
                 i,
-                new_cursor + (i - old_cursor),
+                new_cursor
+                + (i - old_cursor),
             )
         )
 
     new_text = "".join(parts)
 
-    # -----------------------------------------------------
-    # تحويل offsets القديمة إلى الجديدة
-    # -----------------------------------------------------
+    # =====================================================
+    # تحويل Offset
+    # =====================================================
 
     def map_offset(old_offset):
+
         if old_offset <= 0:
             return 0
 
@@ -285,12 +341,14 @@ def prepare_text_and_entities(
             return len(new_text)
 
         for old_pos, new_pos in position_map:
+
             if old_pos == old_offset:
                 return new_pos
 
         previous = 0
 
         for old_pos, new_pos in position_map:
+
             if old_pos > old_offset:
                 break
 
@@ -298,21 +356,35 @@ def prepare_text_and_entities(
 
         return previous
 
-    # -----------------------------------------------------
+    # =====================================================
     # إعادة بناء Entities
-    # -----------------------------------------------------
+    # =====================================================
 
     new_entities = []
 
     for entity in entities or []:
+
         try:
+
             old_start = entity.offset
-            old_end = entity.offset + entity.length
 
-            new_start = map_offset(old_start)
-            new_end = map_offset(old_end)
+            old_end = (
+                entity.offset
+                + entity.length
+            )
 
-            new_length = new_end - new_start
+            new_start = map_offset(
+                old_start
+            )
+
+            new_end = map_offset(
+                old_end
+            )
+
+            new_length = (
+                new_end
+                - new_start
+            )
 
             if new_length <= 0:
                 continue
@@ -333,13 +405,20 @@ def prepare_text_and_entities(
                 kwargs["language"] = entity.language
 
             if entity.custom_emoji_id is not None:
-                kwargs["custom_emoji_id"] = entity.custom_emoji_id
+                kwargs["custom_emoji_id"] = (
+                    entity.custom_emoji_id
+                )
 
             try:
+
                 new_entities.append(
-                    MessageEntity(**kwargs)
+                    MessageEntity(
+                        **kwargs
+                    )
                 )
+
             except Exception:
+
                 new_entities.append(
                     MessageEntity(
                         type=entity.type,
@@ -351,48 +430,37 @@ def prepare_text_and_entities(
         except Exception:
             continue
 
-    # -----------------------------------------------------
-    # إضافة Text Mention حقيقي لـ #منشن
-    # -----------------------------------------------------
+    # =====================================================
+    # إضافة منشن حقيقي
+    # =====================================================
 
     if replied_user and mention_value:
 
-        search_from = 0
+        # نحدد مواقع #منشن الأصلية
+        mention_positions = []
 
-        while True:
-            position = new_text.find(
-                mention_value,
-                search_from,
-            )
+        for start, end, value, variable in filtered_occurrences:
 
-            if position == -1:
-                break
+            if variable == "#منشن":
 
-            # نتأكد أن هذا الموضع ليس Entity من نفس النوع
-            already_exists = False
+                # تحويل مكان المتغير القديم
+                new_position = map_offset(start)
 
-            for entity in new_entities:
-                if (
-                    entity.type == MessageEntity.TEXT_MENTION
-                    and entity.offset == position
-                    and entity.length == len(mention_value)
-                ):
-                    already_exists = True
-                    break
-
-            if not already_exists:
-                new_entities.append(
-                    MessageEntity(
-                        type=MessageEntity.TEXT_MENTION,
-                        offset=position,
-                        length=len(mention_value),
-                        user=replied_user,
-                    )
+                mention_positions.append(
+                    new_position
                 )
 
-            search_from = position + len(mention_value)
+        for position in mention_positions:
 
-    # ترتيب الـ Entities
+            new_entities.append(
+                MessageEntity(
+                    type=MessageEntity.TEXT_MENTION,
+                    offset=position,
+                    length=len(mention_value),
+                    user=replied_user,
+                )
+            )
+
     new_entities.sort(
         key=lambda entity: (
             entity.offset,
@@ -408,6 +476,7 @@ def prepare_text_and_entities(
 # =========================================================
 
 def get_send_payload(message):
+
     if not message:
         return None
 
@@ -430,6 +499,66 @@ def get_send_payload(message):
 
 
 # =========================================================
+# تحديد نوع الوسائط المطلوبة
+# =========================================================
+
+def get_requested_media_type(payload):
+
+    if not payload:
+        return None
+
+    value = payload.strip().lower()
+
+    # السماح مثل:
+    # GIF
+    # gif
+    # جيف
+
+    return SEND_MEDIA_TYPES.get(value)
+
+
+# =========================================================
+# التحقق من نوع الوسائط
+# =========================================================
+
+def get_message_media_type(message):
+
+    if message.photo:
+        return "photo"
+
+    if message.video:
+        return "video"
+
+    if message.animation:
+        return "animation"
+
+    if message.sticker:
+        return "sticker"
+
+    if message.voice:
+        return "voice"
+
+    if message.audio:
+        return "audio"
+
+    if message.document:
+        return "document"
+
+    return None
+
+
+# =========================================================
+# هل الرسالة من الوسائط؟
+# =========================================================
+
+def has_supported_media(message):
+
+    return get_message_media_type(
+        message
+    ) is not None
+
+
+# =========================================================
 # إرسال محتوى الرسالة
 # =========================================================
 
@@ -442,11 +571,12 @@ async def send_message_content(
     *,
     reply_to_message_id=None,
 ):
-    # -----------------------------------------------------
+    # =====================================================
     # نص
-    # -----------------------------------------------------
+    # =====================================================
 
     if source_message.text is not None:
+
         return await bot.send_message(
             chat_id=target_chat_id,
             text=text or " ",
@@ -455,155 +585,207 @@ async def send_message_content(
             allow_sending_without_reply=True,
         )
 
-    # -----------------------------------------------------
+    # =====================================================
     # صورة
-    # -----------------------------------------------------
+    # =====================================================
 
     if source_message.photo:
+
         return await bot.send_photo(
             chat_id=target_chat_id,
             photo=source_message.photo[-1].file_id,
             caption=text or None,
-            caption_entities=entities or None,
+            caption_entities=(
+                entities or None
+            ),
             reply_to_message_id=reply_to_message_id,
         )
 
-    # -----------------------------------------------------
+    # =====================================================
     # فيديو
-    # -----------------------------------------------------
+    # =====================================================
 
     if source_message.video:
+
         return await bot.send_video(
             chat_id=target_chat_id,
             video=source_message.video.file_id,
             caption=text or None,
-            caption_entities=entities or None,
+            caption_entities=(
+                entities or None
+            ),
             reply_to_message_id=reply_to_message_id,
         )
 
-    # -----------------------------------------------------
-    # GIF / Animation
-    # -----------------------------------------------------
+    # =====================================================
+    # GIF
+    # =====================================================
 
     if source_message.animation:
+
         return await bot.send_animation(
             chat_id=target_chat_id,
             animation=source_message.animation.file_id,
             caption=text or None,
-            caption_entities=entities or None,
+            caption_entities=(
+                entities or None
+            ),
             reply_to_message_id=reply_to_message_id,
         )
 
-    # -----------------------------------------------------
+    # =====================================================
     # Audio
-    # -----------------------------------------------------
+    # =====================================================
 
     if source_message.audio:
+
         return await bot.send_audio(
             chat_id=target_chat_id,
             audio=source_message.audio.file_id,
             caption=text or None,
-            caption_entities=entities or None,
+            caption_entities=(
+                entities or None
+            ),
             reply_to_message_id=reply_to_message_id,
         )
 
-    # -----------------------------------------------------
+    # =====================================================
     # Voice
-    # -----------------------------------------------------
+    # =====================================================
 
     if source_message.voice:
+
         return await bot.send_voice(
             chat_id=target_chat_id,
             voice=source_message.voice.file_id,
             caption=text or None,
-            caption_entities=entities or None,
+            caption_entities=(
+                entities or None
+            ),
             reply_to_message_id=reply_to_message_id,
         )
 
-    # -----------------------------------------------------
+    # =====================================================
     # Document
-    # -----------------------------------------------------
+    # =====================================================
 
     if source_message.document:
+
         return await bot.send_document(
             chat_id=target_chat_id,
             document=source_message.document.file_id,
             caption=text or None,
-            caption_entities=entities or None,
+            caption_entities=(
+                entities or None
+            ),
             reply_to_message_id=reply_to_message_id,
         )
 
-    # -----------------------------------------------------
+    # =====================================================
     # Sticker
-    # -----------------------------------------------------
+    # =====================================================
 
     if source_message.sticker:
+
         return await bot.send_sticker(
             chat_id=target_chat_id,
             sticker=source_message.sticker.file_id,
             reply_to_message_id=reply_to_message_id,
         )
 
-    # -----------------------------------------------------
+    # =====================================================
     # Video Note
-    # -----------------------------------------------------
+    # =====================================================
 
     if source_message.video_note:
+
         return await bot.send_video_note(
             chat_id=target_chat_id,
             video_note=source_message.video_note.file_id,
             reply_to_message_id=reply_to_message_id,
         )
 
-    # -----------------------------------------------------
+    # =====================================================
     # Contact
-    # -----------------------------------------------------
+    # =====================================================
 
     if source_message.contact:
+
         return await bot.send_contact(
             chat_id=target_chat_id,
-            phone_number=source_message.contact.phone_number,
-            first_name=source_message.contact.first_name,
-            last_name=source_message.contact.last_name,
-            vcard=source_message.contact.vcard,
+            phone_number=(
+                source_message.contact.phone_number
+            ),
+            first_name=(
+                source_message.contact.first_name
+            ),
+            last_name=(
+                source_message.contact.last_name
+            ),
+            vcard=(
+                source_message.contact.vcard
+            ),
             reply_to_message_id=reply_to_message_id,
         )
 
-    # -----------------------------------------------------
+    # =====================================================
     # Location
-    # -----------------------------------------------------
+    # =====================================================
 
     if source_message.location:
+
         return await bot.send_location(
             chat_id=target_chat_id,
-            latitude=source_message.location.latitude,
-            longitude=source_message.location.longitude,
+            latitude=(
+                source_message.location.latitude
+            ),
+            longitude=(
+                source_message.location.longitude
+            ),
             reply_to_message_id=reply_to_message_id,
         )
 
-    # -----------------------------------------------------
+    # =====================================================
     # Venue
-    # -----------------------------------------------------
+    # =====================================================
 
     if source_message.venue:
+
         return await bot.send_venue(
             chat_id=target_chat_id,
-            latitude=source_message.venue.location.latitude,
-            longitude=source_message.venue.location.longitude,
-            title=source_message.venue.title,
-            address=source_message.venue.address,
-            foursquare_id=source_message.venue.foursquare_id,
-            foursquare_type=source_message.venue.foursquare_type,
-            google_place_id=source_message.venue.google_place_id,
-            google_place_type=source_message.venue.google_place_type,
+            latitude=(
+                source_message.venue.location.latitude
+            ),
+            longitude=(
+                source_message.venue.location.longitude
+            ),
+            title=(
+                source_message.venue.title
+            ),
+            address=(
+                source_message.venue.address
+            ),
+            foursquare_id=(
+                source_message.venue.foursquare_id
+            ),
+            foursquare_type=(
+                source_message.venue.foursquare_type
+            ),
+            google_place_id=(
+                source_message.venue.google_place_id
+            ),
+            google_place_type=(
+                source_message.venue.google_place_type
+            ),
             reply_to_message_id=reply_to_message_id,
         )
 
-    # -----------------------------------------------------
+    # =====================================================
     # Fallback
-    # -----------------------------------------------------
+    # =====================================================
 
     if text:
+
         return await bot.send_message(
             chat_id=target_chat_id,
             text=text,
@@ -613,6 +795,215 @@ async def send_message_content(
         )
 
     return None
+
+
+# =========================================================
+# إرسال الوسائط للقروبات والقنوات
+# =========================================================
+
+async def broadcast_send(
+    update,
+    context,
+    source_message,
+    *,
+    replied_user=None,
+):
+    """
+    يرسل الرسالة لكل القروبات والقنوات المسجلة
+    في developer_bot_chats.
+    """
+
+    try:
+
+        registered_chats = (
+            await asyncio.to_thread(
+                get_registered_chats
+            )
+        )
+
+    except Exception:
+
+        registered_chats = []
+
+    original_content = (
+        source_message.caption or ""
+    )
+
+    original_entities = (
+        source_message.caption_entities or []
+    )
+
+    # =====================================================
+    # إرسال لكل القروبات والقنوات
+    # =====================================================
+
+    for row in registered_chats:
+
+        try:
+
+            chat_id = row[0]
+            chat_type = row[1]
+            title = row[2]
+            username = row[3]
+
+            class RegisteredChat:
+
+                def __init__(
+                    self,
+                    title=None,
+                    username=None,
+                    chat_type=None,
+                ):
+                    self.title = title
+                    self.username = username
+                    self.type = chat_type
+                    self.full_name = title
+
+            target_chat = RegisteredChat(
+                title=title,
+                username=username,
+                chat_type=chat_type,
+            )
+
+            final_text, final_entities = (
+                prepare_text_and_entities(
+                    original_content,
+                    original_entities,
+                    chat=target_chat,
+                    replied_user=replied_user,
+                )
+            )
+
+            await send_message_content(
+                context.bot,
+                chat_id,
+                source_message,
+                final_text,
+                final_entities,
+                reply_to_message_id=None,
+            )
+
+        except Exception:
+            continue
+
+
+# =========================================================
+# التعامل مع الوسائط المنتظرة في الخاص
+# =========================================================
+
+async def handle_send_media(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    message = update.effective_message
+
+    if not message:
+        return
+
+    user = update.effective_user
+
+    if not user:
+        return
+
+    # =====================================================
+    # فقط الخاص
+    # =====================================================
+
+    if message.chat.type != "private":
+        return
+
+    # =====================================================
+    # فقط المالك الأساسي
+    # =====================================================
+
+    if user.id != OWNER_ID:
+        return
+
+    # =====================================================
+    # هل توجد جلسة انتظار؟
+    # =====================================================
+
+    session = send_sessions.get(
+        user.id
+    )
+
+    if not session:
+        return
+
+    requested_type = session.get(
+        "type"
+    )
+
+    # =====================================================
+    # تحديد نوع الوسائط المرسلة
+    # =====================================================
+
+    actual_type = get_message_media_type(
+        message
+    )
+
+    # =====================================================
+    # إذا أرسل نوعًا خاطئًا
+    # =====================================================
+
+    if actual_type != requested_type:
+
+        # إلغاء العملية بالكامل
+        send_sessions.pop(
+            user.id,
+            None,
+        )
+
+        try:
+            await message.reply_text(
+                "تم إلغاء العملية، أرسل /send من جديد."
+            )
+        except Exception:
+            pass
+
+        return
+
+    # =====================================================
+    # حفظ الـ Reply إن كانت الوسائط ردًا على رسالة
+    # =====================================================
+
+    replied_user = get_replied_user(
+        message
+    )
+
+    # =====================================================
+    # إرسال للقروبات والقنوات
+    # =====================================================
+
+    try:
+
+        await broadcast_send(
+            update,
+            context,
+            message,
+            replied_user=replied_user,
+        )
+
+    except Exception:
+        pass
+
+    # =====================================================
+    # حذف رسالة الوسائط من الخاص
+    # =====================================================
+
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
+    # =====================================================
+    # إنهاء الجلسة
+    # =====================================================
+
+    send_sessions.pop(
+        user.id,
+        None,
+    )
 
 
 # =========================================================
@@ -654,7 +1045,9 @@ async def send_command(
 
     else:
 
-        rank = get_rank(user.id)
+        rank = get_rank(
+            user.id
+        )
 
         allowed_ranks = {
             "ادمن اساسي",
@@ -670,13 +1063,69 @@ async def send_command(
     # استخراج محتوى /send
     # =====================================================
 
-    payload = get_send_payload(message)
+    payload = get_send_payload(
+        message
+    )
 
     if payload is None:
         return
 
     # =====================================================
-    # تحديد النص والـ Entities
+    # الخاص + أوامر الوسائط
+    # =====================================================
+
+    if message.chat.type == "private":
+
+        requested_type = (
+            get_requested_media_type(
+                payload
+            )
+        )
+
+        # -------------------------------------------------
+        # /send صورة
+        # /send فيديو
+        # إلخ
+        # -------------------------------------------------
+
+        if requested_type:
+
+            # حذف أي جلسة قديمة
+            send_sessions.pop(
+                user.id,
+                None,
+            )
+
+            send_sessions[user.id] = {
+                "type": requested_type,
+            }
+
+            label = SEND_MEDIA_LABELS.get(
+                requested_type,
+                "الوسائط",
+            )
+
+            try:
+                await message.delete()
+            except Exception:
+                pass
+
+            try:
+
+                await context.bot.send_message(
+                    chat_id=message.chat.id,
+                    text=(
+                        f"حسنًا، أرسل {label}"
+                    ),
+                )
+
+            except Exception:
+                pass
+
+            return
+
+    # =====================================================
+    # النص / الوسائط العادية
     # =====================================================
 
     if message.text is not None:
@@ -685,24 +1134,31 @@ async def send_command(
 
         original_entities = []
 
-        payload_start = message.text.find(payload)
+        payload_start = message.text.find(
+            payload
+        )
 
         if payload and payload_start >= 0:
 
-            for entity in message.entities or []:
+            for entity in (
+                message.entities or []
+            ):
 
-                entity_start = entity.offset
+                entity_start = (
+                    entity.offset
+                )
+
                 entity_end = (
                     entity.offset
                     + entity.length
                 )
 
-                # تجاهل entities الموجودة داخل /send
                 if entity_start < payload_start:
                     continue
 
-                # تجاهل entity التي تتجاوز النص
-                if entity_end > len(message.text):
+                if entity_end > len(
+                    message.text
+                ):
                     continue
 
                 new_offset = (
@@ -714,6 +1170,7 @@ async def send_command(
                     continue
 
                 try:
+
                     original_entities.append(
                         MessageEntity(
                             type=entity.type,
@@ -722,9 +1179,12 @@ async def send_command(
                             url=entity.url,
                             user=entity.user,
                             language=entity.language,
-                            custom_emoji_id=entity.custom_emoji_id,
+                            custom_emoji_id=(
+                                entity.custom_emoji_id
+                            ),
                         )
                     )
+
                 except Exception:
                     pass
 
@@ -735,7 +1195,8 @@ async def send_command(
         )
 
         original_entities = (
-            message.caption_entities or []
+            message.caption_entities
+            or []
         )
 
     # =====================================================
@@ -748,23 +1209,11 @@ async def send_command(
         pass
 
     # =====================================================
-    # لا يوجد محتوى
+    # التحقق من وجود محتوى
     # =====================================================
 
-    has_media = any(
-        (
-            message.photo,
-            message.video,
-            message.animation,
-            message.audio,
-            message.voice,
-            message.document,
-            message.sticker,
-            message.video_note,
-            message.contact,
-            message.location,
-            message.venue,
-        )
+    has_media = has_supported_media(
+        message
     )
 
     if not original_content and not has_media:
@@ -774,12 +1223,12 @@ async def send_command(
     # الشخص الذي تم الرد عليه
     # =====================================================
 
-    replied_message = get_replied_message(
-        message
+    replied_message = (
+        get_replied_message(message)
     )
 
-    replied_user = get_replied_user(
-        message
+    replied_user = (
+        get_replied_user(message)
     )
 
     # =====================================================
@@ -804,13 +1253,10 @@ async def send_command(
         reply_to_message_id = None
 
         if replied_message:
+
             reply_to_message_id = (
                 replied_message.message_id
             )
-
-        # -------------------------------------------------
-        # إرسال مع Reply
-        # -------------------------------------------------
 
         try:
 
@@ -827,8 +1273,7 @@ async def send_command(
 
         except Exception:
 
-            # إذا فشل الـ Reply لأي سبب،
-            # نرسل بدون Reply.
+            # fallback بدون Reply
             try:
 
                 await send_message_content(
@@ -851,98 +1296,12 @@ async def send_command(
 
     if message.chat.type == "private":
 
-        # -------------------------------------------------
-        # استخدام نظام التسجيل الموجود أصلًا
-        # في developer_panel.py
-        # -------------------------------------------------
-
-        try:
-
-            registered_chats = (
-                await asyncio.to_thread(
-                    get_registered_chats
-                )
-            )
-
-        except Exception:
-
-            registered_chats = []
-
-        # -------------------------------------------------
-        # الإرسال لكل القروبات والقنوات
-        # -------------------------------------------------
-
-        for row in registered_chats:
-
-            try:
-
-                chat_id = row[0]
-                chat_type = row[1]
-                title = row[2]
-                username = row[3]
-
-                # -------------------------------------------------
-                # كائن بسيط لاستخدام نفس دالة المتغيرات
-                # -------------------------------------------------
-
-                class RegisteredChat:
-
-                    def __init__(
-                        self,
-                        title=None,
-                        username=None,
-                        chat_type=None,
-                    ):
-                        self.title = title
-                        self.username = username
-                        self.type = chat_type
-                        self.full_name = title
-
-                target_chat = RegisteredChat(
-                    title=title,
-                    username=username,
-                    chat_type=chat_type,
-                )
-
-                # -------------------------------------------------
-                # #الاسم و #منشن
-                #
-                # إذا كان /send في الخاص رداً على شخص:
-                # يتم استخدام الشخص المردود عليه.
-                #
-                # وإلا:
-                # يتم استخدام اسم القروب/القناة.
-                # -------------------------------------------------
-
-                final_text, final_entities = (
-                    prepare_text_and_entities(
-                        original_content,
-                        original_entities,
-                        chat=target_chat,
-                        replied_user=replied_user,
-                    )
-                )
-
-                # -------------------------------------------------
-                # لا نستخدم Reply هنا
-                #
-                # لأن message_id الخاص برسالة الخاص
-                # غير موجود داخل القروب المستهدف.
-                # -------------------------------------------------
-
-                await send_message_content(
-                    context.bot,
-                    chat_id,
-                    message,
-                    final_text,
-                    final_entities,
-                    reply_to_message_id=None,
-                )
-
-            except Exception:
-                # إذا فشل الإرسال لقروب/قناة معينة،
-                # نستمر للباقي.
-                continue
+        await broadcast_send(
+            update,
+            context,
+            message,
+            replied_user=replied_user,
+        )
 
         return
 
@@ -956,21 +1315,13 @@ async def delete_slash_command(
     context: ContextTypes.DEFAULT_TYPE,
 ):
     """
-    حذف أي رسالة تبدأ بـ /
+    يحذف أي رسالة تبدأ بـ /
 
-    أمثلة:
-        /start
-        /help
-        /هلا
-        /send هلا
+    ما عدا:
 
-    لكن:
         /
-    لا يتم حذفها.
 
-    مهم:
-    لا نستخدم ApplicationHandlerStop هنا،
-    حتى تستمر الأوامر بالعمل.
+    لا يوقف تنفيذ الأوامر بعد الحذف.
     """
 
     message = update.effective_message
@@ -986,7 +1337,6 @@ async def delete_slash_command(
     if not text.startswith("/"):
         return
 
-    # "/" فقط لا نحذفه
     if text == "/":
         return
 
