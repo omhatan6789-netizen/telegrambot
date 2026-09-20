@@ -229,6 +229,15 @@ from handlers.points import (
 )
 
 
+from handlers.developer_panel import (
+    create_developer_panel_tables,
+    developer_panel_command,
+    developer_panel_callback,
+    developer_panel_message,
+    track_private_start,
+    track_bot_chat_member,
+)
+
 # ==================================================
 # المستخدمين
 # ==================================================
@@ -621,6 +630,7 @@ def main():
     # ==================================================
 
     create_tables()
+    create_developer_panel_tables()
     create_profile_reply_tables()
     patch_inline_keyboard_buttons()
     register_existing_panel_buttons()
@@ -861,7 +871,34 @@ def main():
         ),
         group=-8
     )
-    
+
+
+    app.add_handler(
+        CallbackQueryHandler(
+            developer_panel_callback,
+            pattern=r"^devpanel:"
+        ),
+        group=-10
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.PRIVATE
+            & ~filters.COMMAND,
+            developer_panel_message
+        ),
+        group=-9
+    )
+
+
+    app.add_handler(
+        ChatMemberHandler(
+            track_bot_chat_member,
+            ChatMemberHandler.MY_CHAT_MEMBER
+        ),
+        group=-10
+    )
     # ==================================================
     # حارس الأوامر
     # ==================================================
@@ -901,8 +938,6 @@ def main():
         group=-5
     )   
 
-    print("🔥 تسجيل check_muted_message الآن")
-    print("📌 function:", check_muted_message)
     
     app.add_handler(
         MessageHandler(
@@ -1141,6 +1176,14 @@ def main():
         )
     )
 
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.PRIVATE
+            & filters.Regex(r"^/start(?:\s.*)?$"),
+            track_private_start
+        ),
+        group=-10
+    )    
 
     # ==================================================
     # START
@@ -2655,7 +2698,14 @@ def main():
     )
 
 
-
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.PRIVATE
+            & filters.Regex(r"^اوامر المطور$"),
+            developer_panel_command
+        ),
+        group=-10
+    )
 
     # ==================================================
     # شرح الألعاب
