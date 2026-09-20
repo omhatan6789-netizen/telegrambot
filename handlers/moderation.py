@@ -1,154 +1,129 @@
-import asyncio
 import re
-
-from datetime import (
-    datetime,
-    timedelta,
-    timezone,
-)
-
-from html import escape
+import time
+from datetime import datetime, timezone
 
 from telegram import (
     Update,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    ChatPermissions,
-    User,
 )
-
-from telegram.ext import (
-    ContextTypes,
-    ApplicationHandlerStop,
-)
-
-from telegram.error import TelegramError
+from telegram.ext import ContextTypes
 
 from database import connect
-
 from handlers.roles import (
     get_rank,
-    is_primary_developer,
-    is_secondary_developer,
+    get_rank_level,
+    is_developer,
 )
 
 
-OWNER_ID = 8453977662
+# ==================================================
+# إعدادات
+# ==================================================
 
-
-RANKS = {
-    "عضو": 0,
-    "مميز": 1,
-    "ادمن": 2,
-    "ادمن اساسي": 3,
-    "نائب المالك": 4,
-    "المالك": 5,
-    "Dev": 6,
-}
+DEFAULT_DURATION = 60 * 60  # ساعة
 
 
 # ==================================================
 # الصلاحيات
 # ==================================================
 
-def has_permission(actor_id, target_id):
+def is_admin_or_higher(user_id):
+    return get_rank_level(user_id) >= 2
 
-    if actor_id == target_id:
-        return False
 
-    if is_primary_developer(actor_id):
-        return True
+def is_basic_admin_or_higher(user_id):
+    return get_rank_level(user_id) >= 3
 
-    if target_id == OWNER_ID:
-        return False
 
-    if is_secondary_developer(actor_id):
+# ==================================================
+# الوقت
+# ==================================================
 
-        if is_secondary_developer(target_id):
-            return False
+def now_timestamp():
+    return int(time.time())
 
-        return True
 
-    actor_rank = get_rank(actor_id)
-    target_rank = get_rank(target_id)
+def timestamp_to_iso(timestamp):
+    if timestamp is None:
+        return None
 
-    actor_level = RANKS.get(
-        actor_rank,
-        0,
+    return datetime.fromtimestamp(
+        timestamp,
+        timezone.utc
+    ).isoformat()
+
+
+def iso_to_timestamp(value):
+    if not value:
+        return None
+
+    try:
+        return datetime.fromisoformat(
+            value
+        ).timestamp()
+
+    except Exception:
+        return None
+
+
+# ==================================================
+# تنسيق HTML
+# ==================================================
+
+def html_escape(value):
+    if value is None:
+        return ""
+
+    value = str(value)
+
+    return (
+        value
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
     )
-
-    target_level = RANKS.get(
-        target_rank,
-        0,
-    )
-
-    return actor_level > target_level
-
-
-def has_group_permission(
-    user_id,
-    minimum_rank,
-):
-
-    if is_primary_developer(user_id):
-        return True
-
-    if is_secondary_developer(user_id):
-        return True
-
-    rank = get_rank(user_id)
-
-    level = RANKS.get(
-        rank,
-        0,
-    )
-
-    return level >= minimum_rank
 
 
 # ==================================================
 # إعدادات الإشراف
 # ==================================================
 
-def get_settings(chat_id):
+def get_moderation_settings(chat_id):
 
     conn = connect()
-    cur = conn.cursor()
+    cur = None
 
     try:
+        cur = conn.cursor()
 
-        cur.execute("""
-        SELECT
-            durations_enabled,
-            reasons_enabled
-        FROM moderation_settings
-        WHERE chat_id = ?
-        """, (
-            chat_id,
-        ))
+        cur.execute(
+            """
+            SELECT durations_enabled, reasons_enabled
+            FROM moderation_settings
+            WHERE chat_id=?
+            """,
+            (chat_id,)
+        )
 
         row = cur.fetchone()
 
         if not row:
 
-            cur.execute("""
-            INSERT INTO moderation_settings
-            (
-                chat_id,
-                durations_enabled,
-                reasons_enabled
+            cur.execute(
+                """
+                INSERT INTO moderation_settings
+                (
+                    chat_id,
+                    durations_enabled,
+                    reasons_enabled
+                )
+                VALUES (?, 0, 0)
+                ON CONFLICT(chat_id) DO NOTHING
+                """,
+                (chat_id,)
             )
-            VALUES
-            (
-                ?,
-                0,
-                0
-            )
-            ON CONFLICT (chat_id)
-            DO NOTHING
-            """, (
-                chat_id,
-            ))
 
             conn.commit()
 
@@ -164,617 +139,160 @@ def get_settings(chat_id):
 
     finally:
 
-        try:
+        if cur:
             cur.close()
-        except Exception:
-            pass
 
         conn.close()
 
 
-async def moderation_settings_command(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
-    message = update.effective_message
-    chat = update.effective_chat
-    user = update.effective_user
-
-    if not message or not chat or not user:
-        return
-
-    if chat.type not in (
-        "group",
-        "supergroup",
-    ):
-        return
-
-    text = (
-        message.text or ""
-    ).strip()
-
-    if not has_group_permission(
-        user.id,
-        2,
-    ):
-        return
-
-    # ==================================================
-    # تفعيل المدة
-    # ==================================================
-
-    if text == "تفعيل المدة للمشرفين":
-
-        conn = connect()
-        cur = conn.cursor()
-
-        try:
-
-            cur.execute("""
-            INSERT INTO moderation_settings
-            (
-                chat_id,
-                durations_enabled,
-                reasons_enabled
-            )
-            VALUES
-            (
-                ?,
-                1,
-                0
-            )
-            ON CONFLICT (chat_id)
-            DO UPDATE SET
-                durations_enabled = 1
-            """, (
-                chat.id,
-            ))
-
-            conn.commit()
-
-        finally:
-
-            cur.close()
-            conn.close()
-
-        await message.reply_text(
-            "• تم تفعيل المدة للمشرفين."
-        )
-
-        return
-
-    # ==================================================
-    # تعطيل المدة
-    # ==================================================
-
-    if text == "تعطيل المدة للمشرفين":
-
-        conn = connect()
-        cur = conn.cursor()
-
-        try:
-
-            cur.execute("""
-            INSERT INTO moderation_settings
-            (
-                chat_id,
-                durations_enabled,
-                reasons_enabled
-            )
-            VALUES
-            (
-                ?,
-                0,
-                0
-            )
-            ON CONFLICT (chat_id)
-            DO UPDATE SET
-                durations_enabled = 0
-            """, (
-                chat.id,
-            ))
-
-            conn.commit()
-
-        finally:
-
-            cur.close()
-            conn.close()
-
-        await message.reply_text(
-            "• تم تعطيل المدة للمشرفين."
-        )
-
-        return
-
-    # ==================================================
-    # تفعيل الأسباب
-    # ==================================================
-
-    if text == "تفعيل الاسباب":
-
-        conn = connect()
-        cur = conn.cursor()
-
-        try:
-
-            cur.execute("""
-            INSERT INTO moderation_settings
-            (
-                chat_id,
-                durations_enabled,
-                reasons_enabled
-            )
-            VALUES
-            (
-                ?,
-                0,
-                1
-            )
-            ON CONFLICT (chat_id)
-            DO UPDATE SET
-                reasons_enabled = 1
-            """, (
-                chat.id,
-            ))
-
-            conn.commit()
-
-        finally:
-
-            cur.close()
-            conn.close()
-
-        await message.reply_text(
-            "• تم تفعيل الأسباب للمشرفين."
-        )
-
-        return
-
-    # ==================================================
-    # تعطيل الأسباب
-    # ==================================================
-
-    if text == "تعطيل الاسباب":
-
-        conn = connect()
-        cur = conn.cursor()
-
-        try:
-
-            cur.execute("""
-            INSERT INTO moderation_settings
-            (
-                chat_id,
-                durations_enabled,
-                reasons_enabled
-            )
-            VALUES
-            (
-                ?,
-                0,
-                0
-            )
-            ON CONFLICT (chat_id)
-            DO UPDATE SET
-                reasons_enabled = 0
-            """, (
-                chat.id,
-            ))
-
-            conn.commit()
-
-        finally:
-
-            cur.close()
-            conn.close()
-
-        await message.reply_text(
-            "• تم تعطيل الأسباب للمشرفين."
-        )
-
-
-# ==================================================
-# المدة
-# ==================================================
-
-DURATION_PATTERN = re.compile(
-    r"^(\d+)"
-    r"(ث|ثانية|ثواني|"
-    r"د|دقيقة|دقائق|"
-    r"س|ساعة|ساعات|"
-    r"ي|يوم|أيام)$"
-)
-
-
-def parse_duration(token):
-
-    if not token:
-        return None
-
-    token = (
-        token.strip()
-        .lower()
-    )
-
-    match = DURATION_PATTERN.match(
-        token
-    )
-
-    if not match:
-        return None
-
-    amount = int(
-        match.group(1)
-    )
-
-    unit = match.group(2)
-
-    if amount <= 0:
-        return None
-
-    if unit in (
-        "ث",
-        "ثانية",
-        "ثواني",
-    ):
-        return amount
-
-    if unit in (
-        "د",
-        "دقيقة",
-        "دقائق",
-    ):
-        return amount * 60
-
-    if unit in (
-        "س",
-        "ساعة",
-        "ساعات",
-    ):
-        return amount * 60 * 60
-
-    return amount * 24 * 60 * 60
-
-
-def format_duration(seconds):
-
-    if not seconds:
-        return ""
-
-    seconds = int(seconds)
-
-    days, remainder = divmod(
-        seconds,
-        86400,
-    )
-
-    hours, remainder = divmod(
-        remainder,
-        3600,
-    )
-
-    minutes, seconds = divmod(
-        remainder,
-        60,
-    )
-
-    if days:
-
-        if days == 1:
-            return "يوم"
-
-        if days == 2:
-            return "يومين"
-
-        return f"{days} أيام"
-
-    if hours:
-
-        if hours == 1:
-            return "ساعة"
-
-        if hours == 2:
-            return "ساعتين"
-
-        return f"{hours} ساعات"
-
-    if minutes:
-
-        if minutes == 1:
-            return "دقيقة"
-
-        if minutes == 2:
-            return "دقيقتين"
-
-        return f"{minutes} دقائق"
-
-    if seconds == 1:
-        return "ثانية"
-
-    if seconds == 2:
-        return "ثانيتين"
-
-    return f"{seconds} ثانية"
-
-
-# ==================================================
-# إنشاء User
-# ==================================================
-
-def build_user(
-    user_id,
-    first_name=None,
-    username=None,
-    is_bot=False,
-):
-
-    return User(
-        id=int(user_id),
-        first_name=first_name or str(user_id),
-        is_bot=is_bot,
-        username=username,
-    )
-
-
-# ==================================================
-# تنظيف اليوزر
-# ==================================================
-
-def clean_username(username):
-
-    if not username:
-        return ""
-
-    return (
-        str(username)
-        .strip()
-        .lstrip("@")
-        .strip()
-        .lower()
-    )
-
-
-# ==================================================
-# البحث في users
-# ==================================================
-
-def get_user_from_database(username):
-
-    clean = clean_username(username)
-
-    if not clean:
-        return None
+def set_duration_setting(chat_id, enabled):
 
     conn = connect()
-    cur = conn.cursor()
+    cur = None
 
     try:
+        cur = conn.cursor()
 
-        cur.execute("""
-        SELECT
-            user_id,
-            username,
-            first_name
-        FROM users
-        WHERE LOWER(
-            REPLACE(
-                username,
-                '@',
-                ''
+        cur.execute(
+            """
+            INSERT INTO moderation_settings
+            (
+                chat_id,
+                durations_enabled
             )
-        ) = ?
-        LIMIT 1
-        """, (
-            clean,
-        ))
-
-        row = cur.fetchone()
-
-        if not row:
-            return None
-
-        return build_user(
-            row[0],
-            row[2],
-            row[1],
-            False,
+            VALUES (?, ?)
+            ON CONFLICT(chat_id)
+            DO UPDATE SET
+                durations_enabled=excluded.durations_enabled
+            """,
+            (
+                chat_id,
+                1 if enabled else 0
+            )
         )
+
+        conn.commit()
 
     finally:
 
-        cur.close()
+        if cur:
+            cur.close()
+
         conn.close()
 
 
-# ==================================================
-# البحث في أعضاء المجموعة
-# ==================================================
-
-def get_group_member_from_database(
-    chat_id,
-    username,
-):
-
-    clean = clean_username(
-        username
-    )
-
-    if not clean:
-        return None
+def set_reason_setting(chat_id, enabled):
 
     conn = connect()
-    cur = conn.cursor()
+    cur = None
 
     try:
+        cur = conn.cursor()
 
-        cur.execute("""
-        SELECT
-            user_id,
-            username,
-            first_name
-        FROM group_members
-        WHERE chat_id = ?
-        AND LOWER(
-            REPLACE(
-                username,
-                '@',
-                ''
+        cur.execute(
+            """
+            INSERT INTO moderation_settings
+            (
+                chat_id,
+                reasons_enabled
             )
-        ) = ?
-        LIMIT 1
-        """, (
-            chat_id,
-            clean,
-        ))
-
-        row = cur.fetchone()
-
-        if not row:
-            return None
-
-        return build_user(
-            row[0],
-            row[2],
-            row[1],
-            False,
+            VALUES (?, ?)
+            ON CONFLICT(chat_id)
+            DO UPDATE SET
+                reasons_enabled=excluded.reasons_enabled
+            """,
+            (
+                chat_id,
+                1 if enabled else 0
+            )
         )
+
+        conn.commit()
 
     finally:
 
-        try:
+        if cur:
             cur.close()
-        except Exception:
-            pass
 
         conn.close()
 
 
 # ==================================================
-# البحث في جداول العقوبات
+# حفظ المستخدم
 # ==================================================
 
-def get_moderation_user_from_database(
-    chat_id,
-    username,
-):
+def save_target_user(user):
 
-    clean = clean_username(
-        username
-    )
-
-    if not clean:
-        return None
+    if not user:
+        return
 
     conn = connect()
-    cur = conn.cursor()
+    cur = None
 
     try:
 
-        for table in (
-            "bot_mutes",
-            "restrictions",
-            "moderation_bans",
-        ):
+        cur = conn.cursor()
 
-            cur.execute(f"""
-            SELECT
+        cur.execute(
+            """
+            INSERT INTO users
+            (
                 user_id,
                 username,
-                first_name
-            FROM {table}
-            WHERE chat_id = ?
-            AND LOWER(
-                REPLACE(
-                    username,
-                    '@',
-                    ''
-                )
-            ) = ?
-            LIMIT 1
-            """, (
-                chat_id,
-                clean,
-            ))
-
-            row = cur.fetchone()
-
-            if row:
-
-                return build_user(
-                    row[0],
-                    row[2],
-                    row[1],
-                    False,
-                )
-
-        return None
-
-    finally:
-
-        cur.close()
-        conn.close()
-
-
-# ==================================================
-# البحث بالـ ID
-# ==================================================
-
-def get_user_by_id_from_database(
-    user_id,
-):
-
-    conn = connect()
-    cur = conn.cursor()
-
-    try:
-
-        cur.execute("""
-        SELECT
-            user_id,
-            username,
-            first_name
-        FROM users
-        WHERE user_id = ?
-        LIMIT 1
-        """, (
-            user_id,
-        ))
-
-        row = cur.fetchone()
-
-        if row:
-
-            return build_user(
-                row[0],
-                row[2],
-                row[1],
-                False,
+                first_name,
+                messages,
+                rank
             )
+            VALUES (?, ?, ?, 0, 'عضو')
 
-        return None
+            ON CONFLICT(user_id)
+            DO UPDATE SET
+                username=excluded.username,
+                first_name=excluded.first_name
+            """,
+            (
+                user.id,
+                user.username or "",
+                user.first_name or ""
+            )
+        )
+
+        conn.commit()
 
     finally:
 
-        cur.close()
+        if cur:
+            cur.close()
+
         conn.close()
 
 
 # ==================================================
-# حل المستخدم المستهدف
+# استخراج الهدف
 # ==================================================
 
 async def resolve_target(
     update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
+    context: ContextTypes.DEFAULT_TYPE
 ):
 
-    message = update.effective_message
-    chat = update.effective_chat
+    if not update.message:
+        return None
 
-    if not message:
-        return None, []
+    message = update.message
+
+    # ==================================================
+    # بالرد
+    # ==================================================
+
+    if message.reply_to_message:
+
+        user = message.reply_to_message.from_user
+
+        if user:
+            save_target_user(user)
+
+            return user
 
     text = (
         message.text or ""
@@ -782,311 +300,160 @@ async def resolve_target(
 
     parts = text.split()
 
-    # ==================================================
-    # 1 - الرد على رسالة
-    # ==================================================
-
-    if message.reply_to_message:
-
-        replied_message = (
-            message.reply_to_message
-        )
-
-        target = replied_message.from_user
-
-        if target:
-
-            # إذا كان الأمر بالرد:
-            # كتم السبب
-            # يصبح السبب من بعد كلمة كتم
-            args = parts[1:]
-
-            return target, args
-
-    # ==================================================
-    # لا يوجد هدف
-    # ==================================================
-
     if len(parts) < 2:
-        return None, []
-
-    target_text = parts[1].strip()
-
-    args = parts[2:]
+        return None
 
     # ==================================================
-    # 2 - ID
+    # نبحث عن ID أو username
     # ==================================================
 
-    if target_text.lstrip("-").isdigit():
+    target_value = None
+
+    for part in parts[1:]:
+
+        clean = part.strip()
+
+        if clean.isdigit():
+            target_value = clean
+            break
+
+        if clean.startswith("@"):
+            target_value = clean
+            break
+
+    if not target_value:
+        return None
+
+    # ==================================================
+    # ID
+    # ==================================================
+
+    if target_value.isdigit():
+
+        user_id = int(target_value)
+
+        conn = connect()
+        cur = None
 
         try:
 
-            user_id = int(
-                target_text
+            cur = conn.cursor()
+
+            cur.execute(
+                """
+                SELECT user_id, username, first_name
+                FROM users
+                WHERE user_id=?
+                """,
+                (user_id,)
             )
 
-        except Exception:
+            row = cur.fetchone()
 
-            return None, []
+        finally:
 
-        # --------------------------------------------------
-        # محاولة جلبه من Telegram
-        # --------------------------------------------------
+            if cur:
+                cur.close()
 
-        if chat:
+            conn.close()
 
-            try:
+        if row:
 
-                member = (
-                    await context.bot.get_chat_member(
-                        chat_id=chat.id,
-                        user_id=user_id,
-                    )
-                )
+            class StoredUser:
+                pass
 
-                if member and member.user:
+            user = StoredUser()
 
-                    return member.user, args
+            user.id = row[0]
+            user.username = row[1] or None
+            user.first_name = row[2] or ""
 
-            except TelegramError as e:
+            return user
 
-                print(
-                    f"[MODERATION] ID get_chat_member: {e}"
-                )
-
-        # --------------------------------------------------
-        # البحث في group_members
-        # --------------------------------------------------
-
-        if chat:
-
-            try:
-
-                conn = connect()
-                cur = conn.cursor()
-
-                try:
-
-                    cur.execute("""
-                    SELECT
-                        user_id,
-                        username,
-                        first_name
-                    FROM group_members
-                    WHERE chat_id = ?
-                    AND user_id = ?
-                    LIMIT 1
-                    """, (
-                        chat.id,
-                        user_id,
-                    ))
-
-                    row = cur.fetchone()
-
-                finally:
-
-                    cur.close()
-                    conn.close()
-
-                if row:
-
-                    return (
-                        build_user(
-                            row[0],
-                            row[2],
-                            row[1],
-                            False,
-                        ),
-                        args,
-                    )
-
-            except Exception as e:
-
-                print(
-                    f"[MODERATION] group_members ID error: {e}"
-                )
-
-        # --------------------------------------------------
-        # البحث في users
-        # --------------------------------------------------
-
+        # محاولة get_chat للـ ID
         try:
 
-            target = get_user_by_id_from_database(
+            user = await context.bot.get_chat(
                 user_id
             )
 
-            if target:
+            if user:
 
-                return target, args
+                save_target_user(user)
 
-        except Exception as e:
+                return user
 
-            print(
-                f"[MODERATION] users ID error: {e}"
-            )
+        except Exception:
+            pass
 
-        # --------------------------------------------------
-        # الأهم:
-        # ID صحيح = لا نحتاج أن يكون مسجل في DB
-        # --------------------------------------------------
-
-        return (
-            build_user(
-                user_id,
-                str(user_id),
-                None,
-                False,
-            ),
-            args,
-        )
+        return None
 
     # ==================================================
-    # 3 - Username
+    # Username
     #
-    # يقبل:
-    # @username
-    # username
+    # نعتمد على users لأن Telegram Bot API
+    # لا يوفر getChat لمستخدم عادي بالـusername.
     # ==================================================
 
-    username = clean_username(
-        target_text
-    )
+    username = target_value.lstrip("@").lower()
 
-    if not username:
-        return None, []
-
-    # --------------------------------------------------
-    # أولاً: كاش أعضاء المجموعة
-    # --------------------------------------------------
-
-    if chat:
-
-        try:
-
-            target = (
-                get_group_member_from_database(
-                    chat.id,
-                    username,
-                )
-            )
-
-            if target:
-
-                return target, args
-
-        except Exception as e:
-
-            print(
-                f"[MODERATION] group username error: {e}"
-            )
-
-    # --------------------------------------------------
-    # ثانياً: users
-    # --------------------------------------------------
+    conn = connect()
+    cur = None
 
     try:
 
-        target = get_user_from_database(
-            username
+        cur = conn.cursor()
+
+        cur.execute(
+            """
+            SELECT user_id, username, first_name
+            FROM users
+            WHERE LOWER(username)=?
+            LIMIT 1
+            """,
+            (username,)
         )
 
-        if target:
+        row = cur.fetchone()
 
-            return target, args
+    finally:
 
-    except Exception as e:
+        if cur:
+            cur.close()
 
-        print(
-            f"[MODERATION] users username error: {e}"
-        )
+        conn.close()
 
-    # --------------------------------------------------
-    # ثالثاً: جداول العقوبات
-    # --------------------------------------------------
+    if not row:
+        return None
 
-    if chat:
+    class StoredUser:
+        pass
 
-        try:
+    user = StoredUser()
 
-            target = (
-                get_moderation_user_from_database(
-                    chat.id,
-                    username,
-                )
-            )
+    user.id = row[0]
+    user.username = row[1] or None
+    user.first_name = row[2] or ""
 
-            if target:
-
-                return target, args
-
-        except Exception as e:
-
-            print(
-                f"[MODERATION] moderation username error: {e}"
-            )
-
-    # --------------------------------------------------
-    # رابعاً: Telegram
-    # --------------------------------------------------
-
-    try:
-
-        user_info = await context.bot.get_chat(
-            f"@{username}"
-        )
-
-        if user_info:
-
-            return (
-                build_user(
-                    user_info.id,
-                    getattr(
-                        user_info,
-                        "first_name",
-                        None,
-                    ),
-                    getattr(
-                        user_info,
-                        "username",
-                        username,
-                    ),
-                    getattr(
-                        user_info,
-                        "is_bot",
-                        False,
-                    ),
-                ),
-                args,
-            )
-
-    except TelegramError as e:
-
-        print(
-            f"[MODERATION] Telegram username lookup: {e}"
-        )
-
-    except Exception as e:
-
-        print(
-            f"[MODERATION] username lookup: {e}"
-        )
-
-    return None, []
+    return user
 
 
 # ==================================================
-# منشن
+# منشن المستخدم
 # ==================================================
 
 def mention_user(user):
 
-    name = escape(
-        user.first_name
-        or user.username
+    if not user:
+        return ""
+
+    name = (
+        getattr(user, "first_name", None)
+        or getattr(user, "username", None)
         or str(user.id)
     )
+
+    name = html_escape(name)
 
     return (
         f'<a href="tg://user?id={user.id}">'
@@ -1096,2093 +463,1017 @@ def mention_user(user):
 
 
 # ==================================================
-# تحليل المدة والسبب
+# استخراج المدة
 # ==================================================
 
-def parse_action_options(
-    args,
-    settings,
+DURATION_PATTERN = re.compile(
+    r"^(\d+)\s*"
+    r"(ث|ثانية|ثواني|"
+    r"د|دقيقة|دقائق|"
+    r"س|ساعة|ساعات|"
+    r"ي|يوم|أيام)$",
+    re.IGNORECASE
+)
+
+
+def parse_duration_token(token):
+
+    token = token.strip()
+
+    match = DURATION_PATTERN.match(token)
+
+    if not match:
+        return None
+
+    amount = int(match.group(1))
+    unit = match.group(2)
+
+    if amount <= 0:
+        return None
+
+    if unit in ("ث", "ثانية", "ثواني"):
+        return amount
+
+    if unit in ("د", "دقيقة", "دقائق"):
+        return amount * 60
+
+    if unit in ("س", "ساعة", "ساعات"):
+        return amount * 60 * 60
+
+    if unit in ("ي", "يوم", "أيام"):
+        return amount * 24 * 60 * 60
+
+    return None
+
+
+# ==================================================
+# تحليل أمر العقوبة
+# ==================================================
+
+ACTION_NAMES = {
+    "كتم": "mute",
+    "تقييد": "restrict",
+    "حظر": "ban",
+}
+
+
+def parse_moderation_command(
+    text,
+    durations_enabled,
+    reasons_enabled
 ):
 
-    duration_seconds = None
-    reason = None
+    parts = text.strip().split()
 
-    remaining = list(args)
+    if not parts:
+        return None
 
-    if (
-        settings["durations_enabled"]
-        and remaining
-    ):
+    action_word = parts[0]
 
-        parsed = parse_duration(
-            remaining[0]
+    if action_word not in ACTION_NAMES:
+        return None
+
+    action = ACTION_NAMES[action_word]
+
+    rest = parts[1:]
+
+    duration = None
+    duration_index = None
+
+    # ==================================================
+    # المدة
+    # ==================================================
+
+    if rest:
+
+        parsed = parse_duration_token(
+            rest[0]
         )
 
-        if parsed:
+        if parsed is not None:
 
-            duration_seconds = parsed
-            remaining = remaining[1:]
+            if not durations_enabled:
+                return None
 
-    if (
-        settings["reasons_enabled"]
-        and remaining
-    ):
+            duration = parsed
+            duration_index = 0
 
-        reason = " ".join(
-            remaining
-        ).strip()
+    # ==================================================
+    # الهدف
+    # ==================================================
 
-    return (
-        duration_seconds,
-        reason,
-    )
+    target_index = None
+
+    for i, part in enumerate(rest):
+
+        if duration_index == i:
+            continue
+
+        clean = part.strip()
+
+        if clean.isdigit() or clean.startswith("@"):
+
+            target_index = i
+            break
+
+    # ==================================================
+    # إذا كان بالرد
+    # الهدف لا يحتاج وجوده في النص
+    # ==================================================
+
+    if target_index is None:
+        target_index = -1
+
+    # ==================================================
+    # السبب
+    # ==================================================
+
+    reason = None
+
+    if target_index >= 0:
+
+        after_target = rest[
+            target_index + 1:
+        ]
+
+        if after_target:
+
+            if not reasons_enabled:
+                return None
+
+            reason = " ".join(
+                after_target
+            )
+
+    # ==================================================
+    # مدة مفعلة بدون مدة
+    # ==================================================
+
+    if durations_enabled and duration is None:
+        duration = DEFAULT_DURATION
+
+    # ==================================================
+    # إذا المدة غير مفعلة
+    # ==================================================
+
+    if not durations_enabled:
+        duration = None
+
+    return {
+        "action": action,
+        "duration": duration,
+        "reason": reason,
+    }
 
 
 # ==================================================
-# فحص صلاحيات البوت
+# الحصول على نص العقوبة
 # ==================================================
 
-async def check_bot_permissions(
-    update,
-    context,
-    action,
+def action_name(action):
+
+    if action == "mute":
+        return "الكتم"
+
+    if action == "restrict":
+        return "التقييد"
+
+    if action == "ban":
+        return "الحظر"
+
+    return action
+
+
+# ==================================================
+# حفظ الكتم
+# ==================================================
+
+def save_mute(
+    chat_id,
+    user,
+    until_time,
+    reason,
+    by_user
 ):
 
-    message = update.effective_message
-    chat = update.effective_chat
-
-    if not message or not chat:
-        return False
+    conn = connect()
+    cur = None
 
     try:
 
-        me = await context.bot.get_me()
+        cur = conn.cursor()
 
-        member = await context.bot.get_chat_member(
-            chat_id=chat.id,
-            user_id=me.id,
-        )
-
-        if member.status not in (
-            "administrator",
-            "creator",
-        ):
-
-            await message.reply_text(
-                "• البوت ليس مشرفًا في المجموعة."
+        cur.execute(
+            """
+            INSERT INTO bot_mutes
+            (
+                chat_id,
+                user_id,
+                username,
+                first_name,
+                until_time,
+                reason,
+                by_user
             )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
 
-            return False
-
-        if action == "ban":
-
-            if not getattr(
-                member,
-                "can_restrict_members",
-                False,
-            ):
-
-                await message.reply_text(
-                    "• البوت لا يملك صلاحية حظر الأعضاء."
-                )
-
-                return False
-
-        elif action == "restrict":
-
-            if not getattr(
-                member,
-                "can_restrict_members",
-                False,
-            ):
-
-                await message.reply_text(
-                    "• البوت لا يملك صلاحية تقييد الأعضاء."
-                )
-
-                return False
-
-        return True
-
-    except TelegramError as e:
-
-        await message.reply_text(
-            "• تعذر التأكد من صلاحيات البوت.\n"
-            f"الخطأ ↤ {escape(str(e))}",
-            parse_mode="HTML",
+            ON CONFLICT(chat_id, user_id)
+            DO UPDATE SET
+                username=excluded.username,
+                first_name=excluded.first_name,
+                until_time=excluded.until_time,
+                reason=excluded.reason,
+                by_user=excluded.by_user
+            """,
+            (
+                chat_id,
+                user.id,
+                getattr(user, "username", None),
+                getattr(user, "first_name", None),
+                until_time,
+                reason,
+                by_user
+            )
         )
 
-        return False
+        conn.commit()
 
-    except Exception as e:
+    finally:
 
-        print(
-            f"[MODERATION] bot permissions error: {e}"
-        )
+        if cur:
+            cur.close()
 
-        return False
+        conn.close()
 
 
 # ==================================================
-# التأكد من الهدف
+# حفظ التقييد
 # ==================================================
 
-async def check_target(
-    update,
-    context,
-    target,
-    action=None,
+def save_restriction(
+    chat_id,
+    user,
+    until_time,
+    reason,
+    by_user
 ):
 
-    message = update.effective_message
-    actor = update.effective_user
-    chat = update.effective_chat
+    conn = connect()
+    cur = None
 
-    if not message or not actor or not target:
-        return False
+    try:
 
-    # ==================================================
-    # البوت
-    # ==================================================
+        cur = conn.cursor()
 
-    if target.is_bot:
+        cur.execute(
+            """
+            INSERT INTO restrictions
+            (
+                chat_id,
+                user_id,
+                username,
+                first_name,
+                until_time,
+                reason,
+                by_user
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
 
-        await message.reply_text(
-            "هذا بوت ياغبي😭😭 …"
+            ON CONFLICT(chat_id, user_id)
+            DO UPDATE SET
+                username=excluded.username,
+                first_name=excluded.first_name,
+                until_time=excluded.until_time,
+                reason=excluded.reason,
+                by_user=excluded.by_user
+            """,
+            (
+                chat_id,
+                user.id,
+                getattr(user, "username", None),
+                getattr(user, "first_name", None),
+                until_time,
+                reason,
+                by_user
+            )
         )
 
-        return False
+        conn.commit()
 
-    # ==================================================
-    # المطور الأساسي
-    # ==================================================
+    finally:
 
-    if is_primary_developer(actor.id):
+        if cur:
+            cur.close()
 
-        return True
+        conn.close()
 
-    # ==================================================
-    # حماية المطورين
-    # ==================================================
 
-    if (
-        is_primary_developer(target.id)
-        or is_secondary_developer(target.id)
-    ):
+# ==================================================
+# حفظ الحظر
+# ==================================================
 
-        if action == "mute":
+def save_ban(
+    chat_id,
+    user,
+    until_time,
+    reason,
+    by_user
+):
 
-            text = (
-                "• امسح عينك وشف من الي تبي "
-                "تكتمه ياورع!"
+    conn = connect()
+    cur = None
+
+    try:
+
+        cur = conn.cursor()
+
+        cur.execute(
+            """
+            INSERT INTO moderation_bans
+            (
+                chat_id,
+                user_id,
+                username,
+                first_name,
+                until_time,
+                reason,
+                by_user
             )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
 
-        elif action == "restrict":
-
-            text = (
-                "• امسح عينك وشف من الي تبي "
-                "تقيده ياورع!"
+            ON CONFLICT(chat_id, user_id)
+            DO UPDATE SET
+                username=excluded.username,
+                first_name=excluded.first_name,
+                until_time=excluded.until_time,
+                reason=excluded.reason,
+                by_user=excluded.by_user
+            """,
+            (
+                chat_id,
+                user.id,
+                getattr(user, "username", None),
+                getattr(user, "first_name", None),
+                until_time,
+                reason,
+                by_user
             )
-
-        elif action == "ban":
-
-            text = (
-                "• امسح عينك وشف من الي تبي "
-                "تحظره ياورع!"
-            )
-
-        else:
-
-            return False
-
-        await message.reply_text(
-            text
         )
 
-        return False
+        conn.commit()
 
-    # ==================================================
-    # نفسه
-    # ==================================================
+    finally:
 
-    if target.id == actor.id:
+        if cur:
+            cur.close()
 
-        await message.reply_text(
-            "• ما تقدر تطبق العقوبة على نفسك."
-        )
+        conn.close()
 
-        return False
 
-    # ==================================================
-    # التأكد من رتبة الهدف
-    # ==================================================
+# ==================================================
+# رسالة العقوبة
+# ==================================================
 
-    if not has_permission(
-        actor.id,
-        target.id,
-    ):
+def moderation_message(
+    action,
+    target,
+    duration
+):
 
-        if action == "mute":
-
-            text = (
-                "• امسح عينك وشف من الي تبي "
-                "تكتمه ياورع!"
-            )
-
-        elif action == "restrict":
-
-            text = (
-                "• امسح عينك وشف من الي تبي "
-                "تقيده ياورع!"
-            )
-
-        elif action == "ban":
-
-            text = (
-                "• امسح عينك وشف من الي تبي "
-                "تحظره ياورع!"
-            )
-
-        else:
-
-            return False
-
-        await message.reply_text(
-            text
-        )
-
-        return False
-
-    # ==================================================
-    # كتم البوت
-    #
-    # لا نحتاج Telegram API هنا
-    # ==================================================
+    mention = mention_user(target)
 
     if action == "mute":
 
-        return True
-
-    # ==================================================
-    # الحظر / التقييد
-    # ==================================================
-
-    if action in (
-        "ban",
-        "restrict",
-    ):
-
-        if not chat:
-            return False
-
-        try:
-
-            member = (
-                await context.bot.get_chat_member(
-                    chat_id=chat.id,
-                    user_id=target.id,
-                )
-            )
-
-            if member.status in (
-                "administrator",
-                "creator",
-            ):
-
-                if action == "ban":
-
-                    await message.reply_text(
-                        "• ما أقدر أحظر هذا المستخدم لأنه مشرف في المجموعة."
-                    )
-
-                else:
-
-                    await message.reply_text(
-                        "• ما أقدر أقيد هذا المستخدم لأنه مشرف في المجموعة."
-                    )
-
-                return False
-
-        except TelegramError as e:
-
-            # إذا كان المستخدم غير موجود في المجموعة
-            # لا نمنعه من الحظر بالـ ID.
-            error_text = str(e).lower()
-
-            if (
-                "user not found" not in error_text
-                and "member not found" not in error_text
-                and "chat member not found" not in error_text
-            ):
-
-                print(
-                    f"[MODERATION] target member check: {e}"
-                )
-
-        except Exception as e:
-
-            print(
-                f"[MODERATION] target member check: {e}"
-            )
-
-    return True
-
-
-# ==================================================
-# عدم العثور على المستخدم
-# ==================================================
-
-async def target_not_found_message(
-    message,
-    target_text=None,
-):
-
-    if target_text:
-
-        safe_target = escape(
-            str(target_text)
+        text = (
+            "تم كتمته لين يهجد بعدين فكوه\n"
+            f"المستخدم ↤︎ {mention}"
         )
 
-        await message.reply_text(
-            "• ما قدرت أحدد المستخدم.\n\n"
-            f"المطلوب ↤ {safe_target}\n\n"
-            "• جرّب الرد على رسالة الشخص مباشرة، "
-            "أو استخدم الـ ID.\n"
-            "• اليوزر يقبل @username أو username.",
-            parse_mode="HTML",
+    elif action == "restrict":
+
+        text = (
+            "تم تقييده لين يهجد بعدين فكوه\n"
+            f"المستخدم ↤︎ {mention}"
         )
 
     else:
-
-        await message.reply_text(
-            "• ما قدرت أحدد المستخدم.\n\n"
-            "• جرّب الرد على رسالة الشخص مباشرة، "
-            "أو استخدم الـ ID أو @username."
-        )
-
-
-# ==================================================
-# الحظر
-# ==================================================
-
-async def ban_user(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
-    message = update.effective_message
-    chat = update.effective_chat
-    actor = update.effective_user
-
-    if not message or not chat or not actor:
-        return
-
-    if chat.type not in (
-        "group",
-        "supergroup",
-    ):
-        return
-
-    # ==================================================
-    # التأكد من صلاحية البوت
-    # ==================================================
-
-    if not await check_bot_permissions(
-        update,
-        context,
-        "ban",
-    ):
-        return
-
-    # ==================================================
-    # تحديد الهدف
-    # ==================================================
-
-    target, args = await resolve_target(
-        update,
-        context,
-    )
-
-    if not target:
-
-        parts = (
-            message.text or ""
-        ).split()
-
-        await target_not_found_message(
-            message,
-            parts[1] if len(parts) > 1 else None,
-        )
-
-        return
-
-    # ==================================================
-    # فحص الهدف
-    # ==================================================
-
-    if not await check_target(
-        update,
-        context,
-        target,
-        "ban",
-    ):
-        return
-
-    settings = get_settings(
-        chat.id
-    )
-
-    duration_seconds, reason = (
-        parse_action_options(
-            args,
-            settings,
-        )
-    )
-
-    until_time = None
-    until_date = None
-
-    if duration_seconds:
-
-        until_date = (
-            datetime.now(
-                timezone.utc
-            )
-            + timedelta(
-                seconds=duration_seconds
-            )
-        )
-
-        until_time = (
-            until_date.isoformat()
-        )
-
-    # ==================================================
-    # Telegram Ban
-    # ==================================================
-
-    try:
-
-        await context.bot.ban_chat_member(
-            chat_id=chat.id,
-            user_id=target.id,
-            until_date=until_date,
-        )
-
-    except TelegramError as e:
-
-        print(
-            f"[MODERATION] BAN ERROR: {e}"
-        )
-
-        await message.reply_text(
-            "• فشل الحظر من Telegram.\n"
-            f"الخطأ ↤ {escape(str(e))}",
-            parse_mode="HTML",
-        )
-
-        return
-
-    except Exception as e:
-
-        print(
-            f"[MODERATION] BAN UNKNOWN ERROR: {e}"
-        )
-
-        await message.reply_text(
-            "• حدث خطأ أثناء الحظر.\n"
-            f"الخطأ ↤ {escape(str(e))}",
-            parse_mode="HTML",
-        )
-
-        return
-
-    # ==================================================
-    # حفظ العقوبة
-    # ==================================================
-
-    conn = connect()
-    cur = conn.cursor()
-
-    try:
-
-        cur.execute("""
-        INSERT INTO moderation_bans
-        (
-            chat_id,
-            user_id,
-            username,
-            first_name,
-            until_time,
-            reason,
-            by_user
-        )
-        VALUES
-        (
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?
-        )
-        ON CONFLICT
-        (
-            chat_id,
-            user_id
-        )
-        DO UPDATE SET
-            username = EXCLUDED.username,
-            first_name = EXCLUDED.first_name,
-            until_time = EXCLUDED.until_time,
-            reason = EXCLUDED.reason,
-            by_user = EXCLUDED.by_user
-        """, (
-            chat.id,
-            target.id,
-            target.username,
-            target.first_name,
-            until_time,
-            reason,
-            actor.id,
-        ))
-
-        cur.execute("""
-        INSERT INTO moderation_logs
-        (
-            action,
-            user_id,
-            by_user,
-            date
-        )
-        VALUES
-        (
-            ?,
-            ?,
-            ?,
-            ?
-        )
-        """, (
-            "ban",
-            target.id,
-            actor.id,
-            datetime.now(
-                timezone.utc
-            ).isoformat(),
-        ))
-
-        conn.commit()
-
-    except Exception as e:
-
-        conn.rollback()
-
-        print(
-            f"[MODERATION] BAN DB ERROR: {e}"
-        )
-
-        # الحظر تم فعليًا في Telegram،
-        # لذلك لا نقول إن الحظر فشل.
-        await message.reply_text(
-            "• تم الحظر من Telegram، "
-            "لكن تعذر حفظ العقوبة في قاعدة البيانات.\n"
-            f"الخطأ ↤ {escape(str(e))}",
-            parse_mode="HTML",
-        )
-
-        return
-
-    finally:
-
-        cur.close()
-        conn.close()
-
-    actor_rank = get_rank(
-        actor.id
-    )
-
-    text = (
-        f"تم حظرته لعيونك يـ "
-        f"{escape(actor_rank)}\n"
-        f"المستخدم ↤ "
-        f"{mention_user(target)}"
-    )
-
-    if (
-        settings["durations_enabled"]
-        and duration_seconds
-    ):
-
-        text += (
-            f"\nمدة حظره ↤ "
-            f"{format_duration(duration_seconds)}"
-        )
-
-    if (
-        settings["reasons_enabled"]
-        and reason
-    ):
-
-        text += (
-            f"\nالسبب ↤ "
-            f"{escape(reason)}"
-        )
-
-    await message.reply_text(
-        text,
-        parse_mode="HTML",
-    )
-
-
-# ==================================================
-# رفع الحظر
-# ==================================================
-
-async def unban_user(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
-    message = update.effective_message
-    chat = update.effective_chat
-    actor = update.effective_user
-
-    if not message or not chat or not actor:
-        return
-
-    if chat.type not in (
-        "group",
-        "supergroup",
-    ):
-        return
-
-    # ==================================================
-    # تحديد الهدف
-    # ==================================================
-
-    target, args = await resolve_target(
-        update,
-        context,
-    )
-
-    if not target:
-
-        parts = (
-            message.text or ""
-        ).split()
-
-        await target_not_found_message(
-            message,
-            parts[1] if len(parts) > 1 else None,
-        )
-
-        return
-
-    # ==================================================
-    # البوت
-    # ==================================================
-
-    if target.is_bot:
-
-        await message.reply_text(
-            "هذا بوت ياغبي😭😭 …"
-        )
-
-        return
-
-    # ==================================================
-    # الصلاحيات
-    # ==================================================
-
-    if not is_primary_developer(actor.id):
-
-        if not has_permission(
-            actor.id,
-            target.id,
-        ):
-            return
-
-    # ==================================================
-    # Telegram
-    # ==================================================
-
-    try:
-
-        await context.bot.unban_chat_member(
-            chat_id=chat.id,
-            user_id=target.id,
-            only_if_banned=True,
-        )
-
-    except TelegramError as e:
-
-        error_text = str(e).lower()
-
-        # إذا لم يكن محظوراً أصلاً
-        # نسمح بتنظيف قاعدة البيانات
-        if (
-            "not enough rights" in error_text
-            or "administrator" in error_text
-            or "chat_admin_required" in error_text
-        ):
-
-            await message.reply_text(
-                "• فشل رفع الحظر من Telegram.\n"
-                f"الخطأ ↤ {escape(str(e))}",
-                parse_mode="HTML",
-            )
-
-            return
-
-        print(
-            f"[MODERATION] UNBAN ERROR: {e}"
-        )
-
-    except Exception as e:
-
-        print(
-            f"[MODERATION] UNBAN UNKNOWN ERROR: {e}"
-        )
-
-        await message.reply_text(
-            "• فشل رفع الحظر.\n"
-            f"الخطأ ↤ {escape(str(e))}",
-            parse_mode="HTML",
-        )
-
-        return
-
-    # ==================================================
-    # قاعدة البيانات
-    # ==================================================
-
-    conn = connect()
-    cur = conn.cursor()
-
-    try:
-
-        cur.execute("""
-        DELETE FROM moderation_bans
-        WHERE chat_id = ?
-        AND user_id = ?
-        """, (
-            chat.id,
-            target.id,
-        ))
-
-        cur.execute("""
-        INSERT INTO moderation_logs
-        (
-            action,
-            user_id,
-            by_user,
-            date
-        )
-        VALUES
-        (
-            ?,
-            ?,
-            ?,
-            ?
-        )
-        """, (
-            "unban",
-            target.id,
-            actor.id,
-            datetime.now(
-                timezone.utc
-            ).isoformat(),
-        ))
-
-        conn.commit()
-
-    finally:
-
-        cur.close()
-        conn.close()
-
-    await message.reply_text(
-        f"• تم رفع الحظر عن "
-        f"{mention_user(target)}",
-        parse_mode="HTML",
-    )
-
-
-# ==================================================
-# الكتم الداخلي للبوت
-# ==================================================
-
-async def mute_user(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
-    message = update.effective_message
-    chat = update.effective_chat
-    actor = update.effective_user
-
-    if not message or not chat or not actor:
-        return
-
-    if chat.type not in (
-        "group",
-        "supergroup",
-    ):
-        return
-
-    # ==================================================
-    # تحديد الهدف
-    # ==================================================
-
-    target, args = await resolve_target(
-        update,
-        context,
-    )
-
-    if not target:
-
-        parts = (
-            message.text or ""
-        ).split()
-
-        await target_not_found_message(
-            message,
-            parts[1] if len(parts) > 1 else None,
-        )
-
-        return
-
-    # ==================================================
-    # فحص الهدف
-    # ==================================================
-
-    if not await check_target(
-        update,
-        context,
-        target,
-        "mute",
-    ):
-        return
-
-    settings = get_settings(
-        chat.id
-    )
-
-    duration_seconds, reason = (
-        parse_action_options(
-            args,
-            settings,
-        )
-    )
-
-    until_time = None
-
-    if duration_seconds:
-
-        until_time = (
-            datetime.now(
-                timezone.utc
-            )
-            + timedelta(
-                seconds=duration_seconds
-            )
-        ).isoformat()
-
-    # ==================================================
-    # حفظ الكتم
-    # ==================================================
-
-    conn = connect()
-    cur = conn.cursor()
-
-    try:
-
-        cur.execute("""
-        INSERT INTO bot_mutes
-        (
-            chat_id,
-            user_id,
-            username,
-            first_name,
-            until_time,
-            reason,
-            by_user
-        )
-        VALUES
-        (
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?
-        )
-        ON CONFLICT
-        (
-            chat_id,
-            user_id
-        )
-        DO UPDATE SET
-            username = EXCLUDED.username,
-            first_name = EXCLUDED.first_name,
-            until_time = EXCLUDED.until_time,
-            reason = EXCLUDED.reason,
-            by_user = EXCLUDED.by_user
-        """, (
-            chat.id,
-            target.id,
-            target.username,
-            target.first_name,
-            until_time,
-            reason,
-            actor.id,
-        ))
-
-        cur.execute("""
-        INSERT INTO moderation_logs
-        (
-            action,
-            user_id,
-            by_user,
-            date
-        )
-        VALUES
-        (
-            ?,
-            ?,
-            ?,
-            ?
-        )
-        """, (
-            "mute",
-            target.id,
-            actor.id,
-            datetime.now(
-                timezone.utc
-            ).isoformat(),
-        ))
-
-        conn.commit()
-
-    except Exception as e:
-
-        conn.rollback()
-
-        print(
-            f"[MODERATION] MUTE DB ERROR: {e}"
-        )
-
-        await message.reply_text(
-            "• فشل الكتم.\n"
-            f"الخطأ ↤ {escape(str(e))}",
-            parse_mode="HTML",
-        )
-
-        return
-
-    finally:
-
-        cur.close()
-        conn.close()
-
-    text = (
-        f"• تم كتمت الورع المزعج هذا "
-        f"{mention_user(target)}"
-    )
-
-    if (
-        settings["durations_enabled"]
-        and duration_seconds
-    ):
-
-        text += (
-            f"\nمدة الكتم ↤ "
-            f"{format_duration(duration_seconds)}"
-        )
-
-    if (
-        settings["reasons_enabled"]
-        and reason
-    ):
-
-        text += (
-            f"\nالسبب ↤ "
-            f"{escape(reason)}"
-        )
-
-    await message.reply_text(
-        text,
-        parse_mode="HTML",
-    )
-
-
-# ==================================================
-# رفع الكتم
-# ==================================================
-
-async def unmute_user(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
-    message = update.effective_message
-    chat = update.effective_chat
-    actor = update.effective_user
-
-    if not message or not chat or not actor:
-        return
-
-    if chat.type not in (
-        "group",
-        "supergroup",
-    ):
-        return
-
-    target, args = await resolve_target(
-        update,
-        context,
-    )
-
-    if not target:
-
-        parts = (
-            message.text or ""
-        ).split()
-
-        await target_not_found_message(
-            message,
-            parts[1] if len(parts) > 1 else None,
-        )
-
-        return
-
-    if target.is_bot:
-
-        await message.reply_text(
-            "هذا بوت ياغبي😭😭 …"
-        )
-
-        return
-
-    if not is_primary_developer(actor.id):
-
-        if not has_permission(
-            actor.id,
-            target.id,
-        ):
-            return
-
-    conn = connect()
-    cur = conn.cursor()
-
-    try:
-
-        cur.execute("""
-        DELETE FROM bot_mutes
-        WHERE chat_id = ?
-        AND user_id = ?
-        """, (
-            chat.id,
-            target.id,
-        ))
-
-        deleted_count = cur.rowcount
-
-        cur.execute("""
-        INSERT INTO moderation_logs
-        (
-            action,
-            user_id,
-            by_user,
-            date
-        )
-        VALUES
-        (
-            ?,
-            ?,
-            ?,
-            ?
-        )
-        """, (
-            "unmute",
-            target.id,
-            actor.id,
-            datetime.now(
-                timezone.utc
-            ).isoformat(),
-        ))
-
-        conn.commit()
-
-    except Exception as e:
-
-        conn.rollback()
-
-        print(
-            f"[MODERATION] UNMUTE ERROR: {e}"
-        )
-
-        await message.reply_text(
-            "• فشل رفع الكتم.\n"
-            f"الخطأ ↤ {escape(str(e))}",
-            parse_mode="HTML",
-        )
-
-        return
-
-    finally:
-
-        cur.close()
-        conn.close()
-
-    if deleted_count:
-
-        await message.reply_text(
-            f"• تم رفع الكتم عن "
-            f"{mention_user(target)}",
-            parse_mode="HTML",
-        )
-
-    else:
-
-        await message.reply_text(
-            f"• المستخدم "
-            f"{mention_user(target)} "
-            f"غير مكتوم أصلًا.",
-            parse_mode="HTML",
-        )
-
-
-# ==================================================
-# التقييد
-# ==================================================
-
-async def restrict_user(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
-    message = update.effective_message
-    chat = update.effective_chat
-    actor = update.effective_user
-
-    if not message or not chat or not actor:
-        return
-
-    if chat.type not in (
-        "group",
-        "supergroup",
-    ):
-        return
-
-    # ==================================================
-    # صلاحية البوت
-    # ==================================================
-
-    if not await check_bot_permissions(
-        update,
-        context,
-        "restrict",
-    ):
-        return
-
-    # ==================================================
-    # تحديد الهدف
-    # ==================================================
-
-    target, args = await resolve_target(
-        update,
-        context,
-    )
-
-    if not target:
-
-        parts = (
-            message.text or ""
-        ).split()
-
-        await target_not_found_message(
-            message,
-            parts[1] if len(parts) > 1 else None,
-        )
-
-        return
-
-    # ==================================================
-    # فحص الهدف
-    # ==================================================
-
-    if not await check_target(
-        update,
-        context,
-        target,
-        "restrict",
-    ):
-        return
-
-    settings = get_settings(
-        chat.id
-    )
-
-    duration_seconds, reason = (
-        parse_action_options(
-            args,
-            settings,
-        )
-    )
-
-    until_time = None
-    until_date = None
-
-    if duration_seconds:
-
-        until_date = (
-            datetime.now(
-                timezone.utc
-            )
-            + timedelta(
-                seconds=duration_seconds
-            )
-        )
-
-        until_time = (
-            until_date.isoformat()
-        )
-
-    # ==================================================
-    # صلاحيات التقييد
-    # ==================================================
-
-    permissions = ChatPermissions(
-        can_send_messages=False,
-        can_send_audios=False,
-        can_send_documents=False,
-        can_send_photos=False,
-        can_send_videos=False,
-        can_send_video_notes=False,
-        can_send_voice_notes=False,
-        can_send_polls=False,
-        can_send_other_messages=False,
-        can_add_web_page_previews=False,
-        can_invite_users=False,
-    )
-
-    # ==================================================
-    # Telegram Restrict
-    # ==================================================
-
-    try:
-
-        await context.bot.restrict_chat_member(
-            chat_id=chat.id,
-            user_id=target.id,
-            permissions=permissions,
-            until_date=until_date,
-        )
-
-    except TelegramError as e:
-
-        print(
-            f"[MODERATION] RESTRICT ERROR: {e}"
-        )
-
-        await message.reply_text(
-            "• فشل التقييد من Telegram.\n"
-            f"الخطأ ↤ {escape(str(e))}",
-            parse_mode="HTML",
-        )
-
-        return
-
-    except Exception as e:
-
-        print(
-            f"[MODERATION] RESTRICT UNKNOWN ERROR: {e}"
-        )
-
-        await message.reply_text(
-            "• حدث خطأ أثناء التقييد.\n"
-            f"الخطأ ↤ {escape(str(e))}",
-            parse_mode="HTML",
-        )
-
-        return
-
-    # ==================================================
-    # قاعدة البيانات
-    # ==================================================
-
-    conn = connect()
-    cur = conn.cursor()
-
-    try:
-
-        cur.execute("""
-        INSERT INTO restrictions
-        (
-            chat_id,
-            user_id,
-            username,
-            first_name,
-            until_time,
-            reason,
-            by_user
-        )
-        VALUES
-        (
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?
-        )
-        ON CONFLICT
-        (
-            chat_id,
-            user_id
-        )
-        DO UPDATE SET
-            username = EXCLUDED.username,
-            first_name = EXCLUDED.first_name,
-            until_time = EXCLUDED.until_time,
-            reason = EXCLUDED.reason,
-            by_user = EXCLUDED.by_user
-        """, (
-            chat.id,
-            target.id,
-            target.username,
-            target.first_name,
-            until_time,
-            reason,
-            actor.id,
-        ))
-
-        cur.execute("""
-        INSERT INTO moderation_logs
-        (
-            action,
-            user_id,
-            by_user,
-            date
-        )
-        VALUES
-        (
-            ?,
-            ?,
-            ?,
-            ?
-        )
-        """, (
-            "restrict",
-            target.id,
-            actor.id,
-            datetime.now(
-                timezone.utc
-            ).isoformat(),
-        ))
-
-        conn.commit()
-
-    except Exception as e:
-
-        conn.rollback()
-
-        print(
-            f"[MODERATION] RESTRICT DB ERROR: {e}"
-        )
-
-        await message.reply_text(
-            "• تم التقييد من Telegram، "
-            "لكن تعذر حفظه في قاعدة البيانات.\n"
-            f"الخطأ ↤ {escape(str(e))}",
-            parse_mode="HTML",
-        )
-
-        return
-
-    finally:
-
-        cur.close()
-        conn.close()
-
-    text = (
-        "تم قيدته لين يهجد بعدين فكوه\n"
-        f"المستخدم ↤ "
-        f"{mention_user(target)}"
-    )
-
-    if (
-        settings["durations_enabled"]
-        and duration_seconds
-    ):
-
-        text += (
-            f"\nمدة تقييده ↤ "
-            f"{format_duration(duration_seconds)}"
-        )
-
-    if (
-        settings["reasons_enabled"]
-        and reason
-    ):
-
-        text += (
-            f"\nالسبب ↤ "
-            f"{escape(reason)}"
-        )
-
-    await message.reply_text(
-        text,
-        parse_mode="HTML",
-    )
-
-
-# ==================================================
-# رفع التقييد
-# ==================================================
-
-async def unrestrict_user(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
-    message = update.effective_message
-    chat = update.effective_chat
-    actor = update.effective_user
-
-    if not message or not chat or not actor:
-        return
-
-    if chat.type not in (
-        "group",
-        "supergroup",
-    ):
-        return
-
-    target, args = await resolve_target(
-        update,
-        context,
-    )
-
-    if not target:
-
-        parts = (
-            message.text or ""
-        ).split()
-
-        await target_not_found_message(
-            message,
-            parts[1] if len(parts) > 1 else None,
-        )
-
-        return
-
-    if target.is_bot:
-
-        await message.reply_text(
-            "هذا بوت ياغبي😭😭 …"
-        )
-
-        return
-
-    if not is_primary_developer(actor.id):
-
-        if not has_permission(
-            actor.id,
-            target.id,
-        ):
-            return
-
-    # ==================================================
-    # إعطاء صلاحيات الإرسال الطبيعية
-    # ==================================================
-
-    permissions = ChatPermissions(
-        can_send_messages=True,
-        can_send_audios=True,
-        can_send_documents=True,
-        can_send_photos=True,
-        can_send_videos=True,
-        can_send_video_notes=True,
-        can_send_voice_notes=True,
-        can_send_polls=True,
-        can_send_other_messages=True,
-        can_add_web_page_previews=True,
-        can_invite_users=True,
-    )
-
-    try:
-
-        await context.bot.restrict_chat_member(
-            chat_id=chat.id,
-            user_id=target.id,
-            permissions=permissions,
-        )
-
-    except TelegramError as e:
-
-        print(
-            f"[MODERATION] UNRESTRICT ERROR: {e}"
-        )
-
-        await message.reply_text(
-            "• فشل رفع التقييد من Telegram.\n"
-            f"الخطأ ↤ {escape(str(e))}",
-            parse_mode="HTML",
-        )
-
-        return
-
-    except Exception as e:
-
-        print(
-            f"[MODERATION] UNRESTRICT UNKNOWN ERROR: {e}"
-        )
-
-        await message.reply_text(
-            "• حدث خطأ أثناء رفع التقييد.\n"
-            f"الخطأ ↤ {escape(str(e))}",
-            parse_mode="HTML",
-        )
-
-        return
-
-    # ==================================================
-    # قاعدة البيانات
-    # ==================================================
-
-    conn = connect()
-    cur = conn.cursor()
-
-    try:
-
-        cur.execute("""
-        DELETE FROM restrictions
-        WHERE chat_id = ?
-        AND user_id = ?
-        """, (
-            chat.id,
-            target.id,
-        ))
-
-        deleted_count = cur.rowcount
-
-        cur.execute("""
-        INSERT INTO moderation_logs
-        (
-            action,
-            user_id,
-            by_user,
-            date
-        )
-        VALUES
-        (
-            ?,
-            ?,
-            ?,
-            ?
-        )
-        """, (
-            "unrestrict",
-            target.id,
-            actor.id,
-            datetime.now(
-                timezone.utc
-            ).isoformat(),
-        ))
-
-        conn.commit()
-
-    finally:
-
-        cur.close()
-        conn.close()
-
-    if deleted_count:
-
-        await message.reply_text(
-            f"• تم رفع التقييد عن "
-            f"{mention_user(target)}",
-            parse_mode="HTML",
-        )
-
-    else:
-
-        await message.reply_text(
-            f"• تم رفع التقييد عن "
-            f"{mention_user(target)}",
-            parse_mode="HTML",
-        )
-
-
-# ==================================================
-# معلومات المستخدم
-# ==================================================
-
-async def check_user(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
-    message = update.effective_message
-    chat = update.effective_chat
-
-    if not message or not chat:
-        return
-
-    if chat.type not in (
-        "group",
-        "supergroup",
-    ):
-        return
-
-    target, args = await resolve_target(
-        update,
-        context,
-    )
-
-    if not target:
-
-        parts = (
-            message.text or ""
-        ).split()
-
-        await target_not_found_message(
-            message,
-            parts[1] if len(parts) > 1 else None,
-        )
-
-        return
-
-    conn = connect()
-    cur = conn.cursor()
-
-    try:
-
-        cur.execute("""
-        SELECT
-            until_time,
-            reason,
-            by_user
-        FROM bot_mutes
-        WHERE chat_id = ?
-        AND user_id = ?
-        """, (
-            chat.id,
-            target.id,
-        ))
-
-        mute = cur.fetchone()
-
-        cur.execute("""
-        SELECT
-            until_time,
-            reason,
-            by_user
-        FROM restrictions
-        WHERE chat_id = ?
-        AND user_id = ?
-        """, (
-            chat.id,
-            target.id,
-        ))
-
-        restriction = cur.fetchone()
-
-        cur.execute("""
-        SELECT
-            until_time,
-            reason,
-            by_user
-        FROM moderation_bans
-        WHERE chat_id = ?
-        AND user_id = ?
-        """, (
-            chat.id,
-            target.id,
-        ))
-
-        ban = cur.fetchone()
-
-    finally:
-
-        cur.close()
-        conn.close()
-
-    text = (
-        "• معلومات المستخدم\n"
-        f"المستخدم ↤ "
-        f"{mention_user(target)}"
-    )
-
-    try:
 
         rank = get_rank(
             target.id
         )
 
-    except Exception:
-
-        rank = "عضو"
-
-    if rank:
-
-        text += (
-            f"\nالرتبة ↤ "
-            f"{escape(rank)}"
+        text = (
+            f"تم حظرته لعيونك يـ "
+            f"{html_escape(rank)}\n"
+            f"المستخدم ↤︎ {mention}"
         )
 
-    if mute:
+    if duration is not None:
 
         text += (
-            "\n\n• الحالة ↤ مكتوم"
+            "\n"
+            f"مدة {action_name(action)} ↤︎ "
+            f"{format_duration(duration)}"
         )
 
-        if mute[0]:
+    return text
 
-            text += (
-                f"\nينتهي ↤ "
-                f"{escape(str(mute[0]))}"
-            )
 
-        if mute[1]:
+# ==================================================
+# تنسيق المدة
+# ==================================================
 
-            text += (
-                f"\nالسبب ↤ "
-                f"{escape(str(mute[1]))}"
-            )
+def format_duration(seconds):
 
-    if restriction:
+    seconds = int(seconds)
 
-        text += (
-            "\n\n• الحالة ↤ مقيد"
-        )
+    if seconds % 86400 == 0:
+        amount = seconds // 86400
+        return f"{amount} يوم"
 
-        if restriction[0]:
+    if seconds % 3600 == 0:
+        amount = seconds // 3600
+        return f"{amount} ساعة"
 
-            text += (
-                f"\nينتهي ↤ "
-                f"{escape(str(restriction[0]))}"
-            )
+    if seconds % 60 == 0:
+        amount = seconds // 60
+        return f"{amount} دقيقة"
 
-        if restriction[1]:
+    return f"{seconds} ثانية"
 
-            text += (
-                f"\nالسبب ↤ "
-                f"{escape(str(restriction[1]))}"
-            )
 
-    if ban:
+# ==================================================
+# تنفيذ العقوبة
+# ==================================================
 
-        text += (
-            "\n\n• الحالة ↤ محظور"
-        )
+async def moderation_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
-        if ban[0]:
+    if not update.message:
+        return
 
-            text += (
-                f"\nينتهي ↤ "
-                f"{escape(str(ban[0]))}"
-            )
+    if not update.effective_chat:
+        return
 
-        if ban[1]:
+    actor = update.effective_user
 
-            text += (
-                f"\nالسبب ↤ "
-                f"{escape(str(ban[1]))}"
-            )
+    if not actor:
+        return
 
-    if not mute and not restriction and not ban:
+    if not is_admin_or_higher(actor.id):
+        return
 
-        text += (
-            "\n\n• الحالة ↤ "
-            "لا توجد عليه عقوبة"
-        )
+    text = (
+        update.message.text or ""
+    ).strip()
 
-    await message.reply_text(
+    settings = get_moderation_settings(
+        update.effective_chat.id
+    )
+
+    parsed = parse_moderation_command(
         text,
-        parse_mode="HTML",
+        settings["durations_enabled"],
+        settings["reasons_enabled"]
+    )
+
+    if not parsed:
+        return
+
+    target = await resolve_target(
+        update,
+        context
+    )
+
+    if not target:
+        return
+
+    # ==================================================
+    # البوت
+    # ==================================================
+
+    if target.id == context.bot.id:
+
+        await update.message.reply_text(
+            "هذا بوت ياغبي😭😭 …"
+        )
+
+        return
+
+    # ==================================================
+    # منع معاقبة النفس
+    # ==================================================
+
+    if target.id == actor.id:
+        return
+
+    save_target_user(target)
+
+    action = parsed["action"]
+    duration = parsed["duration"]
+    reason = parsed["reason"]
+
+    until_timestamp = None
+
+    if duration is not None:
+
+        until_timestamp = (
+            now_timestamp() + duration
+        )
+
+    until_time = timestamp_to_iso(
+        until_timestamp
+    )
+
+    chat_id = update.effective_chat.id
+
+    # ==================================================
+    # الكتم
+    # ==================================================
+
+    if action == "mute":
+
+        save_mute(
+            chat_id,
+            target,
+            until_time,
+            reason,
+            actor.id
+        )
+
+    # ==================================================
+    # التقييد
+    # ==================================================
+
+    elif action == "restrict":
+
+        try:
+
+            from telegram import ChatPermissions
+
+            permissions = ChatPermissions(
+                can_send_messages=False
+            )
+
+            await context.bot.restrict_chat_member(
+                chat_id=chat_id,
+                user_id=target.id,
+                permissions=permissions,
+                until_date=until_timestamp
+                if until_timestamp
+                else None
+            )
+
+        except Exception:
+            return
+
+        save_restriction(
+            chat_id,
+            target,
+            until_time,
+            reason,
+            actor.id
+        )
+
+    # ==================================================
+    # الحظر
+    # ==================================================
+
+    elif action == "ban":
+
+        try:
+
+            await context.bot.ban_chat_member(
+                chat_id=chat_id,
+                user_id=target.id,
+                until_date=until_timestamp
+                if until_timestamp
+                else None
+            )
+
+        except Exception:
+            return
+
+        save_ban(
+            chat_id,
+            target,
+            until_time,
+            reason,
+            actor.id
+        )
+
+    await update.message.reply_text(
+        moderation_message(
+            action,
+            target,
+            duration
+        ),
+        parse_mode="HTML"
     )
 
 
 # ==================================================
-# إعدادات القوائم
+# التحقق من الكتم
 # ==================================================
 
-LIST_CONFIG = {
-
-    "mute": {
-        "table": "bot_mutes",
-        "title": "المكتومين",
-        "button": "مسح المكتومين",
-    },
-
-    "restrict": {
-        "table": "restrictions",
-        "title": "المقيدين",
-        "button": "مسح المقيدين",
-    },
-
-    "ban": {
-        "table": "moderation_bans",
-        "title": "المحظورين",
-        "button": "مسح المحظورين",
-    },
-}
-
-
-# ==================================================
-# القوائم
-# ==================================================
-
-async def moderation_list_command(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
-    message = update.effective_message
-    chat = update.effective_chat
-
-    if not message or not chat:
-        return
-
-    if chat.type not in (
-        "group",
-        "supergroup",
-    ):
-        return
-
-    text = (
-        message.text or ""
-    ).strip()
-
-    if text == "المكتومين":
-
-        list_type = "mute"
-
-    elif text == "المقيدين":
-
-        list_type = "restrict"
-
-    elif text == "المحظورين":
-
-        list_type = "ban"
-
-    else:
-        return
-
-    config = LIST_CONFIG[
-        list_type
-    ]
+def get_active_mute(chat_id, user_id):
 
     conn = connect()
-    cur = conn.cursor()
+    cur = None
 
     try:
 
-        cur.execute(f"""
-        SELECT
-            user_id,
-            username,
-            first_name
-        FROM {config["table"]}
-        WHERE chat_id = ?
-        ORDER BY user_id
-        """, (
-            chat.id,
-        ))
+        cur = conn.cursor()
 
-        rows = cur.fetchall()
+        cur.execute(
+            """
+            SELECT until_time
+            FROM bot_mutes
+            WHERE chat_id=?
+            AND user_id=?
+            """,
+            (
+                chat_id,
+                user_id
+            )
+        )
+
+        row = cur.fetchone()
 
     finally:
 
-        cur.close()
+        if cur:
+            cur.close()
+
         conn.close()
 
-    result = (
-        f"• قائمه {config['title']}\n"
-        " ━━━━━━━━━━━━\n"
+    if not row:
+        return None
+
+    until = iso_to_timestamp(
+        row[0]
     )
 
-    if not rows:
-
-        result += "لا يوجد أحد."
-
-    else:
-
-        lines = []
-
-        for index, row in enumerate(
-            rows,
-            start=1,
-        ):
-
-            user_id = row[0]
-            username = row[1]
-            first_name = row[2]
-
-            if username:
-
-                display = (
-                    f"@{escape(username)}"
-                )
-
-            else:
-
-                fake_user = build_user(
-                    user_id,
-                    first_name,
-                    None,
-                    False,
-                )
-
-                display = mention_user(
-                    fake_user
-                )
-
-            lines.append(
-                f"{index} - {display}"
+    if until is not None:
+        if now_timestamp() >= until:
+            delete_mute(
+                chat_id,
+                user_id
             )
+            return None
 
-        result += "\n".join(
-            lines
-        )
-
-    keyboard = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton(
-                config["button"],
-                callback_data=(
-                    f"modclear:{list_type}"
-                ),
-            )
-        ]
-    ])
-
-    await message.reply_text(
-        result,
-        reply_markup=keyboard,
-        parse_mode="HTML",
-    )
+    return row[0]
 
 
-# ==================================================
-# مسح القوائم
-# ==================================================
-
-async def clear_moderation_command(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
-    message = update.effective_message
-    chat = update.effective_chat
-    actor = update.effective_user
-
-    if not message or not chat or not actor:
-        return
-
-    if chat.type not in (
-        "group",
-        "supergroup",
-    ):
-        return
-
-    text = (
-        message.text or ""
-    ).strip()
-
-    if text == "مسح المكتومين":
-
-        list_type = "mute"
-
-    elif text == "مسح المقيدين":
-
-        list_type = "restrict"
-
-    elif text == "مسح المحظورين":
-
-        list_type = "ban"
-
-    else:
-        return
-
-    minimum_rank = (
-        3
-        if list_type == "ban"
-        else 2
-    )
-
-    if not has_group_permission(
-        actor.id,
-        minimum_rank,
-    ):
-        return
-
-    await clear_moderation(
-        chat.id,
-        list_type,
-        context,
-    )
-
-    config = LIST_CONFIG[
-        list_type
-    ]
-
-    await message.reply_text(
-        f"• تم مسح {config['title']} ."
-    )
-
-
-# ==================================================
-# تنفيذ المسح
-# ==================================================
-
-async def clear_moderation(
-    chat_id,
-    list_type,
-    context,
-):
-
-    config = LIST_CONFIG[
-        list_type
-    ]
+def delete_mute(chat_id, user_id):
 
     conn = connect()
-    cur = conn.cursor()
+    cur = None
 
     try:
 
-        cur.execute(f"""
-        SELECT user_id
-        FROM {config["table"]}
-        WHERE chat_id = ?
-        """, (
+        cur = conn.cursor()
+
+        cur.execute(
+            """
+            DELETE FROM bot_mutes
+            WHERE chat_id=?
+            AND user_id=?
+            """,
+            (
+                chat_id,
+                user_id
+            )
+        )
+
+        conn.commit()
+
+    finally:
+
+        if cur:
+            cur.close()
+
+        conn.close()
+
+
+# ==================================================
+# حذف رسالة المكتوم
+# ==================================================
+
+async def check_muted_message(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not update.message:
+        return
+
+    if not update.effective_chat:
+        return
+
+    user = update.effective_user
+
+    if not user:
+        return
+
+    chat_id = update.effective_chat.id
+
+    if get_active_mute(
+        chat_id,
+        user.id
+    ) is None:
+        return
+
+    try:
+
+        await update.message.delete()
+
+    except Exception:
+        pass
+
+
+# ==================================================
+# إزالة القيود
+# ==================================================
+
+async def clear_user_restriction(
+    chat_id,
+    user_id
+):
+
+    try:
+
+        from telegram import ChatPermissions
+
+        permissions = ChatPermissions(
+            can_send_messages=True,
+            can_send_audios=True,
+            can_send_documents=True,
+            can_send_photos=True,
+            can_send_videos=True,
+            can_send_video_notes=True,
+            can_send_voice_notes=True,
+            can_send_polls=True,
+            can_send_other_messages=True,
+            can_add_web_page_previews=True,
+            can_change_info=False,
+            can_invite_users=True,
+            can_pin_messages=False,
+            can_manage_topics=True,
+        )
+
+        await context.bot.restrict_chat_member(
+            chat_id=chat_id,
+            user_id=user_id,
+            permissions=permissions
+        )
+
+    except Exception:
+        pass
+
+
+# ==================================================
+# جلب القيود
+# ==================================================
+
+def get_user_restrictions(
+    chat_id,
+    user_id
+):
+
+    conn = connect()
+    cur = None
+
+    result = []
+
+    try:
+
+        cur = conn.cursor()
+
+        cur.execute(
+            """
+            SELECT until_time
+            FROM bot_mutes
+            WHERE chat_id=? AND user_id=?
+            """,
+            (chat_id, user_id)
+        )
+
+        if cur.fetchone():
+            result.append("كتم")
+
+        cur.execute(
+            """
+            SELECT until_time
+            FROM restrictions
+            WHERE chat_id=? AND user_id=?
+            """,
+            (chat_id, user_id)
+        )
+
+        if cur.fetchone():
+            result.append("تقييد")
+
+        cur.execute(
+            """
+            SELECT until_time
+            FROM moderation_bans
+            WHERE chat_id=? AND user_id=?
+            """,
+            (chat_id, user_id)
+        )
+
+        if cur.fetchone():
+            result.append("حظر")
+
+        return result
+
+    finally:
+
+        if cur:
+            cur.close()
+
+        conn.close()
+
+
+# ==================================================
+# حذف قيد
+# ==================================================
+
+def delete_restriction_record(
+    table,
+    chat_id,
+    user_id
+):
+
+    allowed = {
+        "bot_mutes",
+        "restrictions",
+        "moderation_bans"
+    }
+
+    if table not in allowed:
+        return
+
+    conn = connect()
+    cur = None
+
+    try:
+
+        cur = conn.cursor()
+
+        cur.execute(
+            f"""
+            DELETE FROM {table}
+            WHERE chat_id=? AND user_id=?
+            """,
+            (
+                chat_id,
+                user_id
+            )
+        )
+
+        conn.commit()
+
+    finally:
+
+        if cur:
+            cur.close()
+
+        conn.close()
+
+
+# ==================================================
+# إلغاء الكتم
+# ==================================================
+
+async def unmute_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    await remove_one_restriction(
+        update,
+        context,
+        "mute"
+    )
+
+
+# ==================================================
+# إلغاء التقييد
+# ==================================================
+
+async def unrestrict_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    await remove_one_restriction(
+        update,
+        context,
+        "restrict"
+    )
+
+
+# ==================================================
+# إلغاء الحظر
+# ==================================================
+
+async def unban_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    actor = update.effective_user
+
+    if not actor:
+        return
+
+    if not is_basic_admin_or_higher(actor.id):
+        return
+
+    await remove_one_restriction(
+        update,
+        context,
+        "ban"
+    )
+
+
+# ==================================================
+# إزالة قيد واحد
+# ==================================================
+
+async def remove_one_restriction(
+    update,
+    context,
+    action
+):
+
+    if not update.message:
+        return
+
+    actor = update.effective_user
+
+    if not actor:
+        return
+
+    if not is_admin_or_higher(actor.id):
+        return
+
+    target = await resolve_target(
+        update,
+        context
+    )
+
+    if not target:
+        return
+
+    if target.id == context.bot.id:
+
+        await update.message.reply_text(
+            "هذا بوت ياغبي😭😭 …"
+        )
+
+        return
+
+    chat_id = update.effective_chat.id
+
+    if action == "mute":
+
+        exists = get_user_restrictions(
             chat_id,
-        ))
+            target.id
+        )
 
-        users = cur.fetchall()
+        if "كتم" not in exists:
+            return
 
-        if list_type == "ban":
+        delete_restriction_record(
+            "bot_mutes",
+            chat_id,
+            target.id
+        )
 
-            for row in users:
+        text = (
+            "فكيت عنه الكتم يارب يعقل 🙏🏻\n"
+            f"• المستخدم ↤︎ {mention_user(target)}"
+        )
 
-                try:
+    elif action == "restrict":
 
-                    await context.bot.unban_chat_member(
-                        chat_id=chat_id,
-                        user_id=row[0],
-                        only_if_banned=True,
-                    )
+        exists = get_user_restrictions(
+            chat_id,
+            target.id
+        )
 
-                except Exception:
-                    pass
+        if "تقييد" not in exists:
+            return
 
-        elif list_type == "restrict":
+        try:
+
+            from telegram import ChatPermissions
 
             permissions = ChatPermissions(
                 can_send_messages=True,
@@ -3196,267 +1487,852 @@ async def clear_moderation(
                 can_send_other_messages=True,
                 can_add_web_page_previews=True,
                 can_invite_users=True,
+                can_manage_topics=True,
             )
 
-            for row in users:
+            await context.bot.restrict_chat_member(
+                chat_id=chat_id,
+                user_id=target.id,
+                permissions=permissions
+            )
 
-                try:
+        except Exception:
+            return
 
-                    await context.bot.restrict_chat_member(
-                        chat_id=chat_id,
-                        user_id=row[0],
-                        permissions=permissions,
-                    )
-
-                except Exception:
-                    pass
-
-        cur.execute(f"""
-        DELETE FROM {config["table"]}
-        WHERE chat_id = ?
-        """, (
+        delete_restriction_record(
+            "restrictions",
             chat_id,
-        ))
+            target.id
+        )
 
-        conn.commit()
+        text = (
+            "فكيت عنه يارب يعقل 🙏🏻\n"
+            f"• المستخدم ↤︎ {mention_user(target)}"
+        )
 
-    except Exception:
+    else:
 
-        conn.rollback()
+        if not is_basic_admin_or_higher(actor.id):
+            return
 
-        raise
+        exists = get_user_restrictions(
+            chat_id,
+            target.id
+        )
 
-    finally:
+        if "حظر" not in exists:
+            return
 
-        cur.close()
-        conn.close()
+        try:
 
+            await context.bot.unban_chat_member(
+                chat_id=chat_id,
+                user_id=target.id,
+                only_if_banned=False
+            )
 
-# ==================================================
-# أزرار القوائم
-# ==================================================
+        except Exception:
+            return
 
-async def moderation_callback(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
+        delete_restriction_record(
+            "moderation_bans",
+            chat_id,
+            target.id
+        )
 
-    query = update.callback_query
+        text = (
+            "فكيت عنه يارب يعقل 🙏🏻\n"
+            f"المستخدم ↤︎ {mention_user(target)}"
+        )
 
-    if not query or not query.message:
-        return
-
-    data = query.data or ""
-
-    if not data.startswith(
-        "modclear:"
-    ):
-        return
-
-    list_type = data.split(
-        ":",
-        1,
-    )[1]
-
-    if list_type not in LIST_CONFIG:
-        return
-
-    actor = query.from_user
-    chat = query.message.chat
-
-    minimum_rank = (
-        3
-        if list_type == "ban"
-        else 2
+    await update.message.reply_text(
+        text,
+        parse_mode="HTML"
     )
 
-    if not has_group_permission(
-        actor.id,
-        minimum_rank,
-    ):
 
-        await query.answer(
-            "ما عندك صلاحية.",
-            show_alert=True,
+# ==================================================
+# رفع القيود
+# ==================================================
+
+async def clear_restrictions_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not update.message:
+        return
+
+    actor = update.effective_user
+
+    if not actor:
+        return
+
+    if not is_admin_or_higher(actor.id):
+        return
+
+    target = await resolve_target(
+        update,
+        context
+    )
+
+    if not target:
+        return
+
+    if target.id == context.bot.id:
+
+        await update.message.reply_text(
+            "هذا بوت ياغبي😭😭 …"
         )
 
         return
 
-    await query.answer()
+    chat_id = update.effective_chat.id
 
-    await clear_moderation(
-        chat.id,
-        list_type,
-        context,
+    restrictions = get_user_restrictions(
+        chat_id,
+        target.id
     )
 
-    title = LIST_CONFIG[
-        list_type
-    ]["title"]
-
-    await query.edit_message_text(
-        f"• تم مسح {title} ."
-    )
-
-
-# ==================================================
-# حذف رسائل المكتومين
-# ==================================================
-
-async def delete_bot_muted_messages(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-
-    message = update.effective_message
-    chat = update.effective_chat
-    user = update.effective_user
-
-    if not message or not chat or not user:
+    if not restrictions:
         return
 
-    if chat.type not in (
-        "group",
-        "supergroup",
-    ):
-        return
+    # ==================================================
+    # الكتم
+    # ==================================================
 
-    if user.is_bot:
-        return
+    if "كتم" in restrictions:
 
-    conn = connect()
-    cur = conn.cursor()
+        delete_restriction_record(
+            "bot_mutes",
+            chat_id,
+            target.id
+        )
 
-    try:
+    # ==================================================
+    # التقييد
+    # ==================================================
 
-        cur.execute("""
-        SELECT until_time
-        FROM bot_mutes
-        WHERE chat_id = ?
-        AND user_id = ?
-        """, (
-            chat.id,
-            user.id,
-        ))
-
-        row = cur.fetchone()
-
-        if not row:
-            return
-
-        until_time = row[0]
-
-        if until_time:
-
-            try:
-
-                expiry = datetime.fromisoformat(
-                    until_time
-                )
-
-                if expiry.tzinfo is None:
-
-                    expiry = expiry.replace(
-                        tzinfo=timezone.utc
-                    )
-
-                if (
-                    datetime.now(
-                        timezone.utc
-                    )
-                    >= expiry
-                ):
-
-                    cur.execute("""
-                    DELETE FROM bot_mutes
-                    WHERE chat_id = ?
-                    AND user_id = ?
-                    """, (
-                        chat.id,
-                        user.id,
-                    ))
-
-                    conn.commit()
-
-                    return
-
-            except Exception:
-                pass
+    if "تقييد" in restrictions:
 
         try:
 
-            await message.delete()
+            from telegram import ChatPermissions
+
+            permissions = ChatPermissions(
+                can_send_messages=True,
+                can_send_audios=True,
+                can_send_documents=True,
+                can_send_photos=True,
+                can_send_videos=True,
+                can_send_video_notes=True,
+                can_send_voice_notes=True,
+                can_send_polls=True,
+                can_send_other_messages=True,
+                can_add_web_page_previews=True,
+                can_invite_users=True,
+                can_manage_topics=True,
+            )
+
+            await context.bot.restrict_chat_member(
+                chat_id=chat_id,
+                user_id=target.id,
+                permissions=permissions
+            )
 
         except Exception:
             pass
 
+        delete_restriction_record(
+            "restrictions",
+            chat_id,
+            target.id
+        )
+
+    # ==================================================
+    # الحظر
+    # ==================================================
+
+    if "حظر" in restrictions:
+
+        if is_basic_admin_or_higher(actor.id):
+
+            try:
+
+                await context.bot.unban_chat_member(
+                    chat_id=chat_id,
+                    user_id=target.id,
+                    only_if_banned=False
+                )
+
+            except Exception:
+                pass
+
+            delete_restriction_record(
+                "moderation_bans",
+                chat_id,
+                target.id
+            )
+
+    await update.message.reply_text(
+        "• تم رفع القيود عنه، قيوده كانت ( "
+        + "، ".join(restrictions)
+        + " )\n"
+        + f"المستخدم ↤︎ {mention_user(target)}",
+        parse_mode="HTML"
+    )
+
+
+# ==================================================
+# القوائم
+# ==================================================
+
+LIST_TABLES = {
+    "mute": (
+        "bot_mutes",
+        "قائمه المكتومين",
+        "مسح المكتومين"
+    ),
+
+    "restrict": (
+        "restrictions",
+        "قائمه المقيدين",
+        "مسح المقيدين"
+    ),
+
+    "ban": (
+        "moderation_bans",
+        "قائمه المحظورين",
+        "مسح المحظورين"
+    ),
+}
+
+
+def get_list_rows(
+    chat_id,
+    table
+):
+
+    conn = connect()
+    cur = None
+
+    try:
+
+        cur = conn.cursor()
+
+        cur.execute(
+            f"""
+            SELECT user_id, username, first_name
+            FROM {table}
+            WHERE chat_id=?
+            ORDER BY user_id
+            """,
+            (chat_id,)
+        )
+
+        return cur.fetchall()
+
     finally:
 
-        cur.close()
+        if cur:
+            cur.close()
+
         conn.close()
 
-    raise ApplicationHandlerStop
 
-
-# ==================================================
-# تنظيف العقوبات المنتهية
-# ==================================================
-
-async def moderation_expiry_loop(
-    application,
+def list_message(
+    kind,
+    rows
 ):
+
+    table, title, button_text = LIST_TABLES[
+        kind
+    ]
+
+    text = (
+        f"• {title}\n"
+        "━━━━━━━━━━━━\n"
+    )
+
+    if not rows:
+
+        text += "لا يوجد\n"
+
+    else:
+
+        for index, row in enumerate(
+            rows,
+            1
+        ):
+
+            user_id = row[0]
+            username = row[1]
+            first_name = row[2]
+
+            if username:
+
+                display = (
+                    "@"
+                    + str(username).lstrip("@")
+                )
+
+            else:
+
+                name = (
+                    first_name
+                    or str(user_id)
+                )
+
+                display = (
+                    f'<a href="tg://user?id={user_id}">'
+                    f'{html_escape(name)}'
+                    f'</a>'
+                )
+
+            text += (
+                f"{index} - {display}\n"
+            )
+
+    keyboard = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    button_text,
+                    callback_data=f"moderation:clear:{kind}"
+                )
+            ]
+        ]
+    )
+
+    return text, keyboard
+
+
+async def moderation_lists_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not update.message:
+        return
+
+    actor = update.effective_user
+
+    if not actor:
+        return
+
+    if not is_admin_or_higher(actor.id):
+        return
+
+    text = (
+        update.message.text or ""
+    ).strip()
+
+    if text == "المكتومين":
+        kind = "mute"
+
+    elif text == "المقيدين":
+        kind = "restrict"
+
+    elif text == "المحظورين":
+        kind = "ban"
+
+    else:
+        return
+
+    rows = get_list_rows(
+        update.effective_chat.id,
+        LIST_TABLES[kind][0]
+    )
+
+    message_text, keyboard = list_message(
+        kind,
+        rows
+    )
+
+    await update.message.reply_text(
+        message_text,
+        parse_mode="HTML",
+        reply_markup=keyboard
+    )
+
+
+# ==================================================
+# مسح قائمة كاملة
+# ==================================================
+
+async def clear_list_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    query = update.callback_query
+
+    if not query:
+        return
+
+    await query.answer()
+
+    actor = query.from_user
+
+    if not is_basic_admin_or_higher(actor.id):
+
+        await query.answer(
+            "هذا الأمر للأدمن الأساسي وفوق فقط!",
+            show_alert=True
+        )
+
+        return
+
+    data = query.data or ""
+
+    parts = data.split(":")
+
+    if len(parts) != 3:
+        return
+
+    kind = parts[2]
+
+    if kind not in LIST_TABLES:
+        return
+
+    chat_id = query.message.chat.id
+
+    table = LIST_TABLES[kind][0]
+
+    # ==================================================
+    # نجيب المستخدمين أولًا
+    # ==================================================
+
+    rows = get_list_rows(
+        chat_id,
+        table
+    )
+
+    # ==================================================
+    # فك القيود فعليًا
+    # ==================================================
+
+    for row in rows:
+
+        user_id = row[0]
+
+        if kind == "mute":
+            pass
+
+        elif kind == "restrict":
+
+            try:
+
+                from telegram import ChatPermissions
+
+                permissions = ChatPermissions(
+                    can_send_messages=True,
+                    can_send_audios=True,
+                    can_send_documents=True,
+                    can_send_photos=True,
+                    can_send_videos=True,
+                    can_send_video_notes=True,
+                    can_send_voice_notes=True,
+                    can_send_polls=True,
+                    can_send_other_messages=True,
+                    can_add_web_page_previews=True,
+                    can_invite_users=True,
+                    can_manage_topics=True,
+                )
+
+                await context.bot.restrict_chat_member(
+                    chat_id=chat_id,
+                    user_id=user_id,
+                    permissions=permissions
+                )
+
+            except Exception:
+                pass
+
+        elif kind == "ban":
+
+            try:
+
+                await context.bot.unban_chat_member(
+                    chat_id=chat_id,
+                    user_id=user_id,
+                    only_if_banned=False
+                )
+
+            except Exception:
+                pass
+
+    # ==================================================
+    # تصفير القائمة
+    # ==================================================
+
+    conn = connect()
+    cur = None
+
+    try:
+
+        cur = conn.cursor()
+
+        cur.execute(
+            f"""
+            DELETE FROM {table}
+            WHERE chat_id=?
+            """,
+            (chat_id,)
+        )
+
+        conn.commit()
+
+    finally:
+
+        if cur:
+            cur.close()
+
+        conn.close()
+
+    title = LIST_TABLES[kind][2]
+
+    await query.edit_message_text(
+        f"• تم {title} ."
+    )
+
+
+# ==================================================
+# تفعيل المدة
+# ==================================================
+
+async def enable_durations_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not update.message:
+        return
+
+    actor = update.effective_user
+
+    if not actor:
+        return
+
+    if not is_admin_or_higher(actor.id):
+        return
+
+    set_duration_setting(
+        update.effective_chat.id,
+        True
+    )
+
+    await update.message.reply_text(
+        "• تم تفعيل المدة للمشرفين ."
+    )
+
+
+# ==================================================
+# تعطيل المدة
+# ==================================================
+
+async def disable_durations_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not update.message:
+        return
+
+    actor = update.effective_user
+
+    if not actor:
+        return
+
+    if not is_admin_or_higher(actor.id):
+        return
+
+    set_duration_setting(
+        update.effective_chat.id,
+        False
+    )
+
+    await update.message.reply_text(
+        "• تم تعطيل المدة للمشرفين ."
+    )
+
+
+# ==================================================
+# تفعيل الأسباب
+# ==================================================
+
+async def enable_reasons_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not update.message:
+        return
+
+    actor = update.effective_user
+
+    if not actor:
+        return
+
+    if not is_admin_or_higher(actor.id):
+        return
+
+    set_reason_setting(
+        update.effective_chat.id,
+        True
+    )
+
+    await update.message.reply_text(
+        "• تم تفعيل الاسباب ."
+    )
+
+
+# ==================================================
+# إلغاء المدة تلقائيًا
+# ==================================================
+
+async def moderation_expiry_loop(application):
 
     while True:
 
         try:
 
-            now = (
-                datetime.now(
-                    timezone.utc
-                ).isoformat()
-            )
+            current = now_timestamp()
 
             conn = connect()
-            cur = conn.cursor()
+            cur = None
 
             try:
 
-                cur.execute("""
-                DELETE FROM bot_mutes
-                WHERE until_time IS NOT NULL
-                AND until_time <= ?
-                """, (
-                    now,
-                ))
+                cur = conn.cursor()
 
-                cur.execute("""
-                DELETE FROM restrictions
-                WHERE until_time IS NOT NULL
-                AND until_time <= ?
-                """, (
-                    now,
-                ))
+                # ==================================================
+                # الكتم
+                # ==================================================
 
-                cur.execute("""
-                DELETE FROM moderation_bans
-                WHERE until_time IS NOT NULL
-                AND until_time <= ?
-                """, (
-                    now,
-                ))
+                cur.execute(
+                    """
+                    SELECT chat_id, user_id
+                    FROM bot_mutes
+                    WHERE until_time IS NOT NULL
+                    AND until_time <= ?
+                    """,
+                    (
+                        timestamp_to_iso(current),
+                    )
+                )
+
+                mute_rows = cur.fetchall()
+
+                for chat_id, user_id in mute_rows:
+
+                    cur.execute(
+                        """
+                        DELETE FROM bot_mutes
+                        WHERE chat_id=? AND user_id=?
+                        """,
+                        (
+                            chat_id,
+                            user_id
+                        )
+                    )
+
+                # ==================================================
+                # التقييد
+                # ==================================================
+
+                cur.execute(
+                    """
+                    SELECT chat_id, user_id
+                    FROM restrictions
+                    WHERE until_time IS NOT NULL
+                    AND until_time <= ?
+                    """,
+                    (
+                        timestamp_to_iso(current),
+                    )
+                )
+
+                restriction_rows = cur.fetchall()
+
+                # ==================================================
+                # الحظر
+                # ==================================================
+
+                cur.execute(
+                    """
+                    SELECT chat_id, user_id
+                    FROM moderation_bans
+                    WHERE until_time IS NOT NULL
+                    AND until_time <= ?
+                    """,
+                    (
+                        timestamp_to_iso(current),
+                    )
+                )
+
+                ban_rows = cur.fetchall()
 
                 conn.commit()
 
-            except Exception:
-
-                conn.rollback()
-
             finally:
 
-                cur.close()
+                if cur:
+                    cur.close()
+
                 conn.close()
 
-        except Exception:
-            pass
+            # ==================================================
+            # فك التقييد
+            # ==================================================
 
-        await asyncio.sleep(10)
+            for chat_id, user_id in restriction_rows:
+
+                try:
+
+                    from telegram import ChatPermissions
+
+                    permissions = ChatPermissions(
+                        can_send_messages=True,
+                        can_send_audios=True,
+                        can_send_documents=True,
+                        can_send_photos=True,
+                        can_send_videos=True,
+                        can_send_video_notes=True,
+                        can_send_voice_notes=True,
+                        can_send_polls=True,
+                        can_send_other_messages=True,
+                        can_add_web_page_previews=True,
+                        can_invite_users=True,
+                        can_manage_topics=True,
+                    )
+
+                    await application.bot.restrict_chat_member(
+                        chat_id=chat_id,
+                        user_id=user_id,
+                        permissions=permissions
+                    )
+
+                except Exception:
+                    pass
+
+                delete_restriction_record(
+                    "restrictions",
+                    chat_id,
+                    user_id
+                )
+
+            # ==================================================
+            # فك الحظر
+            # ==================================================
+
+            for chat_id, user_id in ban_rows:
+
+                try:
+
+                    await application.bot.unban_chat_member(
+                        chat_id=chat_id,
+                        user_id=user_id,
+                        only_if_banned=False
+                    )
+
+                except Exception:
+                    pass
+
+                delete_restriction_record(
+                    "moderation_bans",
+                    chat_id,
+                    user_id
+                )
+
+        except Exception as e:
+
+            print(
+                f"⚠️ خطأ في نظام انتهاء عقوبات الإشراف: {e}"
+            )
+
+        await __import__("asyncio").sleep(5)
+
+
+# ==================================================
+# كشف
+# ==================================================
+
+async def reveal_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not update.message:
+        return
+
+    target = await resolve_target(
+        update,
+        context
+    )
+
+    if not target:
+        return
+
+    user_id = target.id
+
+    username = getattr(
+        target,
+        "username",
+        None
+    )
+
+    if username:
+        use = "@" + username.lstrip("@")
+    else:
+        use = (
+            getattr(
+                target,
+                "first_name",
+                None
+            )
+            or ""
+        )
+
+    rank = get_rank(
+        user_id
+    )
+
+    conn = connect()
+    cur = None
+
+    try:
+
+        cur = conn.cursor()
+
+        cur.execute(
+            """
+            SELECT messages
+            FROM users
+            WHERE user_id=?
+            """,
+            (user_id,)
+        )
+
+        row = cur.fetchone()
+
+    finally:
+
+        if cur:
+            cur.close()
+
+        conn.close()
+
+    messages = row[0] if row else 0
+
+    text = (
+        f"• ID : <code>{user_id}</code>\n"
+        f"• USE : {html_escape(use)}\n"
+        f"• STE : {html_escape(rank)}\n"
+        f"• MSG : {messages}"
+    )
+
+    await update.message.reply_text(
+        text,
+        parse_mode="HTML"
+    )
