@@ -15,7 +15,11 @@ from handlers.roles import (
     get_rank_level,
 )
 
+# ==================================================
+# كاش الكتم السريع
+# ==================================================
 
+_mute_cache = {}
 # ==================================================
 # الصلاحيات
 # ==================================================
@@ -703,6 +707,24 @@ def save_mute(
 
         conn.close()
 
+    # ==================================================
+    # تحديث الكاش مباشرة
+    # ==================================================
+
+    key = (chat_id, user.id)
+
+    if until_time is None:
+        _mute_cache[key] = True
+    else:
+        timestamp = iso_to_timestamp(
+            until_time
+        )
+
+        if timestamp is not None:
+            _mute_cache[key] = timestamp
+        else:
+            _mute_cache[key] = True
+
 
 # ==================================================
 # حفظ التقييد
@@ -1093,33 +1115,109 @@ async def moderation_command(
 # ==================================================
 
 def get_active_mute(chat_id, user_id):
+
+    key = (chat_id, user_id)
+
+    # موجود في الكاش
+    if key in _mute_cache:
+
+        cached = _mute_cache[key]
+
+        # غير مكتوم
+        if cached is False:
+            return False
+
+        # كتم دائم
+        if cached is True:
+            return True
+
+        # كتم مؤقت
+        if now_timestamp() < cached:
+            return True
+
+        # انتهى
+        _mute_cache[key] = False
+
+        try:
+            delete_mute(chat_id, user_id)
+        except Exception:
+            pass
+
+        return False
+
+    # ==================================================
+    # أول مرة فقط: نقرأ من قاعدة البيانات
+    # ==================================================
+
     conn = connect()
-    cur = conn.cursor()
+    cur = None
 
-    cur.execute("""
-        SELECT until_time
-        FROM bot_mutes
-        WHERE chat_id=? AND user_id=?
-    """, (chat_id, user_id))
+    try:
 
-    row = cur.fetchone()
-    conn.close()
+        cur = conn.cursor()
+
+        cur.execute(
+            """
+            SELECT until_time
+            FROM bot_mutes
+            WHERE chat_id=? AND user_id=?
+            """,
+            (
+                chat_id,
+                user_id
+            )
+        )
+
+        row = cur.fetchone()
+
+    finally:
+
+        if cur:
+            cur.close()
+
+        conn.close()
 
     if not row:
+
+        _mute_cache[key] = False
+
         return False
 
     until_time = row[0]
 
     # كتم دائم
     if until_time is None:
+
+        _mute_cache[key] = True
+
         return True
 
     # كتم مؤقت
-    until = iso_to_timestamp(until_time)
+    until = iso_to_timestamp(
+        until_time
+    )
 
-    if until is not None and now_timestamp() >= until:
-        delete_mute(chat_id, user_id)
+    if until is None:
+
+        _mute_cache[key] = False
+
         return False
+
+    if now_timestamp() >= until:
+
+        _mute_cache[key] = False
+
+        try:
+            delete_mute(
+                chat_id,
+                user_id
+            )
+        except Exception:
+            pass
+
+        return False
+
+    _mute_cache[key] = until
 
     return True
 
@@ -1154,6 +1252,8 @@ def delete_mute(chat_id, user_id):
 
         conn.close()
 
+    # تحديث الكاش
+    _mute_cache[(chat_id, user_id)] = False
 
 # ==================================================
 # حذف رسالة المكتوم
