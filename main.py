@@ -901,6 +901,9 @@ def main():
         group=-5
     )   
 
+    print("🔥 تسجيل check_muted_message الآن")
+    print("📌 function:", check_muted_message)
+    
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS,
@@ -908,6 +911,8 @@ def main():
         ),
         group=-30
     )
+
+    print("✅ check_muted_message تم تسجيلها")   
 
     # --------------------------------------------------
     # تفعيل المدة
