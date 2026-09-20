@@ -568,12 +568,16 @@ async def save_join_date(update, context):
 _pending_messages = {}
 _pending_user_data = {}
 
+_pending_group_members = {}
+
 MESSAGE_BATCH_SIZE = 10
+GROUP_MEMBER_FLUSH_SIZE = 20
 
 
 def _flush_user_messages_sync(
     messages,
-    user_data
+    user_data,
+    group_members
 ):
 
     conn = connect()
@@ -584,6 +588,49 @@ def _flush_user_messages_sync(
 
         cur = conn.cursor()
 
+
+        # ==================================================
+        # تحديث كاش أعضاء القروبات
+        # ==================================================
+
+        for key, data in group_members.items():
+
+            chat_id, user_id = key
+
+            username, first_name, last_seen = data
+
+            cur.execute(
+                """
+                INSERT INTO group_members
+                (
+                    chat_id,
+                    user_id,
+                    username,
+                    first_name,
+                    last_seen
+                )
+                VALUES (?, ?, ?, ?, ?)
+
+                ON CONFLICT (chat_id, user_id)
+                DO UPDATE SET
+
+                    username =
+                        EXCLUDED.username,
+
+                    first_name =
+                        EXCLUDED.first_name,
+
+                    last_seen =
+                        EXCLUDED.last_seen
+                """,
+                (
+                    chat_id,
+                    user_id,
+                    username,
+                    first_name,
+                    last_seen,
+                )
+            )
         for user_id, count in messages.items():
 
             data = user_data.get(
@@ -683,19 +730,25 @@ async def flush_user_messages():
 
     global _pending_messages
     global _pending_user_data
+    global _pending_group_members
 
     lock = _get_flush_lock()
 
     async with lock:
 
-        if not _pending_messages:
+        if (
+            not _pending_messages
+            and not _pending_group_members
+        ):
             return
 
         messages = _pending_messages
         user_data = _pending_user_data
+        group_members = _pending_group_members
 
         _pending_messages = {}
         _pending_user_data = {}
+        _pending_group_members = {}
 
         try:
 
@@ -703,6 +756,7 @@ async def flush_user_messages():
                 _flush_user_messages_sync,
                 messages,
                 user_data
+                group_members
             )
 
         except Exception as e:
@@ -716,6 +770,10 @@ async def flush_user_messages():
                     )
                     + count
                 )
+
+            for key, data in group_members.items():
+
+                _pending_group_members[key] = data
 
                 if user_id in user_data:
 
@@ -766,6 +824,16 @@ async def save_user_message(
         return
 
     user_id = user.id
+
+    chat_id = chat.id
+
+    _pending_group_members[
+        (chat_id, user_id)
+    ] = (
+        user.username,
+        user.first_name,
+        datetime.now().isoformat()
+    )
 
     _pending_messages[user_id] = (
         _pending_messages.get(
