@@ -1178,38 +1178,56 @@ def delete_mute(chat_id, user_id):
 # ==================================================
 # حذف رسالة المكتوم
 # ==================================================
+
 async def check_muted_message(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
+    print("🔎 check_muted_message اشتغلت")
+
     if not update.message:
+        print("❌ ما فيه message")
         return
 
     if not update.effective_chat:
+        print("❌ ما فيه chat")
         return
 
     user = update.effective_user
 
     if not user:
+        print("❌ ما فيه user")
         return
 
     chat_id = update.effective_chat.id
 
-    if get_active_mute(
+    print(
+        f"👤 user={user.id} | chat={chat_id}"
+    )
+
+    mute = get_active_mute(
         chat_id,
         user.id
-    ) is None:
+    )
+
+    print(
+        f"🔇 mute record = {mute}"
+    )
+
+    if mute is None:
         return
 
     try:
         await update.message.delete()
 
-    except Exception as e:
         print(
-            f"⚠️ فشل حذف رسالة المكتوم "
-            f"(chat={chat_id}, user={user.id}): {e}"
+            f"✅ تم حذف رسالة المكتوم {user.id}"
         )
 
+    except Exception as e:
+        print(
+            f"❌ فشل حذف رسالة المكتوم: {e}"
+        )
 
 # ==================================================
 # جلب القيود
