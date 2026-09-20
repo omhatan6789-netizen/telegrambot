@@ -344,11 +344,8 @@ from handlers.button_colors import (
 )
 
 from handlers.send import (
-    create_send_tables,
     send_command,
     delete_slash_command,
-    track_send_chat,
-    track_bot_membership,
 )
 
 # ==================================================
@@ -639,7 +636,6 @@ def main():
 
     create_tables()
     create_developer_panel_tables()
-    create_send_tables()
     create_profile_reply_tables()
     patch_inline_keyboard_buttons()
     register_existing_panel_buttons()
