@@ -1385,14 +1385,7 @@ def main():
     )
 
 
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.ALL,
-            repetition_message_handler
-        ),
-        group=-16
-    )
+    
 
     # ك==================================================# قفل وفتح الأوامر# ==================================================
     # ==================================================
@@ -3080,6 +3073,19 @@ def main():
     ).start()
 
     app.run_polling()
+
+
+    # ==================================================
+    # 🔁 اختبار مراقبة التكرار
+    # ==================================================
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS,
+            repetition_message_handler
+        ),
+        group=999
+    )
 
 
 # ==================================================
