@@ -22,7 +22,12 @@ from handlers.roles import (
     RANK_LEVELS,
 )
 
-
+from handlers.moderation import (
+    save_mute,
+    save_restriction,
+    save_ban,
+    mention_user,
+)
 # ==================================================
 # الإعدادات
 # ==================================================
@@ -1149,190 +1154,247 @@ def can_manage_repetition(
         return False
 
 
-# ==================================================
-# تنفيذ العقوبة
-# ==================================================
 
-# ==================================================
+# =========================================================
 # تنفيذ عقوبة التكرار
-# ==================================================
+# =========================================================
 
 async def punish_user(
-    update,
-    context,
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
     user,
     action,
-    duration
+    punishment_duration
 ):
-
-    chat = update.effective_chat
-
-    if not chat:
+    if not update.effective_chat:
         return False
 
-    chat_id = chat.id
+    chat_id = update.effective_chat.id
 
-    # ==================================================
-    # منشن حقيقي للمستخدم
-    # ==================================================
+    # =====================================================
+    # حساب وقت انتهاء العقوبة
+    # =====================================================
 
-    mention = (
-        f'<a href="tg://user?id={user.id}">'
-        f'{user.first_name or "المستخدم"}'
-        f'</a>'
+    now = int(
+        datetime.now(timezone.utc).timestamp()
     )
 
-    try:
+    until_timestamp = None
 
-        # ==================================================
-        # كتم
-        # ==================================================
+    if action in ("mute", "restrict") and punishment_duration:
+        until_timestamp = (
+            now + int(punishment_duration)
+        )
 
-        if action == "mute":
+    until_time = None
 
-            until_date = (
-                datetime.now(timezone.utc)
-                + timedelta(
-                    seconds=int(duration)
-                )
+    if until_timestamp is not None:
+
+        until_time = datetime.fromtimestamp(
+            until_timestamp,
+            timezone.utc
+        ).isoformat()
+
+    # =====================================================
+    # الكتم
+    #
+    # كتم البوت الخاص بك:
+    # - لا يمنع العضو من الإرسال من تيليجرام
+    # - يحفظه في bot_mutes
+    # - check_muted_message يحذف رسائله
+    # - لا يرسل أي رسالة عند حذف رسائله
+    # =====================================================
+
+    if action == "mute":
+
+        try:
+
+            await asyncio.to_thread(
+                save_mute,
+                chat_id,
+                user,
+                until_time,
+                "التكرار",
+                context.bot.id
+            )
+
+        except Exception as e:
+
+            print(
+                f"❌ خطأ في كتم التكرار: {e}"
+            )
+
+            return False
+
+        # =================================================
+        # رسالة تطبيق الكتم — تظهر مرة واحدة فقط
+        # =================================================
+
+        if punishment_duration:
+
+            duration_text = (
+                f"كتم لمدة "
+                f"{format_duration(punishment_duration)}"
+            )
+
+        else:
+
+            duration_text = "كتم دائم"
+
+        try:
+
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=(
+                    "• تم كتمك بسبب التكرار\n"
+                    f"العقوبة: {duration_text}\n\n"
+                    f"المستخدم ↤︎ {mention_user(user)}"
+                ),
+                parse_mode="HTML"
+            )
+
+        except Exception as e:
+
+            print(
+                f"⚠️ تعذر إرسال رسالة كتم التكرار: {e}"
+            )
+
+        return True
+
+    # =====================================================
+    # التقييد
+    #
+    # هذا تقييد تيليجرام الحقيقي
+    # =====================================================
+
+    if action == "restrict":
+
+        try:
+
+            from telegram import ChatPermissions
+
+            permissions = ChatPermissions(
+                can_send_messages=False
             )
 
             await context.bot.restrict_chat_member(
                 chat_id=chat_id,
                 user_id=user.id,
-                permissions=ChatPermissions(
-                    can_send_messages=False
-                ),
-                until_date=until_date
+                permissions=permissions,
+                until_date=until_timestamp
             )
 
-            duration_text = format_duration(
-                duration
+            await asyncio.to_thread(
+                save_restriction,
+                chat_id,
+                user,
+                until_time,
+                "التكرار",
+                context.bot.id
             )
 
-            text = (
-                "• تم كتمك بسبب التكرار\n"
-                f"العقوبة: كتم لمدة {duration_text}\n\n"
-                f"المستخدم ↤︎ {mention}"
+        except Exception as e:
+
+            print(
+                f"❌ خطأ في تقييد التكرار: {e}"
             )
 
-        # ==================================================
-        # تقييد
-        # ==================================================
+            return False
 
-        elif action == "restrict":
+        # =================================================
+        # رسالة تطبيق التقييد
+        # =================================================
 
-            until_date = (
-                datetime.now(timezone.utc)
-                + timedelta(
-                    seconds=int(duration)
-                )
+        if punishment_duration:
+
+            duration_text = (
+                f"تقييد لمدة "
+                f"{format_duration(punishment_duration)}"
             )
 
-            await context.bot.restrict_chat_member(
+        else:
+
+            duration_text = "تقييد دائم"
+
+        try:
+
+            await context.bot.send_message(
                 chat_id=chat_id,
-                user_id=user.id,
-                permissions=ChatPermissions(
-                    can_send_messages=False,
-                    can_send_audios=False,
-                    can_send_documents=False,
-                    can_send_photos=False,
-                    can_send_videos=False,
-                    can_send_video_notes=False,
-                    can_send_voice_notes=False,
-                    can_send_polls=False,
-                    can_send_other_messages=False,
-                    can_add_web_page_previews=False,
-                    can_change_info=False,
-                    can_invite_users=False,
-                    can_pin_messages=False,
-                    can_manage_topics=False,
+                text=(
+                    "• تم تقييدك بسبب التكرار\n"
+                    f"العقوبة: {duration_text}\n\n"
+                    f"المستخدم ↤︎ {mention_user(user)}"
                 ),
-                until_date=until_date
+                parse_mode="HTML"
             )
 
-            duration_text = format_duration(
-                duration
+        except Exception as e:
+
+            print(
+                f"⚠️ تعذر إرسال رسالة تقييد التكرار: {e}"
             )
 
-            text = (
-                "• تم تقييدك بسبب التكرار\n"
-                f"العقوبة: تقييد لمدة {duration_text}\n\n"
-                f"المستخدم ↤︎ {mention}"
-            )
+        return True
 
-        # ==================================================
-        # حظر
-        # ==================================================
+    # =====================================================
+    # الحظر
+    # =====================================================
 
-        elif action == "ban":
+    if action == "ban":
+
+        try:
 
             await context.bot.ban_chat_member(
                 chat_id=chat_id,
                 user_id=user.id
             )
 
-            text = (
-                "• تم حظرك بسبب التكرار\n"
-                "العقوبة: حظر\n\n"
-                f"المستخدم ↤︎ {mention}"
+            await asyncio.to_thread(
+                save_ban,
+                chat_id,
+                user,
+                None,
+                "التكرار",
+                context.bot.id
             )
 
-        else:
+        except Exception as e:
 
             print(
-                f"❌ عقوبة تكرار غير معروفة: {action}"
+                f"❌ خطأ في حظر التكرار: {e}"
             )
 
             return False
 
-        # ==================================================
-        # إذا وصلنا هنا فالعقوبة تطبقت بنجاح
-        # ==================================================
+        # =================================================
+        # رسالة الحظر
+        # =================================================
 
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text=text,
-            parse_mode="HTML"
-        )
+        try:
 
-        print(
-            f"✅ تم تطبيق عقوبة التكرار | "
-            f"user={user.id} | "
-            f"action={action} | "
-            f"duration={duration}"
-        )
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=(
+                    "• تم حظرك بسبب التكرار\n"
+                    "العقوبة: حظر\n\n"
+                    f"المستخدم ↤︎ {mention_user(user)}"
+                ),
+                parse_mode="HTML"
+            )
+
+        except Exception as e:
+
+            print(
+                f"⚠️ تعذر إرسال رسالة حظر التكرار: {e}"
+            )
 
         return True
 
-    except Exception as e:
+    # =====================================================
+    # عقوبة غير معروفة
+    # =====================================================
 
-        # ==================================================
-        # مهم:
-        # لا نخفي الخطأ حتى نعرف سبب فشل العقوبة
-        # ==================================================
-
-        print(
-            "❌ فشل تطبيق عقوبة التكرار"
-        )
-
-        print(
-            f"   user_id = {user.id}"
-        )
-
-        print(
-            f"   action = {action}"
-        )
-
-        print(
-            f"   duration = {duration}"
-        )
-
-        print(
-            f"   error = {type(e).__name__}: {e}"
-        )
-
-        return False
+    return False
 
 # ==================================================
 # معالجة التكرار
@@ -1828,6 +1890,7 @@ async def set_repetition_start(
         ] = {
             "type": "repetition_duration",
             "limit": limit,
+            "created_at": datetime.now(timezone.utc),
         }
 
         await update.message.reply_text(
