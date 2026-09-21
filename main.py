@@ -1177,6 +1177,198 @@ def main():
         ),
         group=-18
     )
+
+
+
+    # ==================================================
+    # 🔁 التكرار
+    # ==================================================
+
+    # --------------------------------------------------
+    # تفعيل التكرار
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(r"^تفعيل التكرار$"),
+            enable_repetition
+        ),
+        group=-17
+    )
+
+    # --------------------------------------------------
+    # تعطيل التكرار
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(r"^تعطيل التكرار$"),
+            disable_repetition
+        ),
+        group=-17
+    )
+
+    # --------------------------------------------------
+    # بدء إعداد التكرار
+    #
+    # مثال:
+    # ضع تكرار 5
+    #
+    # بعدها البوت يطلب المدة:
+    # حسنًا، ارسل المدة التي تريدها .
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(r"^ضع تكرار \d+$"),
+            set_repetition_start
+        ),
+        group=-17
+    )
+
+    # --------------------------------------------------
+    # استقبال مدة التكرار
+    #
+    # أمثلة:
+    # 3ث
+    # 5د
+    # 1س
+    # 2ي
+    #
+    # هذا الهاندلر يعمل فقط إذا كان المستخدم
+    # داخل جلسة إعداد مدة التكرار.
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.TEXT
+            & ~filters.COMMAND,
+            receive_repetition_duration
+        ),
+        group=-17
+    )
+
+    # --------------------------------------------------
+    # تعيين مدة الإنذار
+    #
+    # مثال:
+    # تعيين مدة انذار 1س
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(
+                r"^تعيين مدة انذار \S+$"
+            ),
+            set_warning_duration
+        ),
+        group=-17
+    )
+
+    # --------------------------------------------------
+    # تغيير عقوبة التكرار
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(
+                r"^تغيير عقوبة التكرار$"
+            ),
+            change_repetition_action
+         ),
+         group=-17
+    )
+
+    # --------------------------------------------------
+    # مدة الكتم للتكرار
+    #
+    # مثال:
+    # ضع كتم تكرار 10د
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(
+                r"^ضع كتم تكرار \S+$"
+            ),
+            set_mute_duration
+        ),
+        group=-17
+    )
+
+    
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(
+                r"^ضع تقييد تكرار \S+$"
+            ),
+            set_restrict_duration
+        ),
+        group=-17
+    )
+
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(
+                r"^ضع رتبة التكرار (عضو|مميز|ادمن|ادمن اساسي|نائب المالك|المالك|Dev)$"
+            ),
+            set_repetition_rank
+        ),
+        group=-17
+    )
+
+    # --------------------------------------------------
+    # مسح انذارات المستخدم
+    #
+    # يعمل بالرد على الشخص أو بإرسال ID
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(
+                r"^مسح انذاراته$"
+            ),
+            clear_user_repetition_warnings
+        ),
+        group=-17
+    )
+
+    # --------------------------------------------------
+    # أزرار عقوبة التكرار
+    # --------------------------------------------------
+
+    app.add_handler(
+        CallbackQueryHandler(
+            repetition_action_callback,
+            pattern=r"^repetition:"
+        ),
+        group=-17
+    )
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.ALL,
+            repetition_message_handler
+        ),
+        group=-16
+    )
+
+    # ك==================================================# قفل وفتح الأوامر# ==================================================
     # ==================================================
     # قفل وفتح الأوامر
     # ==================================================
