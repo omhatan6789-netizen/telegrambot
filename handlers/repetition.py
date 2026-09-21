@@ -1066,6 +1066,10 @@ async def repetition_message_handler(
     context: ContextTypes.DEFAULT_TYPE
 ):
 
+    print(
+        "🔵 REPETITION HANDLER RECEIVED MESSAGE"
+    )
+
     message = update.effective_message
     user = update.effective_user
     chat = update.effective_chat
