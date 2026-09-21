@@ -1070,6 +1070,10 @@ async def repetition_message_handler(
     user = update.effective_user
     chat = update.effective_chat
 
+    # ==================================================
+    # التحقق الأساسي
+    # ==================================================
+
     if not message:
         return
 
@@ -1079,45 +1083,129 @@ async def repetition_message_handler(
     if not chat:
         return
 
-    # الخاص لا يحتاج تكرار
-    if chat.type == "private":
-        return
-
-    settings = get_repetition_settings(
-        chat.id
-    )
-
-    if not settings["enabled"]:
-        return
-
-    # ==================================================
-    # تحديد الرتبة
-    # ==================================================
-
-    if not repetition_rank_allowed(
-        user.id,
-        chat.id,
-        settings["rank"]
+    # المجموعات فقط
+    if chat.type not in (
+        "group",
+        "supergroup"
     ):
         return
 
     # ==================================================
-    # إضافة الرسالة
+    # تجاهل رسائل الخدمة
     # ==================================================
 
-    messages = add_repetition_message(
-        chat.id,
-        user.id,
-        message.message_id,
-        settings["seconds"]
-    )
+    if (
+        message.new_chat_members
+        or message.left_chat_member
+        or message.new_chat_title
+        or message.new_chat_photo
+        or message.delete_chat_photo
+        or message.group_chat_created
+        or message.supergroup_chat_created
+        or message.channel_chat_created
+        or message.migrate_to_chat_id
+        or message.migrate_from_chat_id
+    ):
+        return
 
     # ==================================================
-    # لم يصل للحد
+    # تجاهل الأوامر التي تبدأ بـ /
+    # ==================================================
+
+    if message.text and message.text.startswith("/"):
+        return
+
+    if message.caption and message.caption.startswith("/"):
+        return
+
+    # ==================================================
+    # جلب إعدادات التكرار
+    # ==================================================
+
+    try:
+
+        settings = get_repetition_settings(
+            chat.id
+        )
+
+    except Exception as e:
+
+        print(
+            "❌ خطأ في جلب إعدادات التكرار:",
+            e
+        )
+
+        return
+
+    # التكرار غير مفعل
+    if not settings["enabled"]:
+        return
+
+    # ==================================================
+    # تحديد رتبة المستخدم
+    # ==================================================
+
+    try:
+
+        allowed = repetition_rank_allowed(
+            user.id,
+            chat.id,
+            settings["rank"]
+        )
+
+    except Exception as e:
+
+        print(
+            "❌ خطأ في تحديد رتبة التكرار:",
+            e
+        )
+
+        return
+
+    if not allowed:
+        return
+
+    # ==================================================
+    # إضافة الرسالة إلى العداد
+    # ==================================================
+
+    try:
+
+        messages = add_repetition_message(
+            chat.id,
+            user.id,
+            message.message_id,
+            settings["seconds"]
+        )
+
+    except Exception as e:
+
+        print(
+            "❌ خطأ في إضافة رسالة التكرار:",
+            e
+        )
+
+        return
+
+    # ==================================================
+    # لم يصل للحد المطلوب
     # ==================================================
 
     if len(messages) < settings["limit"]:
         return
+
+    # ==================================================
+    # وصل للحد
+    # ==================================================
+
+    print(
+        f"🔁 تكرار مكتشف | "
+        f"chat={chat.id} | "
+        f"user={user.id} | "
+        f"count={len(messages)} | "
+        f"limit={settings['limit']} | "
+        f"seconds={settings['seconds']}"
+    )
 
     # ==================================================
     # حذف آخر N رسائل فقط
@@ -1135,25 +1223,51 @@ async def repetition_message_handler(
         message_ids
     )
 
+    # ==================================================
+    # تصفير عداد الرسائل
+    # ==================================================
+
     reset_repetition_messages(
         chat.id,
         user.id
     )
 
     # ==================================================
-    # التحذيرات الحالية
+    # جلب التحذيرات الحالية
     # ==================================================
 
-    warning_count = get_warning_count(
-        chat.id,
-        user.id
-    )
+    try:
+
+        warning_count = get_warning_count(
+            chat.id,
+            user.id
+        )
+
+    except Exception as e:
+
+        print(
+            "❌ خطأ في جلب تحذيرات التكرار:",
+            e
+        )
+
+        return
 
     # ==================================================
     # التحذير الثالث = عقوبة مباشرة
+    #
+    # إذا كان عنده:
+    # 0 تحذيرات -> يصبح 1
+    # 1 تحذير   -> يصبح 2
+    # 2 تحذيرات -> عقوبة مباشرة
     # ==================================================
 
     if warning_count >= 2:
+
+        print(
+            f"🚨 العقوبة الثالثة للتكرار | "
+            f"user={user.id} | "
+            f"action={settings['action']}"
+        )
 
         punished = await punish_user(
             update,
@@ -1176,18 +1290,29 @@ async def repetition_message_handler(
     # إضافة تحذير
     # ==================================================
 
-    add_warning(
-        chat.id,
-        user.id,
-        settings["warning_duration"]
-    )
+    try:
+
+        add_warning(
+            chat.id,
+            user.id,
+            settings["warning_duration"]
+        )
+
+    except Exception as e:
+
+        print(
+            "❌ خطأ في إضافة تحذير التكرار:",
+            e
+        )
+
+        return
 
     new_warning_count = (
         warning_count + 1
     )
 
     # ==================================================
-    # رسالة التحذير
+    # منشن حقيقي للمستخدم
     # ==================================================
 
     mention = (
@@ -1196,14 +1321,27 @@ async def repetition_message_handler(
         f'</a>'
     )
 
-    await context.bot.send_message(
-        chat_id=chat.id,
-        text=(
-            f"⚠️ تحذير التكرار {new_warning_count}/3\n\n"
-            f"المستخدم ↤︎ {mention}"
-        ),
-        parse_mode="HTML"
-    )
+    # ==================================================
+    # إرسال التحذير
+    # ==================================================
+
+    try:
+
+        await context.bot.send_message(
+            chat_id=chat.id,
+            text=(
+                f"⚠️ تحذير التكرار {new_warning_count}/3\n\n"
+                f"المستخدم ↤︎ {mention}"
+            ),
+            parse_mode="HTML"
+        )
+
+    except Exception as e:
+
+        print(
+            "❌ خطأ في إرسال تحذير التكرار:",
+            e
+        )
 
 
 # ==================================================
