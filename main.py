@@ -256,7 +256,8 @@ from handlers.users import (
 
 from handlers.roles import (
     roles_command,
-    change_rank
+    change_rank,
+    create_group_ranks_table,
 )
 
 
@@ -640,6 +641,7 @@ def main():
 
     create_tables()
     create_developer_panel_tables()
+    create_group_ranks_table()
     create_profile_reply_tables()
     patch_inline_keyboard_buttons()
     register_existing_panel_buttons()
