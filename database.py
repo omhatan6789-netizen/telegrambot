@@ -554,6 +554,53 @@ def create_tables():
         )
         """)
 
+
+        # =========================================================
+        # إعدادات التكرار الإضافية
+        # =========================================================
+
+        cur.execute("""
+            ALTER TABLE protection_settings
+            ADD COLUMN IF NOT EXISTS repetition_warning_duration INTEGER DEFAULT 3600
+        """)
+
+        cur.execute("""
+            ALTER TABLE protection_settings
+            ADD COLUMN IF NOT EXISTS repetition_punishment_duration INTEGER DEFAULT 300
+        """)
+
+        cur.execute("""
+            ALTER TABLE protection_settings
+            ADD COLUMN IF NOT EXISTS repetition_rank TEXT DEFAULT 'عضو'
+        """)
+
+        # =========================================================
+        # إنذارات التكرار
+        # كل إنذار له وقت انتهاء مستقل
+        # =========================================================
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS repetition_warnings (
+                chat_id BIGINT NOT NULL,
+                user_id BIGINT NOT NULL,
+                warning_id SERIAL PRIMARY KEY,
+                expires_at TIMESTAMP NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_repetition_warnings_user
+            ON repetition_warnings(chat_id, user_id)
+        """)
+
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_repetition_warnings_expiry
+            ON repetition_warnings(expires_at)
+        """)
+ 
+      
+
         # ==================================================
         # الكلمات المحظورة
         # ==================================================
