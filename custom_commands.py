@@ -20,11 +20,19 @@ add_command_sessions = {}
 
 _custom_commands_cache = None
 
+# ==================================================
 # كاش الـ handlers للأوامر المضافة
+# ==================================================
+
 _resolved_handlers_cache = {}
 
 
+# ==================================================
+# تحميل الأوامر المضافة
+# ==================================================
+
 def load_custom_commands_cache():
+
     global _custom_commands_cache
 
     if _custom_commands_cache is not None:
@@ -34,6 +42,7 @@ def load_custom_commands_cache():
     cur = conn.cursor()
 
     try:
+
         cur.execute(
             """
             SELECT old_command, new_command
@@ -52,19 +61,32 @@ def load_custom_commands_cache():
         return _custom_commands_cache
 
     finally:
+
         try:
             cur.close()
         except Exception:
             pass
 
-        conn.close()
+        try:
+            conn.close()
+        except Exception:
+            pass
 
+
+# ==================================================
+# جلب الكاش
+# ==================================================
 
 def get_custom_commands_cache():
     return load_custom_commands_cache()
 
 
+# ==================================================
+# تحديث الكاش
+# ==================================================
+
 def invalidate_custom_commands_cache():
+
     global _custom_commands_cache
 
     _custom_commands_cache = None
@@ -74,39 +96,53 @@ def invalidate_custom_commands_cache():
     return load_custom_commands_cache()
 
 
+# ==================================================
+# إضافة أمر للكاش
+# ==================================================
+
 def set_custom_command_cache(
     old_command,
     new_command
 ):
+
     global _custom_commands_cache
 
     if _custom_commands_cache is None:
         _custom_commands_cache = {}
 
-    if old_command and new_command:
+    if not old_command or not new_command:
+        return
 
-        old_command = str(
-            old_command
-        ).strip()
+    old_command = str(
+        old_command
+    ).strip()
 
-        new_command = str(
-            new_command
-        ).strip()
+    new_command = str(
+        new_command
+    ).strip()
 
-        _custom_commands_cache[
-            new_command
-        ] = old_command
+    if not old_command or not new_command:
+        return
 
-        # الأمر جديد، لذلك لا يوجد handler محفوظ له
-        _resolved_handlers_cache.pop(
-            new_command,
-            None
-        )
+    _custom_commands_cache[
+        new_command
+    ] = old_command
 
+    # إزالة أي handler قديم
+    _resolved_handlers_cache.pop(
+        new_command,
+        None
+    )
+
+
+# ==================================================
+# حذف أمر من الكاش
+# ==================================================
 
 def remove_custom_command_cache(
     new_command
 ):
+
     global _custom_commands_cache
 
     if not new_command:
@@ -117,6 +153,7 @@ def remove_custom_command_cache(
     ).strip()
 
     if _custom_commands_cache is not None:
+
         _custom_commands_cache.pop(
             new_command,
             None
@@ -128,7 +165,12 @@ def remove_custom_command_cache(
     )
 
 
+# ==================================================
+# مسح جميع الكاش
+# ==================================================
+
 def clear_custom_commands_cache():
+
     global _custom_commands_cache
 
     _custom_commands_cache = {}
@@ -262,6 +304,7 @@ async def receive_new_command(
 
     try:
 
+        # إذا كان الاسم الجديد مستخدمًا من قبل نحذفه
         cur.execute(
             """
             DELETE FROM custom_commands
@@ -270,6 +313,7 @@ async def receive_new_command(
             (new,)
         )
 
+        # حفظ الأمر
         cur.execute(
             """
             INSERT INTO custom_commands
@@ -287,14 +331,17 @@ async def receive_new_command(
 
         conn.commit()
 
-    except Exception:
+    except Exception as e:
+
+        print(
+            "❌ خطأ أثناء حفظ الأمر المضاف:",
+            e
+        )
 
         try:
             conn.rollback()
         except Exception:
             pass
-
-        conn.close()
 
         await update.message.reply_text(
             "❌ حصل خطأ أثناء حفظ الأمر."
@@ -314,7 +361,10 @@ async def receive_new_command(
         except Exception:
             pass
 
-    # تحديث الكاش
+    # ==================================================
+    # تحديث الكاش مباشرة
+    # ==================================================
+
     set_custom_command_cache(
         old,
         new
@@ -378,7 +428,7 @@ async def custom_commands_list(
 
 
 # ==================================================
-# حذف أمر
+# بدء حذف أمر
 # ==================================================
 
 async def delete_command_start(
@@ -397,6 +447,10 @@ async def delete_command_start(
         "أرسل الأمر الجديد الذي تريد حذفه"
     )
 
+
+# ==================================================
+# حذف أمر
+# ==================================================
 
 async def delete_command(
     update: Update,
@@ -419,6 +473,8 @@ async def delete_command(
     conn = connect()
     cur = conn.cursor()
 
+    deleted = 0
+
     try:
 
         cur.execute(
@@ -433,14 +489,17 @@ async def delete_command(
 
         conn.commit()
 
-    except Exception:
+    except Exception as e:
+
+        print(
+            "❌ خطأ أثناء حذف الأمر:",
+            e
+        )
 
         try:
             conn.rollback()
         except Exception:
             pass
-
-        conn.close()
 
         context.user_data.pop(
             "delete_command",
@@ -465,8 +524,11 @@ async def delete_command(
         except Exception:
             pass
 
-    if deleted:
+    # ==================================================
+    # تحديث الكاش
+    # ==================================================
 
+    if deleted:
         remove_custom_command_cache(
             command
         )
@@ -512,14 +574,17 @@ async def delete_all_commands(
 
         conn.commit()
 
-    except Exception:
+    except Exception as e:
+
+        print(
+            "❌ خطأ أثناء حذف جميع الأوامر:",
+            e
+        )
 
         try:
             conn.rollback()
         except Exception:
             pass
-
-        conn.close()
 
         await update.message.reply_text(
             "❌ حصل خطأ أثناء حذف الأوامر."
@@ -555,18 +620,22 @@ def get_custom_command(text):
     if not text:
         return None
 
-    text = text.strip()
+    text = str(
+        text
+    ).strip()
 
     if not text:
         return None
 
     commands = get_custom_commands_cache()
 
-    return commands.get(text)
+    return commands.get(
+        text
+    )
 
 
 # ==================================================
-# الـ handlers العامة
+# أسماء الـ handlers العامة
 # ==================================================
 
 GENERIC_CALLBACK_NAMES = {
@@ -598,6 +667,10 @@ GENERIC_CALLBACK_NAMES = {
     "profile_reply_pending_handler",
 }
 
+
+# ==================================================
+# هل الـ handler عام؟
+# ==================================================
 
 def is_generic_handler(handler):
 
@@ -638,8 +711,13 @@ def _make_fake_update(
 
         message_data = data["message"]
 
+        # ==================================================
+        # نضع الأمر الأصلي مكان الأمر المضاف
+        # ==================================================
+
         message_data["text"] = old_command
 
+        # حذف entities القديمة حتى لا تتعارض
         message_data.pop(
             "entities",
             None
@@ -663,6 +741,91 @@ def _make_fake_update(
 
 
 # ==================================================
+# فحص Handler
+# ==================================================
+
+def _check_handler(
+    handler,
+    fake_update
+):
+
+    if is_generic_handler(
+        handler
+    ):
+        return None
+
+    try:
+
+        result = handler.check_update(
+            fake_update
+        )
+
+        if not result:
+            return None
+
+        return result
+
+    except Exception as e:
+
+        callback = getattr(
+            handler,
+            "callback",
+            None
+        )
+
+        callback_name = getattr(
+            callback,
+            "__name__",
+            ""
+        )
+
+        print(
+            f"⚠️ تعذر فحص Handler "
+            f"{callback_name}: {e}"
+        )
+
+        return None
+
+
+# ==================================================
+# تشغيل Handler
+# ==================================================
+
+async def _execute_handler(
+    handler,
+    fake_update,
+    application,
+    context,
+    check_result
+):
+
+    try:
+
+        handler.collect_additional_context(
+            context,
+            fake_update,
+            application,
+            check_result
+        )
+
+    except Exception as e:
+
+        print(
+            "⚠️ تعذر تجهيز Context للأمر المضاف:",
+            e
+        )
+
+    await handler.handle_update(
+        fake_update,
+        application,
+        check_result,
+        context
+    )
+
+    return True
+
+
+# ==================================================
 # تشغيل الأمر الأصلي
 # ==================================================
 
@@ -671,6 +834,9 @@ async def check_custom_commands(
     context,
     application=None
 ):
+
+    if not update:
+        return False
 
     if not update.message:
         return False
@@ -686,7 +852,10 @@ async def check_custom_commands(
     if not text:
         return False
 
+    # ==================================================
     # أثناء إضافة أمر جديد
+    # ==================================================
+
     if (
         update.effective_user
         and update.effective_user.id
@@ -694,11 +863,18 @@ async def check_custom_commands(
     ):
         return False
 
+    # ==================================================
     # أثناء حذف أمر
+    # ==================================================
+
     if context.user_data.get(
         "delete_command"
     ):
         return False
+
+    # ==================================================
+    # البحث عن الأمر المضاف
+    # ==================================================
 
     old_command = get_custom_command(
         text
@@ -712,6 +888,23 @@ async def check_custom_commands(
     if not old_command:
         return False
 
+    # ==================================================
+    # منع الحلقة
+    #
+    # مثال:
+    # نقاط -> نقاطي
+    #
+    # لا نريد أن يكون نقاطي نفسه
+    # أمرًا مضافًا يرجع إلى نقاط.
+    # ==================================================
+
+    if old_command == text:
+        return False
+
+    # ==================================================
+    # إنشاء Update وهمي
+    # ==================================================
+
     fake_update = _make_fake_update(
         update,
         old_command,
@@ -722,57 +915,77 @@ async def check_custom_commands(
         return False
 
     # ==================================================
-    # محاولة استخدام الـhandler المحفوظ
+    # 1 - تجربة الـ Handler المحفوظ
     # ==================================================
 
-    handler = _resolved_handlers_cache.get(
+    cached_handler = _resolved_handlers_cache.get(
         text
     )
 
-    if handler is not None:
+    if cached_handler is not None:
 
-        try:
+        check_result = _check_handler(
+            cached_handler,
+            fake_update
+        )
 
-            check_result = handler.check_update(
-                fake_update
-            )
+        if check_result:
 
-            if check_result:
+            try:
 
-                handler.collect_additional_context(
-                    context,
+                executed = await _execute_handler(
+                    cached_handler,
                     fake_update,
                     application,
+                    context,
                     check_result
                 )
 
-                await handler.handle_update(
-                    fake_update,
-                    application,
-                    check_result,
-                    context
+                if executed:
+                    return True
+
+            except Exception as e:
+
+                print(
+                    f"⚠️ فشل Handler المحفوظ "
+                    f"للأمر {old_command}: {e}"
                 )
 
-                return True
-
-        except Exception:
-
-            _resolved_handlers_cache.pop(
-                text,
-                None
-            )
+        # إذا فشل الكاش نحذفه
+        _resolved_handlers_cache.pop(
+            text,
+            None
+        )
 
     # ==================================================
-    # البحث عن الـhandler
+    # 2 - البحث عن الـ Handler الصحيح
+    #
+    # نبحث حسب ترتيب المجموعات.
+    # ويتم تجاهل الـ handlers العامة.
     # ==================================================
 
     for group in sorted(
         application.handlers.keys()
     ):
 
-        handlers = application.handlers[group]
+        handlers = application.handlers[
+            group
+        ]
 
         for current_handler in handlers:
+
+            if is_generic_handler(
+                current_handler
+            ):
+                continue
+
+            check_result = _check_handler(
+                current_handler,
+                fake_update
+            )
+
+            if not check_result:
+                continue
 
             callback = getattr(
                 current_handler,
@@ -786,46 +999,29 @@ async def check_custom_commands(
                 ""
             )
 
-            if callback_name in GENERIC_CALLBACK_NAMES:
-                continue
-
             try:
 
-                check_result = current_handler.check_update(
-                    fake_update
-                )
-
-            except Exception as e:
-
-                print(
-                    f"⚠️ تعذر فحص Handler "
-                    f"{callback_name}: {e}"
-                )
-
-                continue
-
-            if not check_result:
-                continue
-
-            try:
-
-                current_handler.collect_additional_context(
-                    context,
+                await _execute_handler(
+                    current_handler,
                     fake_update,
                     application,
+                    context,
                     check_result
                 )
 
-                await current_handler.handle_update(
-                    fake_update,
-                    application,
-                    check_result,
-                    context
-                )
+                # ==================================================
+                # نحفظ الـ Handler فقط بعد نجاح تشغيله
+                # ==================================================
 
                 _resolved_handlers_cache[
                     text
                 ] = current_handler
+
+                print(
+                    f"✅ تم تنفيذ الأمر المضاف: "
+                    f"{text} -> {old_command} "
+                    f"| Handler: {callback_name}"
+                )
 
                 return True
 
@@ -836,6 +1032,16 @@ async def check_custom_commands(
                     f"{old_command}: {e}"
                 )
 
-                return False
+                continue
+
+    # ==================================================
+    # لم نجد Handler
+    # ==================================================
+
+    print(
+        f"⚠️ لم يتم العثور على Handler للأمر: "
+        f"{old_command} "
+        f"(الأمر المضاف: {text})"
+    )
 
     return False
