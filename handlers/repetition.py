@@ -1,103 +1,250 @@
-# =========================================================
-# handlers/repetition.py
-# نظام حماية التكرار
-# متوافق مع python-telegram-bot 22.8
-# =========================================================
-
 import asyncio
 import re
 from collections import defaultdict, deque
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from telegram import (
     Update,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    ChatPermissions,
 )
-
-from telegram.ext import (
-    ContextTypes,
-    ApplicationHandlerStop,
-)
+from telegram.ext import ContextTypes
 
 from database import connect
 
 from handlers.roles import (
+    OWNER_ID,
     get_rank_level,
-    get_rank,
     is_primary_developer,
+    RANK_LEVELS,
 )
 
-from handlers.moderation import (
-    parse_duration_token,
-    format_duration,
-    save_mute,
-    save_restriction,
-    save_ban,
-    mention_user,
-)
 
-OWNER_ID = 8453977662
+# ==================================================
+# الإعدادات
+# ==================================================
 
-# =========================================================
-# ذاكرة الرسائل الأخيرة
-#
-# chat_id
-#   └── user_id
-#        └── deque(message_id, timestamp)
-# =========================================================
+DEFAULT_LIMIT = 3
+DEFAULT_SECONDS = 5
 
-_repetition_messages = defaultdict(
-    lambda: defaultdict(deque)
-)
+DEFAULT_WARNING_DURATION = 3600
+DEFAULT_PUNISHMENT_DURATION = 300
 
-_repetition_locks = defaultdict(asyncio.Lock)
+MAX_MESSAGES_MEMORY = 50
 
 
-# =========================================================
+# ==================================================
 # جلسات الإعداد
-# =========================================================
+# ==================================================
 
 repetition_sessions = {}
 
 
-# =========================================================
-# أسماء العقوبات
-# =========================================================
+# ==================================================
+# كاش الرسائل
+#
+# chat_id -> user_id -> deque
+#
+# نحفظ:
+# (message_id, timestamp)
+# ==================================================
 
-ACTION_NAMES = {
-    "كتم": "mute",
-    "تقييد": "restrict",
-    "حظر": "ban",
-}
-
-ACTION_DISPLAY = {
-    "mute": "كتم",
-    "restrict": "تقييد",
-    "ban": "حظر",
-}
-
-
-# =========================================================
-# أدوات الوقت
-# =========================================================
-
-def now():
-    return datetime.now()
+_repetition_messages = defaultdict(
+    lambda: defaultdict(
+        lambda: deque(
+            maxlen=MAX_MESSAGES_MEMORY
+        )
+    )
+)
 
 
-# =========================================================
-# جلب إعدادات التكرار
-# =========================================================
+# ==================================================
+# إنشاء جداول التكرار
+# ==================================================
 
-def get_repetition_settings_sync(chat_id):
+def create_repetition_tables():
 
     conn = connect()
-    cur = conn.cursor()
+    cur = None
 
     try:
 
-        cur.execute("""
+        cur = conn.cursor()
+
+        # --------------------------------------------------
+        # إضافة إعدادات التكرار إلى جدول الحماية الموجود
+        # --------------------------------------------------
+
+        columns = {
+            "repetition_warning_duration": (
+                "INTEGER DEFAULT 3600"
+            ),
+            "repetition_punishment_duration": (
+                "INTEGER DEFAULT 300"
+            ),
+            "repetition_rank": (
+                "TEXT DEFAULT 'عضو'"
+            ),
+        }
+
+        for column, definition in columns.items():
+
+            try:
+
+                cur.execute(
+                    f"""
+                    ALTER TABLE protection_settings
+                    ADD COLUMN {column} {definition}
+                    """
+                )
+
+            except Exception:
+
+                # العمود موجود مسبقًا
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+
+        # --------------------------------------------------
+        # تحذيرات التكرار
+        #
+        # كل تحذير له وقت انتهاء مستقل.
+        # --------------------------------------------------
+
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS repetition_warnings
+            (
+                chat_id BIGINT NOT NULL,
+                user_id BIGINT NOT NULL,
+                warning_id SERIAL PRIMARY KEY,
+                expires_at TIMESTAMP NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+
+        cur.execute(
+            """
+            CREATE INDEX IF NOT EXISTS
+            idx_repetition_warnings_user
+            ON repetition_warnings
+            (
+                chat_id,
+                user_id
+            )
+            """
+        )
+
+        cur.execute(
+            """
+            CREATE INDEX IF NOT EXISTS
+            idx_repetition_warnings_expiry
+            ON repetition_warnings
+            (
+                expires_at
+            )
+            """
+        )
+
+        conn.commit()
+
+    except Exception:
+
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+
+        raise
+
+    finally:
+
+        if cur is not None:
+
+            try:
+                cur.close()
+            except Exception:
+                pass
+
+        conn.close()
+
+
+# ==================================================
+# إنشاء إعدادات المجموعة إذا لم تكن موجودة
+# ==================================================
+
+def ensure_repetition_settings(chat_id):
+
+    conn = connect()
+    cur = None
+
+    try:
+
+        cur = conn.cursor()
+
+        cur.execute(
+            """
+            INSERT INTO protection_settings
+            (
+                chat_id,
+                repetition_enabled,
+                repetition_limit,
+                repetition_seconds,
+                repetition_action,
+                repetition_warning_duration,
+                repetition_punishment_duration,
+                repetition_rank
+            )
+            VALUES (?, 0, ?, ?, 'mute', ?, ?, 'عضو')
+
+            ON CONFLICT(chat_id)
+            DO NOTHING
+            """,
+            (
+                chat_id,
+                DEFAULT_LIMIT,
+                DEFAULT_SECONDS,
+                DEFAULT_WARNING_DURATION,
+                DEFAULT_PUNISHMENT_DURATION,
+            )
+        )
+
+        conn.commit()
+
+    finally:
+
+        if cur is not None:
+
+            try:
+                cur.close()
+            except Exception:
+                pass
+
+        conn.close()
+
+
+# ==================================================
+# جلب إعدادات التكرار
+# ==================================================
+
+def get_repetition_settings(chat_id):
+
+    ensure_repetition_settings(
+        chat_id
+    )
+
+    conn = connect()
+    cur = None
+
+    try:
+
+        cur = conn.cursor()
+
+        cur.execute(
+            """
             SELECT
                 repetition_enabled,
                 repetition_limit,
@@ -108,76 +255,63 @@ def get_repetition_settings_sync(chat_id):
                 repetition_rank
             FROM protection_settings
             WHERE chat_id=?
-            LIMIT 1
-        """, (chat_id,))
+            """,
+            (
+                chat_id,
+            )
+        )
 
         row = cur.fetchone()
 
-        if not row:
-
-            cur.execute("""
-                INSERT INTO protection_settings (
-                    chat_id,
-                    repetition_enabled,
-                    repetition_limit,
-                    repetition_seconds,
-                    repetition_action,
-                    repetition_warning_duration,
-                    repetition_punishment_duration,
-                    repetition_rank
-                )
-                VALUES (?, 0, 3, 5, 'mute', 3600, 300, 'عضو')
-                ON CONFLICT(chat_id)
-                DO NOTHING
-            """, (chat_id,))
-
-            conn.commit()
-
-            return {
-                "enabled": False,
-                "limit": 3,
-                "seconds": 5,
-                "action": "mute",
-                "warning_duration": 3600,
-                "punishment_duration": 300,
-                "rank": "عضو",
-            }
-
-        return {
-            "enabled": bool(row[0]),
-            "limit": int(row[1] or 3),
-            "seconds": int(row[2] or 5),
-            "action": row[3] or "mute",
-            "warning_duration": int(row[4] or 3600),
-            "punishment_duration": int(row[5] or 300),
-            "rank": row[6] or "عضو",
-        }
-
     finally:
 
-        cur.close()
+        if cur is not None:
+
+            try:
+                cur.close()
+            except Exception:
+                pass
+
         conn.close()
 
+    if not row:
 
-async def get_repetition_settings(chat_id):
+        return {
+            "enabled": False,
+            "limit": DEFAULT_LIMIT,
+            "seconds": DEFAULT_SECONDS,
+            "action": "mute",
+            "warning_duration": DEFAULT_WARNING_DURATION,
+            "punishment_duration": DEFAULT_PUNISHMENT_DURATION,
+            "rank": "عضو",
+        }
 
-    return await asyncio.to_thread(
-        get_repetition_settings_sync,
-        chat_id
-    )
+    return {
+        "enabled": bool(row[0]),
+        "limit": int(row[1] or DEFAULT_LIMIT),
+        "seconds": int(row[2] or DEFAULT_SECONDS),
+        "action": row[3] or "mute",
+        "warning_duration": int(
+            row[4] or DEFAULT_WARNING_DURATION
+        ),
+        "punishment_duration": int(
+            row[5] or DEFAULT_PUNISHMENT_DURATION
+        ),
+        "rank": row[6] or "عضو",
+    }
 
 
-# =========================================================
-# حفظ إعداد
-# =========================================================
+# ==================================================
+# تحديث إعداد
+# ==================================================
 
 def update_repetition_setting(
     chat_id,
-    field,
+    column,
     value
 ):
 
-    allowed = {
+    allowed_columns = {
         "repetition_enabled",
         "repetition_limit",
         "repetition_seconds",
@@ -187,99 +321,266 @@ def update_repetition_setting(
         "repetition_rank",
     }
 
-    if field not in allowed:
-        raise ValueError("Invalid repetition setting")
+    if column not in allowed_columns:
+        raise ValueError(
+            "Invalid repetition setting"
+        )
+
+    ensure_repetition_settings(
+        chat_id
+    )
 
     conn = connect()
-    cur = conn.cursor()
+    cur = None
 
     try:
 
-        cur.execute("""
-            INSERT INTO protection_settings (chat_id)
-            VALUES (?)
-            ON CONFLICT(chat_id)
-            DO NOTHING
-        """, (chat_id,))
+        cur = conn.cursor()
 
         cur.execute(
             f"""
             UPDATE protection_settings
-            SET {field}=?
+            SET {column}=?
             WHERE chat_id=?
             """,
-            (value, chat_id)
+            (
+                value,
+                chat_id
+            )
         )
 
         conn.commit()
 
     finally:
 
-        cur.close()
+        if cur is not None:
+
+            try:
+                cur.close()
+            except Exception:
+                pass
+
         conn.close()
 
 
-async def set_repetition_setting(
-    chat_id,
-    field,
-    value
-):
+# ==================================================
+# تحويل المدة
+#
+# 3ث
+# 5د
+# 1س
+# 2ي
+# ==================================================
 
-    await asyncio.to_thread(
-        update_repetition_setting,
-        chat_id,
-        field,
-        value
+DURATION_PATTERN = re.compile(
+    r"^\s*(\d+(?:\.\d+)?)\s*"
+    r"(ث|ثانية|ثواني|د|دقيقة|دقائق|س|ساعة|ساعات|ي|يوم|أيام)"
+    r"\s*$"
+)
+
+
+def parse_duration_token(token):
+
+    if not token:
+        return None
+
+    match = DURATION_PATTERN.match(
+        str(token)
+    )
+
+    if not match:
+        return None
+
+    number = float(
+        match.group(1)
+    )
+
+    if number < 1:
+        return None
+
+    unit = match.group(2)
+
+    if unit in (
+        "ث",
+        "ثانية",
+        "ثواني",
+    ):
+
+        multiplier = 1
+
+    elif unit in (
+        "د",
+        "دقيقة",
+        "دقائق",
+    ):
+
+        multiplier = 60
+
+    elif unit in (
+        "س",
+        "ساعة",
+        "ساعات",
+    ):
+
+        multiplier = 3600
+
+    else:
+
+        multiplier = 86400
+
+    return int(
+        number * multiplier
     )
 
 
-# =========================================================
-# الرتبة المستهدفة
-# =========================================================
+# ==================================================
+# تنسيق المدة
+# ==================================================
+
+def format_duration(seconds):
+
+    seconds = int(seconds)
+
+    if seconds % 86400 == 0:
+
+        value = seconds // 86400
+
+        return f"{value} يوم"
+
+    if seconds % 3600 == 0:
+
+        value = seconds // 3600
+
+        return f"{value} ساعة"
+
+    if seconds % 60 == 0:
+
+        value = seconds // 60
+
+        return f"{value} دقيقة"
+
+    return f"{seconds} ثانية"
+
+
+# ==================================================
+# هل الرتبة مستهدفة؟
+# ==================================================
 
 def repetition_rank_allowed(
     user_id,
-    target_rank
+    chat_id,
+    selected_rank
 ):
 
     # المطور الأساسي مستثنى دائمًا
-    if is_primary_developer(user_id):
+    if user_id == OWNER_ID:
         return False
 
-    level = get_rank_level(user_id)
+    if is_primary_developer(
+        user_id
+    ):
+        return False
 
-    if target_rank == "عضو":
+    level = get_rank_level(
+        user_id,
+        chat_id
+    )
+
+    if selected_rank == "عضو":
+
         return level == 0
 
-    if target_rank == "مميز":
-        return level <= 1
+    if selected_rank == "المالك":
 
-    if target_rank == "ادمن":
-        return level <= 2
+        return 0 <= level <= 5
 
-    if target_rank == "ادمن اساسي":
-        return level <= 3
+    if selected_rank == "Dev":
 
-    if target_rank == "نائب المالك":
-        return level <= 4
-
-    if target_rank == "المالك":
-        return level <= 5
-
-    if target_rank == "Dev":
-        return level <= 6
+        return 0 <= level <= 6
 
     return level == 0
 
 
-# =========================================================
-# تنظيف رسائل المستخدم القديمة من الذاكرة
-# =========================================================
+# ==================================================
+# تنظيف الرسائل القديمة من الكاش
+# ==================================================
 
 def cleanup_user_messages(
     chat_id,
     user_id,
-    window_seconds
+    seconds
+):
+
+    now = datetime.now(
+        timezone.utc
+    )
+
+    messages = _repetition_messages[
+        chat_id
+    ][
+        user_id
+    ]
+
+    while messages:
+
+        _, created_at = messages[0]
+
+        age = (
+            now - created_at
+        ).total_seconds()
+
+        if age <= seconds:
+            break
+
+        messages.popleft()
+
+
+# ==================================================
+# إضافة رسالة
+# ==================================================
+
+def add_repetition_message(
+    chat_id,
+    user_id,
+    message_id,
+    seconds
+):
+
+    cleanup_user_messages(
+        chat_id,
+        user_id,
+        seconds
+    )
+
+    messages = _repetition_messages[
+        chat_id
+    ][
+        user_id
+    ]
+
+    now = datetime.now(
+        timezone.utc
+    )
+
+    messages.append(
+        (
+            message_id,
+            now
+        )
+    )
+
+    # لا نحتاج أكثر من limit رسائل
+    return list(messages)
+
+
+# ==================================================
+# جلب الرسائل التي سيتم حذفها
+# ==================================================
+
+def get_last_repetition_messages(
+    chat_id,
+    user_id,
+    limit
 ):
 
     messages = _repetition_messages[
@@ -288,135 +589,45 @@ def cleanup_user_messages(
         user_id
     ]
 
-    cutoff = now() - timedelta(
-        seconds=window_seconds
-    )
+    if not messages:
+        return []
 
-    while messages and messages[0][1] < cutoff:
+    return [
+        message_id
+        for message_id, _ in list(
+            messages
+        )[-limit:]
+    ]
 
-        messages.popleft()
 
+# ==================================================
+# تصفير عداد المستخدم
+# ==================================================
 
-# =========================================================
-# تسجيل الرسالة
-# =========================================================
-
-async def register_repetition_message(
-    update,
-    context
+def reset_repetition_messages(
+    chat_id,
+    user_id
 ):
 
-    message = update.effective_message
-    chat = update.effective_chat
-    user = update.effective_user
+    try:
 
-    if not message or not chat or not user:
-        return False
-
-    if chat.type not in (
-        "group",
-        "supergroup"
-    ):
-        return False
-
-    settings = await get_repetition_settings(
-        chat.id
-    )
-
-    if not settings["enabled"]:
-        return False
-
-    if not repetition_rank_allowed(
-        user.id,
-        settings["rank"]
-    ):
-        return False
-
-    # =====================================================
-    # لا نحسب أوامر البوت؟
-    #
-    # حسب المطلوب: أي رسالة من المستخدم تحسب.
-    # =====================================================
-
-    key = (
-        chat.id,
-        user.id
-    )
-
-    async with _repetition_locks[key]:
-
-        messages = _repetition_messages[
-            chat.id
-        ][
-            user.id
-        ]
-
-        cleanup_user_messages(
-            chat.id,
-            user.id,
-            settings["seconds"]
+        _repetition_messages[
+            chat_id
+        ].pop(
+            user_id,
+            None
         )
 
-        messages.append((
-            message.message_id,
-            now()
-        ))
-
-        # نحتاج آخر N فقط على الأقل
-        while len(messages) > settings["limit"]:
-
-            messages.popleft()
-
-        if len(messages) < settings["limit"]:
-            return False
-
-        # =================================================
-        # تحقق من أن N رسالة فعلًا داخل المدة
-        # =================================================
-
-        first_time = messages[0][1]
-        elapsed = (
-            now() - first_time
-        ).total_seconds()
-
-        if elapsed > settings["seconds"]:
-
-            cleanup_user_messages(
-                chat.id,
-                user.id,
-                settings["seconds"]
-            )
-
-            return False
-
-        # =================================================
-        # حصل التكرار
-        # =================================================
-
-        message_ids = [
-            item[0]
-            for item in messages
-        ]
-
-        await handle_repetition_trigger(
-            update,
-            context,
-            settings,
-            message_ids
-        )
-
-        # بعد العقوبة/الإنذار نبدأ نافذة جديدة
-        messages.clear()
-
-        return True
+    except Exception:
+        pass
 
 
-# =========================================================
-# حذف آخر N رسائل
-# =========================================================
+# ==================================================
+# حذف رسائل التكرار
+# ==================================================
 
 async def delete_repetition_messages(
-    context,
+    bot,
     chat_id,
     message_ids
 ):
@@ -425,7 +636,7 @@ async def delete_repetition_messages(
 
         try:
 
-            await context.bot.delete_message(
+            await bot.delete_message(
                 chat_id=chat_id,
                 message_id=message_id
             )
@@ -434,337 +645,578 @@ async def delete_repetition_messages(
             pass
 
 
-# =========================================================
-# عدد الإنذارات النشطة
-# =========================================================
+# ==================================================
+# تنظيف التحذيرات المنتهية
+# ==================================================
 
-def get_warning_count_sync(
+def cleanup_expired_warnings(
     chat_id,
     user_id
 ):
 
+    now = datetime.now(
+        timezone.utc
+    ).replace(
+        tzinfo=None
+    )
+
     conn = connect()
-    cur = conn.cursor()
+    cur = None
 
     try:
 
-        cur.execute("""
+        cur = conn.cursor()
+
+        cur.execute(
+            """
             DELETE FROM repetition_warnings
-            WHERE expires_at <= CURRENT_TIMESTAMP
-        """)
+            WHERE chat_id=?
+            AND user_id=?
+            AND expires_at <= ?
+            """,
+            (
+                chat_id,
+                user_id,
+                now
+            )
+        )
 
         conn.commit()
 
-        cur.execute("""
-            SELECT COUNT(*)
-            FROM repetition_warnings
-            WHERE chat_id=?
-            AND user_id=?
-        """, (
-            chat_id,
-            user_id
-        ))
-
-        row = cur.fetchone()
-
-        return int(row[0] or 0)
-
     finally:
 
-        cur.close()
+        if cur is not None:
+
+            try:
+                cur.close()
+            except Exception:
+                pass
+
         conn.close()
 
 
-async def get_warning_count(
+# ==================================================
+# عدد التحذيرات الفعالة
+# ==================================================
+
+def get_warning_count(
     chat_id,
     user_id
 ):
 
-    return await asyncio.to_thread(
-        get_warning_count_sync,
+    cleanup_expired_warnings(
         chat_id,
         user_id
     )
 
+    conn = connect()
+    cur = None
 
-# =========================================================
-# إضافة إنذار
-# =========================================================
+    try:
 
-def add_warning_sync(
+        cur = conn.cursor()
+
+        cur.execute(
+            """
+            SELECT COUNT(*)
+            FROM repetition_warnings
+            WHERE chat_id=?
+            AND user_id=?
+            """,
+            (
+                chat_id,
+                user_id
+            )
+        )
+
+        row = cur.fetchone()
+
+        return int(
+            row[0] or 0
+        )
+
+    finally:
+
+        if cur is not None:
+
+            try:
+                cur.close()
+            except Exception:
+                pass
+
+        conn.close()
+
+
+# ==================================================
+# إضافة تحذير
+# ==================================================
+
+def add_warning(
     chat_id,
     user_id,
     duration
 ):
 
+    expires_at = (
+        datetime.now(
+            timezone.utc
+        )
+        + timedelta(
+            seconds=duration
+        )
+    ).replace(
+        tzinfo=None
+    )
+
     conn = connect()
-    cur = conn.cursor()
+    cur = None
 
     try:
 
-        expires = now() + timedelta(
-            seconds=duration
-        )
+        cur = conn.cursor()
 
-        cur.execute("""
-            INSERT INTO repetition_warnings (
+        cur.execute(
+            """
+            INSERT INTO repetition_warnings
+            (
                 chat_id,
                 user_id,
                 expires_at
             )
             VALUES (?, ?, ?)
-        """, (
-            chat_id,
-            user_id,
-            expires
-        ))
+            """,
+            (
+                chat_id,
+                user_id,
+                expires_at
+            )
+        )
 
         conn.commit()
 
-        cur.execute("""
-            SELECT COUNT(*)
-            FROM repetition_warnings
-            WHERE chat_id=?
-            AND user_id=?
-            AND expires_at > CURRENT_TIMESTAMP
-        """, (
-            chat_id,
-            user_id
-        ))
-
-        row = cur.fetchone()
-
-        return int(row[0] or 0)
-
     finally:
 
-        cur.close()
+        if cur is not None:
+
+            try:
+                cur.close()
+            except Exception:
+                pass
+
         conn.close()
 
 
-async def add_warning(
-    chat_id,
-    user_id,
-    duration
-):
+# ==================================================
+# مسح تحذيرات المستخدم
+# ==================================================
 
-    return await asyncio.to_thread(
-        add_warning_sync,
-        chat_id,
-        user_id,
-        duration
-    )
-
-
-# =========================================================
-# مسح الإنذارات
-# =========================================================
-
-def clear_warnings_sync(
+def clear_warnings(
     chat_id,
     user_id
 ):
 
     conn = connect()
-    cur = conn.cursor()
+    cur = None
 
     try:
 
-        cur.execute("""
+        cur = conn.cursor()
+
+        cur.execute(
+            """
             DELETE FROM repetition_warnings
             WHERE chat_id=?
             AND user_id=?
-        """, (
-            chat_id,
-            user_id
-        ))
+            """,
+            (
+                chat_id,
+                user_id
+            )
+        )
+
+        deleted = cur.rowcount
+
+        conn.commit()
+
+        return deleted
+
+    finally:
+
+        if cur is not None:
+
+            try:
+                cur.close()
+            except Exception:
+                pass
+
+        conn.close()
+
+
+# ==================================================
+# مسح جميع التحذيرات المنتهية
+# ==================================================
+
+def cleanup_all_expired_warnings():
+
+    now = datetime.now(
+        timezone.utc
+    ).replace(
+        tzinfo=None
+    )
+
+    conn = connect()
+    cur = None
+
+    try:
+
+        cur = conn.cursor()
+
+        cur.execute(
+            """
+            DELETE FROM repetition_warnings
+            WHERE expires_at <= ?
+            """,
+            (
+                now,
+            )
+        )
 
         conn.commit()
 
     finally:
 
-        cur.close()
+        if cur is not None:
+
+            try:
+                cur.close()
+            except Exception:
+                pass
+
         conn.close()
 
 
-async def clear_warnings(
-    chat_id,
-    user_id
-):
+# ==================================================
+# اسم العقوبة
+# ==================================================
 
-    await asyncio.to_thread(
-        clear_warnings_sync,
-        chat_id,
-        user_id
-    )
-
-
-# =========================================================
-# رسالة التحذير
-# =========================================================
-
-async def send_repetition_warning(
-    update,
-    warning_number
-):
-
-    message = update.effective_message
-    user = update.effective_user
-
-    if not message or not user:
-        return
-
-    await message.reply_text(
-        (
-            f"• تحذير التكرار رقم {warning_number}\n\n"
-            f"المستخدم ↤︎ "
-            f"{mention_user(user)}"
-        ),
-        parse_mode="HTML"
-    )
+ACTION_NAMES = {
+    "mute": "كتم",
+    "restrict": "تقييد",
+    "ban": "حظر",
+}
 
 
-# =========================================================
+# ==================================================
 # تنفيذ العقوبة
-# =========================================================
+# ==================================================
 
-async def punish_repetition(
+async def punish_user(
     update,
     context,
-    settings
+    user,
+    action,
+    duration
 ):
 
     chat = update.effective_chat
-    user = update.effective_user
 
-    if not chat or not user:
-        return
+    if not chat:
+        return False
 
-    action = settings["action"]
-    duration = settings["punishment_duration"]
+    chat_id = chat.id
 
-    # =====================================================
-    # كتم
-    # =====================================================
+    mention = (
+        f'<a href="tg://user?id={user.id}">'
+        f'{user.first_name or "المستخدم"}'
+        f'</a>'
+    )
 
-    if action == "mute":
+    try:
 
-        await save_mute(
-            chat_id=chat.id,
-            user_id=user.id,
-            username=user.username or "",
-            first_name=user.first_name or "",
-            until_time=(
-                now() +
-                timedelta(seconds=duration)
-            ),
-            reason="التكرار",
-            by_user=OWNER_ID
-        )
+        # ==================================================
+        # كتم
+        # ==================================================
 
-        punishment_text = (
-            f"كتم لمدة {format_duration(duration)}"
-        )
+        if action == "mute":
 
-    # =====================================================
-    # تقييد
-    # =====================================================
+            until_date = (
+                datetime.now(
+                    timezone.utc
+                )
+                + timedelta(
+                    seconds=duration
+                )
+            )
 
-    elif action == "restrict":
-
-        until_date = (
-            now() +
-            timedelta(seconds=duration)
-        )
-
-        permissions = ChatPermissions(
-            can_send_messages=False
-        )
-
-        try:
+            permissions = ChatPermissions(
+                can_send_messages=False
+            )
 
             await context.bot.restrict_chat_member(
-                chat_id=chat.id,
+                chat_id=chat_id,
                 user_id=user.id,
                 permissions=permissions,
                 until_date=until_date
             )
 
-        except Exception:
-            pass
+            duration_text = format_duration(
+                duration
+            )
 
-        await save_restriction(
-            chat_id=chat.id,
-            user_id=user.id,
-            username=user.username or "",
-            first_name=user.first_name or "",
-            until_time=until_date,
-            reason="التكرار",
-            by_user=OWNER_ID
-        )
+            text = (
+                "• تم كتمك بسبب التكرار\n"
+                f"العقوبة: كتم لمدة {duration_text}\n\n"
+                f"المستخدم ↤︎ {mention}"
+            )
 
-        punishment_text = (
-            f"تقييد لمدة {format_duration(duration)}"
-        )
+        # ==================================================
+        # تقييد
+        # ==================================================
 
-    # =====================================================
-    # حظر
-    # =====================================================
+        elif action == "restrict":
 
-    elif action == "ban":
+            until_date = (
+                datetime.now(
+                    timezone.utc
+                )
+                + timedelta(
+                    seconds=duration
+                )
+            )
 
-        try:
+            permissions = ChatPermissions(
+                can_send_messages=False,
+                can_send_audios=False,
+                can_send_documents=False,
+                can_send_photos=False,
+                can_send_videos=False,
+                can_send_video_notes=False,
+                can_send_voice_notes=False,
+                can_send_polls=False,
+                can_send_other_messages=False,
+                can_add_web_page_previews=False,
+                can_change_info=False,
+                can_invite_users=False,
+                can_pin_messages=False,
+                can_manage_topics=False,
+            )
+
+            await context.bot.restrict_chat_member(
+                chat_id=chat_id,
+                user_id=user.id,
+                permissions=permissions,
+                until_date=until_date
+            )
+
+            duration_text = format_duration(
+                duration
+            )
+
+            text = (
+                "• تم تقييدك بسبب التكرار\n"
+                f"العقوبة: تقييد لمدة {duration_text}\n\n"
+                f"المستخدم ↤︎ {mention}"
+            )
+
+        # ==================================================
+        # حظر
+        # ==================================================
+
+        elif action == "ban":
 
             await context.bot.ban_chat_member(
-                chat_id=chat.id,
+                chat_id=chat_id,
                 user_id=user.id
             )
 
-        except Exception:
-            pass
+            text = (
+                "• تم حظرك بسبب التكرار\n"
+                "العقوبة: حظر\n\n"
+                f"المستخدم ↤︎ {mention}"
+            )
 
-        await save_ban(
-            chat_id=chat.id,
-            user_id=user.id,
-            username=user.username or "",
-            first_name=user.first_name or "",
-            reason="التكرار",
-            by_user=OWNER_ID
+        else:
+
+            return False
+
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=text,
+            parse_mode="HTML"
         )
 
-        punishment_text = "حظر"
+        return True
 
-    else:
+    except Exception as e:
+
+        print(
+            "❌ خطأ في عقوبة التكرار:",
+            e
+        )
+
+        return False
+
+
+# ==================================================
+# معالجة التكرار
+# ==================================================
+
+async def repetition_message_handler(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    message = update.effective_message
+    user = update.effective_user
+    chat = update.effective_chat
+
+    if not message:
         return
 
-    await clear_warnings(
+    if not user:
+        return
+
+    if not chat:
+        return
+
+    # الخاص لا يحتاج تكرار
+    if chat.type == "private":
+        return
+
+    settings = get_repetition_settings(
+        chat.id
+    )
+
+    if not settings["enabled"]:
+        return
+
+    # ==================================================
+    # تحديد الرتبة
+    # ==================================================
+
+    if not repetition_rank_allowed(
+        user.id,
+        chat.id,
+        settings["rank"]
+    ):
+        return
+
+    # ==================================================
+    # إضافة الرسالة
+    # ==================================================
+
+    messages = add_repetition_message(
+        chat.id,
+        user.id,
+        message.message_id,
+        settings["seconds"]
+    )
+
+    # ==================================================
+    # لم يصل للحد
+    # ==================================================
+
+    if len(messages) < settings["limit"]:
+        return
+
+    # ==================================================
+    # حذف آخر N رسائل فقط
+    # ==================================================
+
+    message_ids = get_last_repetition_messages(
+        chat.id,
+        user.id,
+        settings["limit"]
+    )
+
+    await delete_repetition_messages(
+        context.bot,
+        chat.id,
+        message_ids
+    )
+
+    reset_repetition_messages(
         chat.id,
         user.id
+    )
+
+    # ==================================================
+    # التحذيرات الحالية
+    # ==================================================
+
+    warning_count = get_warning_count(
+        chat.id,
+        user.id
+    )
+
+    # ==================================================
+    # التحذير الثالث = عقوبة مباشرة
+    # ==================================================
+
+    if warning_count >= 2:
+
+        punished = await punish_user(
+            update,
+            context,
+            user,
+            settings["action"],
+            settings["punishment_duration"]
+        )
+
+        if punished:
+
+            clear_warnings(
+                chat.id,
+                user.id
+            )
+
+        return
+
+    # ==================================================
+    # إضافة تحذير
+    # ==================================================
+
+    add_warning(
+        chat.id,
+        user.id,
+        settings["warning_duration"]
+    )
+
+    new_warning_count = (
+        warning_count + 1
+    )
+
+    # ==================================================
+    # رسالة التحذير
+    # ==================================================
+
+    mention = (
+        f'<a href="tg://user?id={user.id}">'
+        f'{user.first_name or "المستخدم"}'
+        f'</a>'
     )
 
     await context.bot.send_message(
         chat_id=chat.id,
         text=(
-            "• تم "
-            f"{ACTION_DISPLAY.get(action, action)}ك "
-            "بسبب التكرار\n"
-            f"العقوبة: {punishment_text}\n\n"
-            f"المستخدم ↤︎ {mention_user(user)}"
+            f"⚠️ تحذير التكرار {new_warning_count}/3\n\n"
+            f"المستخدم ↤︎ {mention}"
         ),
         parse_mode="HTML"
     )
 
 
-# =========================================================
-# عند حصول التكرار
-# =========================================================
+# ==================================================
+# تفعيل التكرار
+# ==================================================
 
-async def handle_repetition_trigger(
-    update,
-    context,
-    settings,
-    message_ids
+async def enable_repetition(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
 ):
+
+    if not update.message:
+        return
 
     chat = update.effective_chat
     user = update.effective_user
@@ -772,407 +1224,183 @@ async def handle_repetition_trigger(
     if not chat or not user:
         return
 
-    # =====================================================
-    # نحذف آخر N رسائل فقط
-    # =====================================================
+    if not chat.type in (
+        "group",
+        "supergroup"
+    ):
+        return
 
-    await delete_repetition_messages(
-        context,
+    if get_rank_level(
+        user.id,
+        chat.id
+    ) < 3 and not is_primary_developer(
+        user.id
+    ):
+
+        await update.message.reply_text(
+            "❌ هذا الأمر للادمن الاساسي وفوق فقط."
+        )
+
+        return
+
+    update_repetition_setting(
         chat.id,
-        message_ids[-settings["limit"]:]
+        "repetition_enabled",
+        1
     )
 
-    # =====================================================
-    # عدد الإنذارات الحالية قبل إضافة الجديد
-    # =====================================================
+    await update.message.reply_text(
+        "✅ تم تفعيل حماية التكرار."
+    )
 
-    current = await get_warning_count(
+
+# ==================================================
+# تعطيل التكرار
+# ==================================================
+
+async def disable_repetition(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not update.message:
+        return
+
+    chat = update.effective_chat
+    user = update.effective_user
+
+    if not chat or not user:
+        return
+
+    if get_rank_level(
+        user.id,
+        chat.id
+    ) < 3 and not is_primary_developer(
+        user.id
+    ):
+
+        await update.message.reply_text(
+            "❌ هذا الأمر للادمن الاساسي وفوق فقط."
+        )
+
+        return
+
+    update_repetition_setting(
+        chat.id,
+        "repetition_enabled",
+        0
+    )
+
+    # لا نمسح الإعدادات أو التحذيرات
+    reset_repetition_messages(
         chat.id,
         user.id
     )
 
-    # =====================================================
-    # الإنذار الثالث = عقوبة مباشرة
-    # =====================================================
-
-    if current >= 2:
-
-        await punish_repetition(
-            update,
-            context,
-            settings
-        )
-
-        return
-
-    # =====================================================
-    # إضافة إنذار جديد
-    # =====================================================
-
-    warning_number = await add_warning(
-        chat.id,
-        user.id,
-        settings["warning_duration"]
-    )
-
-    if warning_number >= 3:
-
-        await punish_repetition(
-            update,
-            context,
-            settings
-        )
-
-        return
-
-    await send_repetition_warning(
-        update,
-        warning_number
+    await update.message.reply_text(
+        "✅ تم تعطيل حماية التكرار."
     )
 
 
-# =========================================================
-# أمر التكرار الرئيسي
-# =========================================================
+# ==================================================
+# بدء ضع تكرار
+# ==================================================
 
-async def repetition_command(
+async def set_repetition_start(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
 
-    message = update.effective_message
+    if not update.message:
+        return
+
     chat = update.effective_chat
     user = update.effective_user
 
-    if not message or not chat or not user:
+    if not chat or not user:
         return
 
-    if chat.type not in (
-        "group",
-        "supergroup"
+    if get_rank_level(
+        user.id,
+        chat.id
+    ) < 3 and not is_primary_developer(
+        user.id
     ):
-        return
 
-    # =====================================================
-    # الأوامر الإدارية
-    # =====================================================
+        await update.message.reply_text(
+            "❌ هذا الأمر للادمن الاساسي وفوق فقط."
+        )
+
+        return
 
     text = (
-        message.text or ""
+        update.message.text or ""
     ).strip()
 
-    normalized = re.sub(
-        r"\s+",
-        " ",
-        text
-    )
+    parts = text.split()
 
-    # =====================================================
-    # تفعيل
-    # =====================================================
-
-    if normalized in (
-        "تفعيل التكرار",
-    ):
-
-        if get_rank_level(user.id) < 2:
-            return
-
-        await set_repetition_setting(
-            chat.id,
-            "repetition_enabled",
-            1
-        )
-
-        await message.reply_text(
-            "• تم تفعيل حماية التكرار بنجاح ."
-        )
-
-        raise ApplicationHandlerStop
-
-    # =====================================================
-    # تعطيل
-    # =====================================================
-
-    if normalized in (
-        "تعطيل التكرار",
-    ):
-
-        if get_rank_level(user.id) < 2:
-            return
-
-        await set_repetition_setting(
-            chat.id,
-            "repetition_enabled",
-            0
-        )
-
-        await message.reply_text(
-            "• تم تعطيل حماية التكرار بنجاح ."
-        )
-
-        raise ApplicationHandlerStop
-
-    # =====================================================
+    # --------------------------------------------------
+    # إذا كتب:
     # ضع تكرار 5
-    # =====================================================
+    # --------------------------------------------------
 
-    match = re.fullmatch(
-        r"ضع\s+تكرار\s+(\d+)",
-        normalized
-    )
+    if len(parts) >= 3:
 
-    if match:
+        try:
 
-        if get_rank_level(user.id) < 2:
-            return
+            limit = int(
+                parts[2]
+            )
 
-        limit = int(
-            match.group(1)
-        )
+        except ValueError:
+
+            limit = 0
 
         if limit < 1:
+
+            await update.message.reply_text(
+                "❌ عدد التكرار يجب أن يكون 1 أو أكثر."
+            )
+
             return
 
-        repetition_sessions[user.id] = {
+        repetition_sessions[
+            user.id
+        ] = {
             "chat_id": chat.id,
-            "action": "repetition_duration",
-            "limit": limit
+            "limit": limit,
+            "type": "repetition_duration",
         }
 
-        await message.reply_text(
+        await update.message.reply_text(
             "حسنًا، ارسل المدة التي تريدها ."
         )
 
-        raise ApplicationHandlerStop
+        return
 
-    # =====================================================
-    # تعيين مدة انذار
-    # =====================================================
-
-    match = re.fullmatch(
-        r"تعيين\s+مدة\s+انذار\s+(.+)",
-        normalized
+    await update.message.reply_text(
+        "حسنًا، ارسل عدد التكرار أولًا.\n"
+        "مثال:\n"
+        "ضع تكرار 5"
     )
 
-    if match:
 
-        if get_rank_level(user.id) < 2:
-            return
+# ==================================================
+# استقبال مدة التكرار
+# ==================================================
 
-        duration = parse_duration_token(
-            match.group(1).strip()
-        )
-
-        if not duration:
-            return
-
-        await set_repetition_setting(
-            chat.id,
-            "repetition_warning_duration",
-            duration
-        )
-
-        await message.reply_text(
-            "• تم تعيين مدة الإنذار بنجاح ."
-        )
-
-        raise ApplicationHandlerStop
-
-    # =====================================================
-    # تغيير عقوبة التكرار
-    # =====================================================
-
-    if normalized == "تغيير عقوبة التكرار":
-
-        if get_rank_level(user.id) < 2:
-            return
-
-        repetition_sessions[user.id] = {
-            "chat_id": chat.id,
-            "action": "repetition_action"
-        }
-
-        keyboard = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton(
-                    "كتم",
-                    callback_data="repetition:action:mute"
-                ),
-                InlineKeyboardButton(
-                    "تقييد",
-                    callback_data="repetition:action:restrict"
-                ),
-                InlineKeyboardButton(
-                    "حظر",
-                    callback_data="repetition:action:ban"
-                )
-            ]
-        ])
-
-        await message.reply_text(
-            "حسنًا، ارسل العقوبة الجديدة .",
-            reply_markup=keyboard
-        )
-
-        raise ApplicationHandlerStop
-
-    # =====================================================
-    # مدة كتم التكرار
-    # =====================================================
-
-    match = re.fullmatch(
-        r"ضع\s+كتم\s+تكرار\s+(.+)",
-        normalized
-    )
-
-    if match:
-
-        if get_rank_level(user.id) < 2:
-            return
-
-        duration = parse_duration_token(
-            match.group(1).strip()
-        )
-
-        if not duration:
-            return
-
-        settings = await get_repetition_settings(
-            chat.id
-        )
-
-        if settings["action"] != "mute":
-
-            await message.reply_text(
-                "• العقوبة الحالية هي "
-                f"{ACTION_DISPLAY.get(settings['action'], settings['action'])}، "
-                "لذلك استخدم إعداد مدة العقوبة الحالية."
-            )
-
-            raise ApplicationHandlerStop
-
-        await set_repetition_setting(
-            chat.id,
-            "repetition_punishment_duration",
-            duration
-        )
-
-        await message.reply_text(
-            "• تم تعيين مدة الكتم للتكرار بنجاح ."
-        )
-
-        raise ApplicationHandlerStop
-
-    # =====================================================
-    # مدة تقييد التكرار
-    # =====================================================
-
-    match = re.fullmatch(
-        r"ضع\s+تقييد\s+تكرار\s+(.+)",
-        normalized
-    )
-
-    if match:
-
-        if get_rank_level(user.id) < 2:
-            return
-
-        duration = parse_duration_token(
-            match.group(1).strip()
-        )
-
-        if not duration:
-            return
-
-        settings = await get_repetition_settings(
-            chat.id
-        )
-
-        if settings["action"] != "restrict":
-
-            await message.reply_text(
-                "• العقوبة الحالية هي "
-                f"{ACTION_DISPLAY.get(settings['action'], settings['action'])}، "
-                "لذلك استخدم إعداد مدة العقوبة الحالية."
-            )
-
-            raise ApplicationHandlerStop
-
-        await set_repetition_setting(
-            chat.id,
-            "repetition_punishment_duration",
-            duration
-        )
-
-        await message.reply_text(
-            "• تم تعيين مدة التقييد للتكرار بنجاح ."
-        )
-
-        raise ApplicationHandlerStop
-
-    # =====================================================
-    # رتبة التكرار
-    # =====================================================
-
-    match = re.fullmatch(
-        r"ضع\s+رتبة\s+التكرار\s+(.+)",
-        normalized
-    )
-
-    if match:
-
-        if get_rank_level(user.id) < 3:
-            return
-
-        rank = match.group(1).strip()
-
-        valid_ranks = (
-            "عضو",
-            "مميز",
-            "ادمن",
-            "ادمن اساسي",
-            "نائب المالك",
-            "المالك",
-            "Dev",
-        )
-
-        if rank not in valid_ranks:
-            return
-
-        await set_repetition_setting(
-            chat.id,
-            "repetition_rank",
-            rank
-        )
-
-        await message.reply_text(
-            f"• تم تعيين رتبة التكرار على: {rank}"
-        )
-
-        raise ApplicationHandlerStop
-
-
-# =========================================================
-# استقبال جلسات إعداد التكرار
-# =========================================================
-
-async def repetition_session_message(
+async def receive_repetition_duration(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
 
-    message = update.effective_message
-    chat = update.effective_chat
-    user = update.effective_user
-
-    if not message or not chat or not user:
+    if not update.message:
         return
 
-    if chat.type not in (
-        "group",
-        "supergroup"
-    ):
+    user = update.effective_user
+    chat = update.effective_chat
+
+    if not user or not chat:
         return
 
     session = repetition_sessions.get(
@@ -1185,67 +1413,183 @@ async def repetition_session_message(
     if session.get("chat_id") != chat.id:
         return
 
+    if session.get("type") != "repetition_duration":
+        return
+
     text = (
-        message.text or ""
+        update.message.text or ""
     ).strip()
 
-    action = session.get(
-        "action"
+    duration = parse_duration_token(
+        text
     )
 
-    # =====================================================
-    # مدة التكرار
-    # =====================================================
+    if duration is None:
 
-    if action == "repetition_duration":
-
-        duration = parse_duration_token(
-            text
+        await update.message.reply_text(
+            "❌ المدة غير صحيحة.\n"
+            "أمثلة: 3ث - 5د - 1س - 2ي"
         )
 
-        if not duration:
+        return
 
-            await message.reply_text(
-                "• المدة غير صحيحة، مثال: 3ث أو 5د أو 1س."
-            )
+    update_repetition_setting(
+        chat.id,
+        "repetition_limit",
+        session["limit"]
+    )
 
-            raise ApplicationHandlerStop
+    update_repetition_setting(
+        chat.id,
+        "repetition_seconds",
+        duration
+    )
 
-        await set_repetition_setting(
-            chat.id,
-            "repetition_limit",
-            session["limit"]
+    repetition_sessions.pop(
+        user.id,
+        None
+    )
+
+    await update.message.reply_text(
+        "✅ تم حفظ إعداد التكرار.\n\n"
+        f"عدد الرسائل ↤︎ {session['limit']}\n"
+        f"المدة ↤︎ {format_duration(duration)}"
+    )
+
+
+# ==================================================
+# مدة التحذير
+# ==================================================
+
+async def set_warning_duration(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not update.message:
+        return
+
+    chat = update.effective_chat
+    user = update.effective_user
+
+    if not chat or not user:
+        return
+
+    if get_rank_level(
+        user.id,
+        chat.id
+    ) < 3 and not is_primary_developer(
+        user.id
+    ):
+
+        await update.message.reply_text(
+            "❌ هذا الأمر للادمن الاساسي وفوق فقط."
         )
 
-        await set_repetition_setting(
-            chat.id,
-            "repetition_seconds",
-            duration
+        return
+
+    text = (
+        update.message.text or ""
+    ).strip()
+
+    parts = text.split()
+
+    if len(parts) < 4:
+
+        await update.message.reply_text(
+            "❌ مثال:\n"
+            "تعيين مدة انذار 1س"
         )
 
-        repetition_sessions.pop(
-            user.id,
-            None
+        return
+
+    duration = parse_duration_token(
+        parts[-1]
+    )
+
+    if duration is None:
+
+        await update.message.reply_text(
+            "❌ المدة غير صحيحة."
         )
 
-        await message.reply_text(
-            (
-                "• تم حفظ إعداد التكرار بنجاح .\n\n"
-                f"عدد الرسائل ↤︎ {session['limit']}\n"
-                f"المدة ↤︎ {format_duration(duration)}"
-            )
+        return
+
+    update_repetition_setting(
+        chat.id,
+        "repetition_warning_duration",
+        duration
+    )
+
+    await update.message.reply_text(
+        "✅ تم تعيين مدة الانذار إلى "
+        f"{format_duration(duration)}."
+    )
+
+
+# ==================================================
+# بدء تغيير العقوبة
+# ==================================================
+
+async def change_repetition_action(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not update.message:
+        return
+
+    chat = update.effective_chat
+    user = update.effective_user
+
+    if not chat or not user:
+        return
+
+    if get_rank_level(
+        user.id,
+        chat.id
+    ) < 3 and not is_primary_developer(
+        user.id
+    ):
+
+        await update.message.reply_text(
+            "❌ هذا الأمر للادمن الاساسي وفوق فقط."
         )
 
-        raise ApplicationHandlerStop
+        return
 
-    raise ApplicationHandlerStop
+    keyboard = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "كتم",
+                    callback_data="repetition_action:mute"
+                ),
+                InlineKeyboardButton(
+                    "تقييد",
+                    callback_data="repetition_action:restrict"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    "حظر",
+                    callback_data="repetition_action:ban"
+                )
+            ],
+        ]
+    )
+
+    await update.message.reply_text(
+        "حسنًا، ارسل العقوبة الجديدة .",
+        reply_markup=keyboard
+    )
 
 
-# =========================================================
-# أزرار تغيير العقوبة
-# =========================================================
+# ==================================================
+# Callback العقوبة
+# ==================================================
 
-async def repetition_callback(
+async def repetition_action_callback(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
@@ -1255,22 +1599,34 @@ async def repetition_callback(
     if not query:
         return
 
-    user = query.from_user
-
-    if not user:
-        return
-
-    if not query.data.startswith(
-        "repetition:action:"
-    ):
-        return
-
     await query.answer()
 
-    if get_rank_level(user.id) < 2:
+    user = query.from_user
+    chat = query.message.chat
+
+    if not chat:
         return
 
-    action = query.data.split(":")[-1]
+    if get_rank_level(
+        user.id,
+        chat.id
+    ) < 3 and not is_primary_developer(
+        user.id
+    ):
+
+        await query.answer(
+            "❌ ليس لديك الصلاحية.",
+            show_alert=True
+        )
+
+        return
+
+    action = (
+        query.data.split(
+            ":",
+            1
+        )[1]
+    )
 
     if action not in (
         "mute",
@@ -1279,74 +1635,268 @@ async def repetition_callback(
     ):
         return
 
-    chat_id = (
-        query.message.chat.id
-        if query.message
-        else None
-    )
-
-    if not chat_id:
-        return
-
-    await set_repetition_setting(
-        chat_id,
+    update_repetition_setting(
+        chat.id,
         "repetition_action",
         action
     )
 
-    repetition_sessions.pop(
-        user.id,
-        None
-    )
-
     await query.edit_message_text(
-        (
-            "• تم تغيير عقوبة التكرار بنجاح .\n"
-            f"العقوبة ↤︎ {ACTION_DISPLAY[action]}"
-        )
+        "✅ تم تغيير عقوبة التكرار إلى "
+        f"{ACTION_NAMES[action]}."
     )
 
 
-# =========================================================
-# مسح إنذارات شخص
-# =========================================================
+# ==================================================
+# مدة كتم التكرار
+# ==================================================
 
-async def clear_repetition_warnings_command(
+async def set_mute_duration(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
 
-    message = update.effective_message
+    await _set_punishment_duration(
+        update,
+        "mute"
+    )
+
+
+# ==================================================
+# مدة تقييد التكرار
+# ==================================================
+
+async def set_restrict_duration(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    await _set_punishment_duration(
+        update,
+        "restrict"
+    )
+
+
+# ==================================================
+# حفظ مدة العقوبة
+# ==================================================
+
+async def _set_punishment_duration(
+    update,
+    requested_action
+):
+
+    if not update.message:
+        return
+
     chat = update.effective_chat
     user = update.effective_user
 
-    if not message or not chat or not user:
+    if not chat or not user:
         return
 
-    if chat.type not in (
-        "group",
-        "supergroup"
+    if get_rank_level(
+        user.id,
+        chat.id
+    ) < 3 and not is_primary_developer(
+        user.id
     ):
+
+        await update.message.reply_text(
+            "❌ هذا الأمر للادمن الاساسي وفوق فقط."
+        )
+
         return
 
-    if get_rank_level(user.id) < 2:
+    text = (
+        update.message.text or ""
+    ).strip()
+
+    parts = text.split()
+
+    if len(parts) < 4:
+
+        await update.message.reply_text(
+            "❌ المدة غير صحيحة."
+        )
+
+        return
+
+    duration = parse_duration_token(
+        parts[-1]
+    )
+
+    if duration is None:
+
+        await update.message.reply_text(
+            "❌ المدة غير صحيحة."
+        )
+
+        return
+
+    settings = get_repetition_settings(
+        chat.id
+    )
+
+    current_action = settings[
+        "action"
+    ]
+
+    # --------------------------------------------------
+    # إذا العقوبة الحالية مختلفة
+    # --------------------------------------------------
+
+    if current_action != requested_action:
+
+        await update.message.reply_text(
+            "❌ العقوبة الحالية هي "
+            f"{ACTION_NAMES.get(current_action, current_action)}.\n\n"
+            f"استخدم أمر مدة "
+            f"{ACTION_NAMES[ current_action ]} "
+            "للتكرار."
+        )
+
+        return
+
+    update_repetition_setting(
+        chat.id,
+        "repetition_punishment_duration",
+        duration
+    )
+
+    await update.message.reply_text(
+        "✅ تم تعيين مدة العقوبة إلى "
+        f"{format_duration(duration)}."
+    )
+
+
+# ==================================================
+# رتبة التكرار
+# ==================================================
+
+async def set_repetition_rank(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not update.message:
+        return
+
+    chat = update.effective_chat
+    user = update.effective_user
+
+    if not chat or not user:
+        return
+
+    if get_rank_level(
+        user.id,
+        chat.id
+    ) < 3 and not is_primary_developer(
+        user.id
+    ):
+
+        await update.message.reply_text(
+            "❌ هذا الأمر للادمن الاساسي وفوق فقط."
+        )
+
+        return
+
+    text = (
+        update.message.text or ""
+    ).strip()
+
+    parts = text.split(
+        maxsplit=3
+    )
+
+    if len(parts) < 4:
+
+        await update.message.reply_text(
+            "❌ اختر رتبة التكرار.\n"
+            "مثال:\n"
+            "ضع رتبة التكرار المالك"
+        )
+
+        return
+
+    rank = parts[3].strip()
+
+    if rank not in (
+        "عضو",
+        "المالك",
+        "Dev"
+    ):
+
+        await update.message.reply_text(
+            "❌ الرتبة المتاحة:\n"
+            "عضو\n"
+            "المالك\n"
+            "Dev"
+        )
+
+        return
+
+    update_repetition_setting(
+        chat.id,
+        "repetition_rank",
+        rank
+    )
+
+    await update.message.reply_text(
+        f"☑️ تم تعيين رتبة التكرار إلى {rank}."
+    )
+
+
+# ==================================================
+# مسح انذاراته
+# ==================================================
+
+async def clear_user_repetition_warnings(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not update.message:
+        return
+
+    chat = update.effective_chat
+    actor = update.effective_user
+
+    if not chat or not actor:
+        return
+
+    if get_rank_level(
+        actor.id,
+        chat.id
+    ) < 3 and not is_primary_developer(
+        actor.id
+    ):
+
+        await update.message.reply_text(
+            "❌ هذا الأمر للادمن الاساسي وفوق فقط."
+        )
+
         return
 
     target = None
 
-    if message.reply_to_message:
+    if update.message.reply_to_message:
 
-        target = message.reply_to_message.from_user
+        target = (
+            update.message.reply_to_message.from_user
+        )
 
     else:
 
-        parts = (
-            message.text or ""
-        ).split()
+        text = (
+            update.message.text or ""
+        ).strip()
 
-        if len(parts) >= 2:
+        parts = text.split()
 
-            value = parts[1].strip()
+        if len(parts) >= 3:
+
+            value = parts[-1]
 
             if value.isdigit():
 
@@ -1359,78 +1909,40 @@ async def clear_repetition_warnings_command(
                 except Exception:
                     target = None
 
-            elif value.startswith("@"):
-
-                try:
-
-                    target = await context.bot.get_chat(
-                        value
-                    )
-
-                except Exception:
-                    target = None
-
     if not target:
 
-        await message.reply_text(
-            "• استخدم الأمر بالرد على الشخص أو ضع الـ ID."
-        )
-
-        raise ApplicationHandlerStop
-
-    await clear_warnings(
-        chat.id,
-        target.id
-    )
-
-    await message.reply_text(
-        (
-            "• تم مسح إنذاراته بنجاح .\n"
-            f"المستخدم ↤︎ {mention_user(target)}"
-        ),
-        parse_mode="HTML"
-    )
-
-    raise ApplicationHandlerStop
-
-
-# =========================================================
-# معالج الرسائل
-# =========================================================
-
-async def repetition_message_handler(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-
-    # أولًا جلسات الإعداد
-    if (
-        update.effective_chat
-        and update.effective_chat.type in (
-            "group",
-            "supergroup"
-        )
-        and update.effective_user
-        and update.effective_user.id in repetition_sessions
-    ):
-
-        await repetition_session_message(
-            update,
-            context
+        await update.message.reply_text(
+            "❌ استخدم الأمر بالرد على الشخص أو بالآيدي."
         )
 
         return
 
-    # ثم حماية التكرار
-    await register_repetition_message(
-        update,
-        context
+    deleted = clear_warnings(
+        chat.id,
+        target.id
     )
 
+    reset_repetition_messages(
+        chat.id,
+        target.id
+    )
 
-# =========================================================
-# حلقة تنظيف الإنذارات المنتهية
-# =========================================================
+    if deleted:
+
+        await update.message.reply_text(
+            "☑️ تم مسح جميع انذاراته."
+        )
+
+    else:
+
+        await update.message.reply_text(
+            "• الشخص هذا ماعنده انذارات من قبل."
+        )
+
+
+# ==================================================
+# مسح التحذيرات المنتهية دوريًا
+# ==================================================
 
 async def repetition_expiry_loop(
     application
@@ -1440,25 +1952,17 @@ async def repetition_expiry_loop(
 
         try:
 
-            conn = connect()
-            cur = conn.cursor()
+            await asyncio.to_thread(
+                cleanup_all_expired_warnings
+            )
 
-            try:
+        except Exception as e:
 
-                cur.execute("""
-                    DELETE FROM repetition_warnings
-                    WHERE expires_at <= CURRENT_TIMESTAMP
-                """)
+            print(
+                "⚠️ خطأ في تنظيف تحذيرات التكرار:",
+                e
+            )
 
-                conn.commit()
-
-            finally:
-
-                cur.close()
-                conn.close()
-
-        except Exception:
-
-            pass
-
-        await asyncio.sleep(5)
+        await asyncio.sleep(
+            30
+        )
