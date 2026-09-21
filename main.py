@@ -350,6 +350,23 @@ from handlers.send import (
     handle_send_media,
 )
 
+from handlers.repetition import (
+    create_repetition_tables,
+    repetition_message_handler,
+    repetition_expiry_loop,
+    enable_repetition,
+    disable_repetition,
+    set_repetition_start,
+    receive_repetition_duration,
+    set_warning_duration,
+    change_repetition_action,
+    repetition_action_callback,
+    set_mute_duration,
+    set_restrict_duration,
+    set_repetition_rank,
+    clear_user_repetition_warnings,
+)
+
 # ==================================================
 # الهمسات
 # ==================================================
@@ -642,6 +659,7 @@ def main():
     create_tables()
     create_developer_panel_tables()
     create_group_ranks_table()
+    create_repetition_tables()
     create_profile_reply_tables()
     patch_inline_keyboard_buttons()
     register_existing_panel_buttons()
@@ -688,6 +706,14 @@ def main():
         moderation_expiry_task = asyncio.create_task(
             moderation_expiry_loop(application)
         )
+        
+        application.create_task(
+            repetition_expiry_loop(
+                application
+            )
+        )
+
+    
 
 
     async def post_shutdown(application):
