@@ -1153,6 +1153,10 @@ def can_manage_repetition(
 # تنفيذ العقوبة
 # ==================================================
 
+# ==================================================
+# تنفيذ عقوبة التكرار
+# ==================================================
+
 async def punish_user(
     update,
     context,
@@ -1167,6 +1171,10 @@ async def punish_user(
         return False
 
     chat_id = chat.id
+
+    # ==================================================
+    # منشن حقيقي للمستخدم
+    # ==================================================
 
     mention = (
         f'<a href="tg://user?id={user.id}">'
@@ -1183,22 +1191,18 @@ async def punish_user(
         if action == "mute":
 
             until_date = (
-                datetime.now(
-                    timezone.utc
-                )
+                datetime.now(timezone.utc)
                 + timedelta(
-                    seconds=duration
+                    seconds=int(duration)
                 )
-            )
-
-            permissions = ChatPermissions(
-                can_send_messages=False
             )
 
             await context.bot.restrict_chat_member(
                 chat_id=chat_id,
                 user_id=user.id,
-                permissions=permissions,
+                permissions=ChatPermissions(
+                    can_send_messages=False
+                ),
                 until_date=until_date
             )
 
@@ -1219,35 +1223,31 @@ async def punish_user(
         elif action == "restrict":
 
             until_date = (
-                datetime.now(
-                    timezone.utc
-                )
+                datetime.now(timezone.utc)
                 + timedelta(
-                    seconds=duration
+                    seconds=int(duration)
                 )
-            )
-
-            permissions = ChatPermissions(
-                can_send_messages=False,
-                can_send_audios=False,
-                can_send_documents=False,
-                can_send_photos=False,
-                can_send_videos=False,
-                can_send_video_notes=False,
-                can_send_voice_notes=False,
-                can_send_polls=False,
-                can_send_other_messages=False,
-                can_add_web_page_previews=False,
-                can_change_info=False,
-                can_invite_users=False,
-                can_pin_messages=False,
-                can_manage_topics=False,
             )
 
             await context.bot.restrict_chat_member(
                 chat_id=chat_id,
                 user_id=user.id,
-                permissions=permissions,
+                permissions=ChatPermissions(
+                    can_send_messages=False,
+                    can_send_audios=False,
+                    can_send_documents=False,
+                    can_send_photos=False,
+                    can_send_videos=False,
+                    can_send_video_notes=False,
+                    can_send_voice_notes=False,
+                    can_send_polls=False,
+                    can_send_other_messages=False,
+                    can_add_web_page_previews=False,
+                    can_change_info=False,
+                    can_invite_users=False,
+                    can_pin_messages=False,
+                    can_manage_topics=False,
+                ),
                 until_date=until_date
             )
 
@@ -1280,10 +1280,14 @@ async def punish_user(
 
         else:
 
+            print(
+                f"❌ عقوبة تكرار غير معروفة: {action}"
+            )
+
             return False
 
         # ==================================================
-        # إرسال رسالة العقوبة
+        # إذا وصلنا هنا فالعقوبة تطبقت بنجاح
         # ==================================================
 
         await context.bot.send_message(
@@ -1292,17 +1296,43 @@ async def punish_user(
             parse_mode="HTML"
         )
 
+        print(
+            f"✅ تم تطبيق عقوبة التكرار | "
+            f"user={user.id} | "
+            f"action={action} | "
+            f"duration={duration}"
+        )
+
         return True
 
     except Exception as e:
 
+        # ==================================================
+        # مهم:
+        # لا نخفي الخطأ حتى نعرف سبب فشل العقوبة
+        # ==================================================
+
         print(
-            "❌ خطأ في عقوبة التكرار:",
-            e
+            "❌ فشل تطبيق عقوبة التكرار"
+        )
+
+        print(
+            f"   user_id = {user.id}"
+        )
+
+        print(
+            f"   action = {action}"
+        )
+
+        print(
+            f"   duration = {duration}"
+        )
+
+        print(
+            f"   error = {type(e).__name__}: {e}"
         )
 
         return False
-
 
 # ==================================================
 # معالجة التكرار
