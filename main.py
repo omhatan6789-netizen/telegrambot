@@ -1271,9 +1271,10 @@ def main():
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
-            & filters.TEXT
-            & ~filters.COMMAND,
-            receive_repetition_duration
+            & filters.Regex(
+                r"^تغيير عقوبة التكرار$" 
+            ),
+            change_repetition_action
         ),
         group=-17
     )
@@ -1385,9 +1386,28 @@ def main():
     )
 
 
-    
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.TEXT
+            & ~filters.COMMAND,
+            receive_repetition_duration
+        ),
+        group=-16
+    )
 
-    # ك==================================================# قفل وفتح الأوامر# ==================================================
+    # ==================================================
+    # 🔥 مراقبة رسائل التكرار
+    # ==================================================
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS,
+            repetition_message_handler
+        ),
+        group=-15
+    )
+
     # ==================================================
     # قفل وفتح الأوامر
     # ==================================================
