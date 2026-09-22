@@ -370,13 +370,11 @@ from handlers.repetition import (
     disable_repetition,
     set_repetition_start,
     receive_repetition_duration,
-    set_warning_duration,
-    change_repetition_action,
-    repetition_action_callback,
     set_mute_duration,
     set_restrict_duration,
     set_repetition_rank,
     clear_user_repetition_warnings,
+    repetition_action_callback,
 )
 
 # ==================================================
@@ -1276,38 +1274,6 @@ def main():
 
 
     # --------------------------------------------------
-    # تعيين مدة الإنذار
-    #--------------------------------------------------
-
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.Regex(
-                r"^تعيين مدة انذار \S+$"
-            ),
-            set_warning_duration
-        ),
-        group=-17
-    )
-
-
-    # --------------------------------------------------
-    # تغيير عقوبة التكرار
-    # --------------------------------------------------
-
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.Regex(
-                r"^تغيير عقوبة التكرار$"
-            ),
-            change_repetition_action
-        ),
-        group=-17
-    )
-
-
-    # --------------------------------------------------
     # مدة الكتم للتكرار
     #---------------------------------------------------
 
@@ -1379,7 +1345,7 @@ def main():
     app.add_handler(
         CallbackQueryHandler(
             repetition_action_callback,
-            pattern=r"^repetition_action:(?:mute|restrict|ban)$"
+            pattern=r"^repetition_action:(?:mute|restrict):\d+$"
         ),
         group=-17
     )
