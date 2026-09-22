@@ -1393,7 +1393,7 @@ def main():
     app.add_handler(
         CallbackQueryHandler(
             repetition_action_callback,
-            pattern=r"^repetition_action:(?:mute|restrict):\d+$"
+            pattern=r"^repetition_punish:(?:mute|restrict):\d+$"
         ),
         group=-17
     )
