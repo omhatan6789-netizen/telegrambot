@@ -28,12 +28,32 @@ _mute_cache = {}
 # الصلاحيات
 # ==================================================
 
-def is_admin_or_higher(user_id):
-    return get_rank_level(user_id) >= 2
+def _get_level(user_id, chat_id=None):
+    """
+    يدعم roles.py القديمة والجديدة.
+    إذا كانت get_rank_level تقبل chat_id نستخدمه،
+    وإلا نرجع للاستدعاء القديم.
+    """
+    try:
+        if chat_id is not None:
+            return get_rank_level(user_id, chat_id)
+    except TypeError:
+        pass
+    except Exception:
+        pass
+
+    try:
+        return get_rank_level(user_id)
+    except Exception:
+        return 0
 
 
-def is_basic_admin_or_higher(user_id):
-    return get_rank_level(user_id) >= 3
+def is_admin_or_higher(user_id, chat_id=None):
+    return _get_level(user_id, chat_id) >= 2
+
+
+def is_basic_admin_or_higher(user_id, chat_id=None):
+    return _get_level(user_id, chat_id) >= 3
 
 
 # ==================================================
@@ -59,16 +79,13 @@ def iso_to_timestamp(value):
         return None
 
     try:
-        return datetime.fromisoformat(
-            value
-        ).timestamp()
-
+        return datetime.fromisoformat(value).timestamp()
     except Exception:
         return None
 
 
 # ==================================================
-# تنسيق HTML
+# HTML
 # ==================================================
 
 def html_escape(value):
@@ -110,7 +127,6 @@ def get_moderation_settings(chat_id):
         row = cur.fetchone()
 
         if not row:
-
             cur.execute(
                 """
                 INSERT INTO moderation_settings
@@ -138,7 +154,6 @@ def get_moderation_settings(chat_id):
         }
 
     finally:
-
         if cur:
             cur.close()
 
@@ -151,7 +166,6 @@ def set_duration_setting(chat_id, enabled):
     cur = None
 
     try:
-
         cur = conn.cursor()
 
         cur.execute(
@@ -176,7 +190,6 @@ def set_duration_setting(chat_id, enabled):
         conn.commit()
 
     finally:
-
         if cur:
             cur.close()
 
@@ -189,7 +202,6 @@ def set_reason_setting(chat_id, enabled):
     cur = None
 
     try:
-
         cur = conn.cursor()
 
         cur.execute(
@@ -214,7 +226,6 @@ def set_reason_setting(chat_id, enabled):
         conn.commit()
 
     finally:
-
         if cur:
             cur.close()
 
@@ -234,7 +245,6 @@ def save_target_user(user):
     cur = None
 
     try:
-
         cur = conn.cursor()
 
         cur.execute(
@@ -264,7 +274,6 @@ def save_target_user(user):
         conn.commit()
 
     finally:
-
         if cur:
             cur.close()
 
@@ -294,7 +303,6 @@ async def resolve_target(
         user = message.reply_to_message.from_user
 
         if user:
-
             await asyncio.to_thread(
                 save_target_user,
                 user
@@ -311,10 +319,6 @@ async def resolve_target(
     if len(parts) < 2:
         return None
 
-    # ==================================================
-    # البحث عن ID أو username
-    # ==================================================
-
     target_value = None
 
     for part in parts[1:]:
@@ -322,12 +326,10 @@ async def resolve_target(
         clean = part.strip()
 
         if clean.isdigit():
-
             target_value = clean
             break
 
         if clean.startswith("@"):
-
             target_value = clean
             break
 
@@ -361,13 +363,11 @@ async def resolve_target(
             return user
 
         try:
-
             user = await context.bot.get_chat(
                 user_id
             )
 
             if user:
-
                 await asyncio.to_thread(
                     save_target_user,
                     user
@@ -412,7 +412,6 @@ def _get_user_by_id(user_id):
     cur = None
 
     try:
-
         cur = conn.cursor()
 
         cur.execute(
@@ -427,7 +426,6 @@ def _get_user_by_id(user_id):
         return cur.fetchone()
 
     finally:
-
         if cur:
             cur.close()
 
@@ -440,7 +438,6 @@ def _get_user_by_username(username):
     cur = None
 
     try:
-
         cur = conn.cursor()
 
         cur.execute(
@@ -456,7 +453,6 @@ def _get_user_by_username(username):
         return cur.fetchone()
 
     finally:
-
         if cur:
             cur.close()
 
@@ -576,11 +572,14 @@ def parse_moderation_command(
 
         if parsed is not None:
 
-            if not durations_enabled:
-                return None
-
-            duration = parsed
             duration_index = i
+
+            if durations_enabled:
+                duration = parsed
+            else:
+                # المدة غير مفعلة، نتجاهلها
+                duration = None
+
             break
 
     # ==================================================
@@ -595,12 +594,11 @@ def parse_moderation_command(
         clean = part.strip()
 
         if clean.isdigit() or clean.startswith("@"):
-
             target_index = i
             break
 
     # ==================================================
-    # استخراج السبب
+    # السبب
     # ==================================================
 
     reason_parts = []
@@ -617,14 +615,8 @@ def parse_moderation_command(
 
     reason = None
 
-    if reason_parts:
-
-        if not reasons_enabled:
-            return None
-
-        reason = " ".join(
-            reason_parts
-        )
+    if reason_parts and reasons_enabled:
+        reason = " ".join(reason_parts)
 
     return {
         "action": action,
@@ -660,21 +652,15 @@ def format_duration(seconds):
     seconds = int(seconds)
 
     if seconds % 86400 == 0:
-
         amount = seconds // 86400
-
         return f"{amount} يوم"
 
     if seconds % 3600 == 0:
-
         amount = seconds // 3600
-
         return f"{amount} ساعة"
 
     if seconds % 60 == 0:
-
         amount = seconds // 60
-
         return f"{amount} دقيقة"
 
     return f"{seconds} ثانية"
@@ -696,7 +682,6 @@ def save_mute(
     cur = None
 
     try:
-
         cur = conn.cursor()
 
         cur.execute(
@@ -735,15 +720,10 @@ def save_mute(
         conn.commit()
 
     finally:
-
         if cur:
             cur.close()
 
         conn.close()
-
-    # ==================================================
-    # تحديث الكاش
-    # ==================================================
 
     key = (
         chat_id,
@@ -751,21 +731,15 @@ def save_mute(
     )
 
     if until_time is None:
-
         _mute_cache[key] = True
-
     else:
-
         timestamp = iso_to_timestamp(
             until_time
         )
 
         if timestamp is not None:
-
             _mute_cache[key] = timestamp
-
         else:
-
             _mute_cache[key] = True
 
 
@@ -785,7 +759,6 @@ def save_restriction(
     cur = None
 
     try:
-
         cur = conn.cursor()
 
         cur.execute(
@@ -824,7 +797,6 @@ def save_restriction(
         conn.commit()
 
     finally:
-
         if cur:
             cur.close()
 
@@ -847,7 +819,6 @@ def save_ban(
     cur = None
 
     try:
-
         cur = conn.cursor()
 
         cur.execute(
@@ -886,7 +857,6 @@ def save_ban(
         conn.commit()
 
     finally:
-
         if cur:
             cur.close()
 
@@ -897,11 +867,11 @@ def save_ban(
 # رسالة العقوبة
 # ==================================================
 
-
 def moderation_message(
     action,
     target,
     duration,
+    reason=None,
     actor_rank=None
 ):
 
@@ -917,7 +887,7 @@ def moderation_message(
     elif action == "restrict":
 
         text = (
-            "تم قيَّدته لين يهجد بعدين فكوه\n"
+            "تم قيَّدته لين يهجد بعدين فكوه\n"
             f"المستخدم ↤︎ {mention}"
         )
 
@@ -939,11 +909,20 @@ def moderation_message(
             f"{format_duration(duration)}"
         )
 
+    if reason:
+
+        text += (
+            "\n"
+            f"السبب ↤︎ {html_escape(reason)}"
+        )
+
     return text
+
 
 # ==================================================
 # تنفيذ العقوبة
 # ==================================================
+
 async def moderation_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
@@ -960,13 +939,12 @@ async def moderation_command(
     if not actor:
         return
 
-    # ==================================================
-    # الصلاحية
-    # ==================================================
+    chat_id = update.effective_chat.id
 
     actor_level = await asyncio.to_thread(
-        get_rank_level,
-        actor.id
+        _get_level,
+        actor.id,
+        chat_id
     )
 
     if actor_level < 2:
@@ -976,13 +954,9 @@ async def moderation_command(
         update.message.text or ""
     ).strip()
 
-    # ==================================================
-    # إعدادات القروب
-    # ==================================================
-
     settings = await asyncio.to_thread(
         get_moderation_settings,
-        update.effective_chat.id
+        chat_id
     )
 
     parsed = parse_moderation_command(
@@ -993,10 +967,6 @@ async def moderation_command(
 
     if not parsed:
         return
-
-    # ==================================================
-    # الهدف
-    # ==================================================
 
     target = await resolve_target(
         update,
@@ -1011,7 +981,18 @@ async def moderation_command(
     reason = parsed["reason"]
 
     # ==================================================
-    # البوت
+    # المدة الافتراضية للكتم
+    # ==================================================
+
+    if (
+        action == "mute"
+        and settings["durations_enabled"]
+        and duration is None
+    ):
+        duration = 60 * 60
+
+    # ==================================================
+    # منع البوت
     # ==================================================
 
     if target.id == context.bot.id:
@@ -1029,9 +1010,14 @@ async def moderation_command(
     if target.id == actor.id:
 
         self_messages = {
-            "mute": "• اعرف ان الحياة صعبة بس ماتوصل لمرحلة انك تكتم نفسك 😔 .",
-            "restrict": "• اعرف ان الحياة صعبة بس ماتوصل لمرحلة انك تقيد نفسك 😔 .",
-            "ban": "• اعرف ان الحياة صعبة بس ماتوصل لمرحلة انك تحظر نفسك 😔 .",
+            "mute":
+                "• اعرف ان الحياة صعبة بس ماتوصل لمرحلة انك تكتم نفسك 😔 .",
+
+            "restrict":
+                "• اعرف ان الحياة صعبة بس ماتوصل لمرحلة انك تقيد نفسك 😔 .",
+
+            "ban":
+                "• اعرف ان الحياة صعبة بس ماتوصل لمرحلة انك تحظر نفسك 😔 .",
         }
 
         await update.message.reply_text(
@@ -1045,16 +1031,22 @@ async def moderation_command(
     # ==================================================
 
     target_level = await asyncio.to_thread(
-        get_rank_level,
-        target.id
+        _get_level,
+        target.id,
+        chat_id
     )
 
     if target_level >= actor_level:
 
         higher_messages = {
-            "mute": "صحصح شف من الي تبي تكتمه ياورع!",
-            "restrict": "صحصح شف من الي تبي تقيده ياورع!",
-            "ban": "صحصح شف من الي تبي تحظره ياورع!",
+            "mute":
+                "صحصح شف من الي تبي تكتمه ياورع!",
+
+            "restrict":
+                "صحصح شف من الي تبي تقيده ياورع!",
+
+            "ban":
+                "صحصح شف من الي تبي تحظره ياورع!",
         }
 
         await update.message.reply_text(
@@ -1063,12 +1055,9 @@ async def moderation_command(
 
         return
 
-    chat_id = update.effective_chat.id
-
     until_timestamp = None
 
     if duration is not None:
-
         until_timestamp = (
             now_timestamp() + duration
         )
@@ -1077,25 +1066,12 @@ async def moderation_command(
         until_timestamp
     )
 
-    # ==================================================
-    # حفظ المستخدم
-    #
-    # هذا لا يجب أن يؤخر تنفيذ العقوبة.
-    # ==================================================
-
     asyncio.create_task(
         asyncio.to_thread(
             save_target_user,
             target
         )
     )
-
-    # ==================================================
-    # الرتبة الخاصة برسالة الحظر
-    #
-    # نبدأ جلبها بالخلفية من الآن حتى لا تكون
-    # بعد تنفيذ الحظر.
-    # ==================================================
 
     actor_rank_task = None
 
@@ -1114,7 +1090,6 @@ async def moderation_command(
 
     if action == "mute":
 
-        # تحديث الكاش/قاعدة البيانات بالخلفية
         asyncio.create_task(
             asyncio.to_thread(
                 save_mute,
@@ -1126,12 +1101,12 @@ async def moderation_command(
             )
         )
 
-        # الرسالة مباشرة
         await update.message.reply_text(
             moderation_message(
                 action,
                 target,
-                duration
+                duration,
+                reason
             ),
             parse_mode="HTML"
         )
@@ -1142,7 +1117,7 @@ async def moderation_command(
     # التقييد
     # ==================================================
 
-    elif action == "restrict":
+    if action == "restrict":
 
         try:
 
@@ -1166,7 +1141,6 @@ async def moderation_command(
         except Exception:
             return
 
-        # حفظ السجل بالخلفية بعد نجاح التقييد
         asyncio.create_task(
             asyncio.to_thread(
                 save_restriction,
@@ -1178,12 +1152,12 @@ async def moderation_command(
             )
         )
 
-        # الرسالة مباشرة
         await update.message.reply_text(
             moderation_message(
                 action,
                 target,
-                duration
+                duration,
+                reason
             ),
             parse_mode="HTML"
         )
@@ -1194,7 +1168,7 @@ async def moderation_command(
     # الحظر
     # ==================================================
 
-    elif action == "ban":
+    if action == "ban":
 
         try:
 
@@ -1211,7 +1185,6 @@ async def moderation_command(
         except Exception:
             return
 
-        # حفظ سجل الحظر بالخلفية
         asyncio.create_task(
             asyncio.to_thread(
                 save_ban,
@@ -1223,7 +1196,6 @@ async def moderation_command(
             )
         )
 
-        # لا ننتظر قاعدة البيانات لإرسال الرسالة
         try:
 
             actor_rank = await asyncio.wait_for(
@@ -1240,6 +1212,7 @@ async def moderation_command(
                 action,
                 target,
                 duration,
+                reason,
                 actor_rank
             ),
             parse_mode="HTML"
@@ -1262,44 +1235,30 @@ def get_active_mute(
         user_id
     )
 
-    # ==================================================
-    # الكاش
-    # ==================================================
-
     if key in _mute_cache:
 
         cached = _mute_cache[key]
 
-        # غير مكتوم
         if cached is False:
             return False
 
-        # كتم دائم
         if cached is True:
             return True
 
-        # كتم مؤقت
         if now_timestamp() < cached:
             return True
 
-        # انتهى
         _mute_cache[key] = False
 
         try:
-
             delete_mute(
                 chat_id,
                 user_id
             )
-
         except Exception:
             pass
 
         return False
-
-    # ==================================================
-    # أول مرة فقط: قاعدة البيانات
-    # ==================================================
 
     row = _get_mute_row(
         chat_id,
@@ -1314,7 +1273,6 @@ def get_active_mute(
 
     until_time = row[0]
 
-    # كتم دائم
     if until_time is None:
 
         _mute_cache[key] = True
@@ -1336,12 +1294,10 @@ def get_active_mute(
         _mute_cache[key] = False
 
         try:
-
             delete_mute(
                 chat_id,
                 user_id
             )
-
         except Exception:
             pass
 
@@ -1447,7 +1403,6 @@ async def check_muted_message(
 
     chat_id = update.effective_chat.id
 
-    # هذا أصبح سريع جدًا بعد أول فحص
     is_muted = await asyncio.to_thread(
         get_active_mute,
         chat_id,
@@ -1458,9 +1413,7 @@ async def check_muted_message(
         return
 
     try:
-
         await update.message.delete()
-
     except Exception:
         pass
 
@@ -1591,7 +1544,6 @@ def delete_restriction_record(
 
         conn.close()
 
-    # تحديث كاش الكتم
     if table == "bot_mutes":
 
         _mute_cache[
@@ -1645,9 +1597,16 @@ async def unban_command(
     if not actor:
         return
 
+    chat_id = (
+        update.effective_chat.id
+        if update.effective_chat
+        else None
+    )
+
     actor_level = await asyncio.to_thread(
-        get_rank_level,
-        actor.id
+        _get_level,
+        actor.id,
+        chat_id
     )
 
     if actor_level < 3:
@@ -1678,12 +1637,18 @@ async def remove_one_restriction(
     if not actor:
         return
 
+    chat_id = update.effective_chat.id
+
     actor_level = await asyncio.to_thread(
-        get_rank_level,
-        actor.id
+        _get_level,
+        actor.id,
+        chat_id
     )
 
     if actor_level < 2:
+        return
+
+    if action == "ban" and actor_level < 3:
         return
 
     target = await resolve_target(
@@ -1701,8 +1666,6 @@ async def remove_one_restriction(
         )
 
         return
-
-    chat_id = update.effective_chat.id
 
     # ==================================================
     # إلغاء الكتم
@@ -1774,9 +1737,6 @@ async def remove_one_restriction(
 
     else:
 
-        if actor_level < 3:
-            return
-
         try:
 
             await context.bot.unban_chat_member(
@@ -1823,9 +1783,12 @@ async def clear_restrictions_command(
     if not actor:
         return
 
+    chat_id = update.effective_chat.id
+
     actor_level = await asyncio.to_thread(
-        get_rank_level,
-        actor.id
+        _get_level,
+        actor.id,
+        chat_id
     )
 
     if actor_level < 2:
@@ -1847,17 +1810,11 @@ async def clear_restrictions_command(
 
         return
 
-    chat_id = update.effective_chat.id
-
     restrictions = await asyncio.to_thread(
         get_user_restrictions,
         chat_id,
         target.id
     )
-
-    # ==================================================
-    # الكتم
-    # ==================================================
 
     if "كتم" in restrictions:
 
@@ -1867,10 +1824,6 @@ async def clear_restrictions_command(
             chat_id,
             target.id
         )
-
-    # ==================================================
-    # التقييد
-    # ==================================================
 
     if "تقييد" in restrictions:
 
@@ -1909,10 +1862,6 @@ async def clear_restrictions_command(
             target.id
         )
 
-    # ==================================================
-    # الحظر
-    # ==================================================
-
     if "حظر" in restrictions:
 
         if actor_level >= 3:
@@ -1934,10 +1883,6 @@ async def clear_restrictions_command(
                 chat_id,
                 target.id
             )
-
-    # ==================================================
-    # نفس رسالة رفع القيود حتى لو ما كان عليه شيء
-    # ==================================================
 
     await update.message.reply_text(
         "• تم رفع القيود عنه، قيوده كانت ( "
@@ -2010,9 +1955,7 @@ def list_message(
     rows
 ):
 
-    table, title, button_text = LIST_TABLES[
-        kind
-    ]
+    table, title, button_text = LIST_TABLES[kind]
 
     text = (
         f"• {title}\n"
@@ -2085,9 +2028,12 @@ async def moderation_lists_command(
     if not actor:
         return
 
+    chat_id = update.effective_chat.id
+
     actor_level = await asyncio.to_thread(
-        get_rank_level,
-        actor.id
+        _get_level,
+        actor.id,
+        chat_id
     )
 
     if actor_level < 3:
@@ -2098,24 +2044,20 @@ async def moderation_lists_command(
     ).strip()
 
     if text == "المكتومين":
-
         kind = "mute"
 
     elif text == "المقيدين":
-
         kind = "restrict"
 
     elif text == "المحظورين":
-
         kind = "ban"
 
     else:
-
         return
 
     rows = await asyncio.to_thread(
         get_list_rows,
-        update.effective_chat.id,
+        chat_id,
         LIST_TABLES[kind][0]
     )
 
@@ -2147,9 +2089,16 @@ async def clear_list_callback(
 
     actor = query.from_user
 
+    chat_id = (
+        query.message.chat.id
+        if query.message
+        else None
+    )
+
     actor_level = await asyncio.to_thread(
-        get_rank_level,
-        actor.id
+        _get_level,
+        actor.id,
+        chat_id
     )
 
     if actor_level < 3:
@@ -2188,19 +2137,11 @@ async def clear_list_callback(
         table
     )
 
-    # ==================================================
-    # فك القيود فعليًا
-    # ==================================================
-
     for row in rows:
 
         user_id = row[0]
 
-        if kind == "mute":
-
-            pass
-
-        elif kind == "restrict":
+        if kind == "restrict":
 
             try:
 
@@ -2243,19 +2184,11 @@ async def clear_list_callback(
             except Exception:
                 pass
 
-    # ==================================================
-    # تصفير القائمة
-    # ==================================================
-
     await asyncio.to_thread(
         _clear_list_table,
         table,
         chat_id
     )
-
-    # ==================================================
-    # تحديث كاش الكتم
-    # ==================================================
 
     if kind == "mute":
 
@@ -2328,9 +2261,12 @@ async def enable_durations_command(
     if not actor:
         return
 
+    chat_id = update.effective_chat.id
+
     actor_level = await asyncio.to_thread(
-        get_rank_level,
-        actor.id
+        _get_level,
+        actor.id,
+        chat_id
     )
 
     if actor_level < 2:
@@ -2338,7 +2274,7 @@ async def enable_durations_command(
 
     await asyncio.to_thread(
         set_duration_setting,
-        update.effective_chat.id,
+        chat_id,
         True
     )
 
@@ -2364,9 +2300,12 @@ async def disable_durations_command(
     if not actor:
         return
 
+    chat_id = update.effective_chat.id
+
     actor_level = await asyncio.to_thread(
-        get_rank_level,
-        actor.id
+        _get_level,
+        actor.id,
+        chat_id
     )
 
     if actor_level < 2:
@@ -2374,7 +2313,7 @@ async def disable_durations_command(
 
     await asyncio.to_thread(
         set_duration_setting,
-        update.effective_chat.id,
+        chat_id,
         False
     )
 
@@ -2400,9 +2339,12 @@ async def enable_reasons_command(
     if not actor:
         return
 
+    chat_id = update.effective_chat.id
+
     actor_level = await asyncio.to_thread(
-        get_rank_level,
-        actor.id
+        _get_level,
+        actor.id,
+        chat_id
     )
 
     if actor_level < 2:
@@ -2410,7 +2352,7 @@ async def enable_reasons_command(
 
     await asyncio.to_thread(
         set_reason_setting,
-        update.effective_chat.id,
+        chat_id,
         True
     )
 
@@ -2436,9 +2378,12 @@ async def disable_reasons_command(
     if not actor:
         return
 
+    chat_id = update.effective_chat.id
+
     actor_level = await asyncio.to_thread(
-        get_rank_level,
-        actor.id
+        _get_level,
+        actor.id,
+        chat_id
     )
 
     if actor_level < 2:
@@ -2446,7 +2391,7 @@ async def disable_reasons_command(
 
     await asyncio.to_thread(
         set_reason_setting,
-        update.effective_chat.id,
+        chat_id,
         False
     )
 
@@ -2482,19 +2427,11 @@ async def moderation_expiry_loop(
             restriction_rows = expired["restrictions"]
             ban_rows = expired["bans"]
 
-            # ==================================================
-            # تحديث كاش الكتم
-            # ==================================================
-
             for chat_id, user_id in mute_rows:
 
                 _mute_cache[
                     (chat_id, user_id)
                 ] = False
-
-            # ==================================================
-            # فك التقييد
-            # ==================================================
 
             for chat_id, user_id in restriction_rows:
 
@@ -2532,10 +2469,6 @@ async def moderation_expiry_loop(
                     chat_id,
                     user_id
                 )
-
-            # ==================================================
-            # فك الحظر
-            # ==================================================
 
             for chat_id, user_id in ban_rows:
 
@@ -2583,10 +2516,6 @@ def _get_expired_moderations(
 
         cur = conn.cursor()
 
-        # ==================================================
-        # الكتم
-        # ==================================================
-
         cur.execute(
             """
             SELECT chat_id, user_id
@@ -2599,10 +2528,6 @@ def _get_expired_moderations(
 
         result["mutes"] = cur.fetchall()
 
-        # ==================================================
-        # حذف الكتم المنتهي
-        # ==================================================
-
         cur.execute(
             """
             DELETE FROM bot_mutes
@@ -2611,10 +2536,6 @@ def _get_expired_moderations(
             """,
             (current_iso,)
         )
-
-        # ==================================================
-        # التقييد
-        # ==================================================
 
         cur.execute(
             """
@@ -2627,10 +2548,6 @@ def _get_expired_moderations(
         )
 
         result["restrictions"] = cur.fetchall()
-
-        # ==================================================
-        # الحظر
-        # ==================================================
 
         cur.execute(
             """
@@ -2654,6 +2571,394 @@ def _get_expired_moderations(
             cur.close()
 
         conn.close()
+
+
+# ==================================================
+# الإنذارات - النظام الموحد
+# ==================================================
+
+def get_warning_count(
+    chat_id,
+    user_id
+):
+
+    conn = connect()
+    cur = None
+
+    try:
+
+        cur = conn.cursor()
+
+        cur.execute(
+            """
+            SELECT COUNT(*)
+            FROM warnings
+            WHERE chat_id=?
+            AND user_id=?
+            """,
+            (
+                chat_id,
+                user_id
+            )
+        )
+
+        row = cur.fetchone()
+
+        return int(row[0]) if row else 0
+
+    finally:
+
+        if cur:
+            cur.close()
+
+        conn.close()
+
+
+def add_warning(
+    chat_id,
+    user_id,
+    source="manual"
+):
+
+    conn = connect()
+    cur = None
+
+    try:
+
+        cur = conn.cursor()
+
+        cur.execute(
+            """
+            INSERT INTO warnings
+            (
+                chat_id,
+                user_id,
+                source
+            )
+            VALUES (?, ?, ?)
+            """,
+            (
+                chat_id,
+                user_id,
+                source
+            )
+        )
+
+        conn.commit()
+
+    finally:
+
+        if cur:
+            cur.close()
+
+        conn.close()
+
+
+def clear_warnings(
+    chat_id,
+    user_id
+):
+
+    conn = connect()
+    cur = None
+
+    try:
+
+        cur = conn.cursor()
+
+        cur.execute(
+            """
+            DELETE FROM warnings
+            WHERE chat_id=?
+            AND user_id=?
+            """,
+            (
+                chat_id,
+                user_id
+            )
+        )
+
+        conn.commit()
+
+    finally:
+
+        if cur:
+            cur.close()
+
+        conn.close()
+
+
+# ==================================================
+# استخراج هدف للإنذار
+# ==================================================
+
+async def _resolve_warning_target(
+    update,
+    context
+):
+
+    return await resolve_target(
+        update,
+        context
+    )
+
+
+# ==================================================
+# الإنذار
+# ==================================================
+
+async def warning_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not update.message:
+        return
+
+    actor = update.effective_user
+
+    if not actor:
+        return
+
+    chat = update.effective_chat
+
+    if not chat:
+        return
+
+    chat_id = chat.id
+
+    actor_level = await asyncio.to_thread(
+        _get_level,
+        actor.id,
+        chat_id
+    )
+
+    if actor_level < 2:
+        return
+
+    target = await _resolve_warning_target(
+        update,
+        context
+    )
+
+    if not target:
+        return
+
+    if target.id == actor.id:
+        return
+
+    if target.id == context.bot.id:
+        return
+
+    target_level = await asyncio.to_thread(
+        _get_level,
+        target.id,
+        chat_id
+    )
+
+    # ==================================================
+    # لا يمكن إنذار مساوي أو أعلى
+    # ==================================================
+
+    if target_level >= actor_level:
+
+        await update.message.reply_text(
+            "• اعذرني بس هذا الأمر لـ ↤︎〖 "
+            "الرتبة الأعلى منك "
+            "〗 فقط ."
+        )
+
+        return
+
+    await asyncio.to_thread(
+        save_target_user,
+        target
+    )
+
+    await asyncio.to_thread(
+        add_warning,
+        chat_id,
+        target.id,
+        "manual"
+    )
+
+    count = await asyncio.to_thread(
+        get_warning_count,
+        chat_id,
+        target.id
+    )
+
+    mention = mention_user(target)
+
+    # ==================================================
+    # الإنذار الثالث
+    # ==================================================
+
+    if count >= 3:
+
+        keyboard = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "تقييد",
+                        callback_data=(
+                            f"repetition_action:"
+                            f"restrict:"
+                            f"{target.id}"
+                        )
+                    ),
+                    InlineKeyboardButton(
+                        "كتم",
+                        callback_data=(
+                            f"repetition_action:"
+                            f"mute:"
+                            f"{target.id}"
+                        )
+                    )
+                ]
+            ]
+        )
+
+        await update.message.reply_text(
+            f"• المستخدم ↤︎ {mention}\n"
+            f"• وصلت إنذاراته : {count}\n"
+            "اختر العقوبة المناسبة له:",
+            parse_mode="HTML",
+            reply_markup=keyboard
+        )
+
+        return
+
+    # ==================================================
+    # الإنذارات الأولى والثانية
+    # ==================================================
+
+    await update.message.reply_text(
+        "• تمام عطيته انذار .\n"
+        f"• المستخدم ↤︎ {mention}\n"
+        f"• عدد إنذاراته : {count}",
+        parse_mode="HTML"
+    )
+
+
+# ==================================================
+# مسح الإنذارات
+# ==================================================
+
+async def clear_warnings_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not update.message:
+        return
+
+    actor = update.effective_user
+
+    if not actor:
+        return
+
+    chat = update.effective_chat
+
+    if not chat:
+        return
+
+    chat_id = chat.id
+
+    actor_level = await asyncio.to_thread(
+        _get_level,
+        actor.id,
+        chat_id
+    )
+
+    if actor_level < 2:
+        return
+
+    target = await resolve_target(
+        update,
+        context
+    )
+
+    if not target:
+        return
+
+    target_level = await asyncio.to_thread(
+        _get_level,
+        target.id,
+        chat_id
+    )
+
+    if target_level >= actor_level:
+        return
+
+    await asyncio.to_thread(
+        clear_warnings,
+        chat_id,
+        target.id
+    )
+
+    await update.message.reply_text(
+        "• تم مسح جميع إنذاراته .\n"
+        f"• المستخدم ↤︎ {mention_user(target)}",
+        parse_mode="HTML"
+    )
+
+
+# ==================================================
+# كشف القيود
+# ==================================================
+
+async def reveal_restrictions_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not update.message:
+        return
+
+    target = await resolve_target(
+        update,
+        context
+    )
+
+    if not target:
+        return
+
+    chat = update.effective_chat
+
+    if not chat:
+        return
+
+    chat_id = chat.id
+
+    restrictions = await asyncio.to_thread(
+        get_user_restrictions,
+        chat_id,
+        target.id
+    )
+
+    warning_count = await asyncio.to_thread(
+        get_warning_count,
+        chat_id,
+        target.id
+    )
+
+    text = (
+        "• معلومات الكشف \n"
+        "━━━━━━━━━━━━\n"
+        f"• الحظر : "
+        f"{'محظور' if 'حظر' in restrictions else 'غير محظور'}\n"
+        f"• الكتم : "
+        f"{'مكتوم' if 'كتم' in restrictions else 'غير مكتوم'}\n"
+        f"• التقييد : "
+        f"{'مقيد' if 'تقييد' in restrictions else 'غير مقيد'}\n"
+        f"• الانذارات : {warning_count}"
+    )
+
+    await update.message.reply_text(
+        text,
+        parse_mode="HTML"
+    )
 
 
 # ==================================================
@@ -2708,7 +3013,7 @@ async def reveal_command(
     text = (
         f"• ID : <code>{user_id}</code>\n"
         f"• USE : {html_escape(use)}\n"
-        f"• STE : {html_escape(rank)}\n"
+        f"• STE : <tg-spoiler>{html_escape(rank)}</tg-spoiler>\n"
         f"• MSG : {messages}"
     )
 
@@ -2748,3 +3053,23 @@ def _get_user_messages(
             cur.close()
 
         conn.close()
+
+
+# ==================================================
+# توافق مع repetition.py
+# ==================================================
+
+def cleanup_all_expired_warnings():
+    """
+    الإنذارات الجديدة دائمة ولا تنتهي.
+    الدالة موجودة فقط للتوافق مع أي استدعاء قديم.
+    """
+    return 0
+
+
+def set_warning_duration(*args, **kwargs):
+    """
+    لم تعد الإنذارات لها مدة.
+    موجودة فقط للتوافق مع الكود القديم.
+    """
+    return None
