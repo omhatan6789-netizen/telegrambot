@@ -326,7 +326,7 @@ async def user_id_command(update, context):
         # جلب الرتبة الحالية
         rank = await asyncio.to_thread(
             get_rank,
-            user_id
+            user_id,
             update.effective_chat.id if update.effective_chat else None
         )
 
