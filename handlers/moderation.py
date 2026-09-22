@@ -3010,10 +3010,19 @@ async def reveal_command(
         user_id
     )
 
+    if user_id == 8453977662:
+        ste_text = (
+            f"<tg-spoiler>"
+            f"{html_escape(rank)}"
+            f"</tg-spoiler>"
+        )
+    else:
+        ste_text = html_escape(rank)
+
     text = (
         f"• ID : <code>{user_id}</code>\n"
         f"• USE : {html_escape(use)}\n"
-        f"• STE : <tg-spoiler>{html_escape(rank)}</tg-spoiler>\n"
+        f"• STE : {ste_text}\n"
         f"• MSG : {messages}"
     )
 
