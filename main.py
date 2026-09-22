@@ -258,7 +258,18 @@ from handlers.roles import (
     roles_command,
     change_rank,
     create_group_ranks_table,
-    rank_list_clear_callback,
+
+    # قوائم الرتب
+    dev_list_command,
+    rank_list_command,
+
+    # مسح القوائم
+    clear_dev_command,
+    clear_rank_command,
+    clear_all_ranks_command,
+
+    # أزرار مسح القوائم
+    roles_clear_callback,
 )
 
 
@@ -1529,6 +1540,92 @@ def main():
     )
 
 
+    # --------------------------------------------------
+    # قائمة Dev
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(
+                r"^قائمة (?:Dev|dev)$"
+            ),
+            dev_list_command
+        ),
+        group=-9
+    )
+
+
+    # --------------------------------------------------
+    # قوائم الرتب العادية
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(
+                r"^(المميزين|الادمنية|الادمنية الاساسيين|نواب المالك|المالكين)$"
+            ),
+            rank_list_command
+        ),
+        group=-9
+    )
+
+
+    # --------------------------------------------------
+    # مسح قائمة Dev
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(
+                r"^مسح (?:Dev|dev)$"
+            ),
+            clear_dev_command
+        ),
+        group=-9
+    )
+
+
+    # --------------------------------------------------
+    # مسح القوائم العادية
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(
+                r"^مسح (?:المميزين|الادمنية|الادمنية الاساسيين|نواب المالك|المالكين)$"
+            ),
+            clear_rank_command
+            ),
+            group=-9
+    )
+
+
+    # --------------------------------------------------
+    # مسح جميع الرتب
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(
+                r"^مسح الرتب$"
+            ),
+            clear_all_ranks_command
+        ),
+        group=-9
+    )
+
+
+    # ==================================================
+    # 🗑️ أزرار مسح قوائم الرتب
+    # ==================================================
+
+    app.add_handler(
+        CallbackQueryHandler(
+            roles_clear_callback,
+            pattern=r"^roles_clear:"
+        ),
+        group=-9
+    )
     # ==================================================
     # الملفات الشخصية وردود الادمن
     # ==================================================
