@@ -859,9 +859,9 @@ async def get_target_user(
 
     message = update.message
 
-    # --------------------------------------------------
+    # ==================================================
     # الرد على رسالة
-    # --------------------------------------------------
+    # ==================================================
 
     if message.reply_to_message:
 
@@ -881,9 +881,9 @@ async def get_target_user(
     if len(parts) < 2:
         return None
 
-    # --------------------------------------------------
+    # ==================================================
     # البحث عن ID أو Username
-    # --------------------------------------------------
+    # ==================================================
 
     for part in parts[1:]:
 
@@ -895,13 +895,71 @@ async def get_target_user(
 
         if target.isdigit():
 
+            user_id = int(target)
+
             try:
 
                 return await context.bot.get_chat(
-                    int(target)
+                    user_id
                 )
 
             except Exception:
+
+                # محاولة جلب بياناته من قاعدة البيانات
+                conn = connect()
+                cur = None
+                row = None
+
+                try:
+
+                    cur = conn.cursor()
+
+                    cur.execute(
+                        """
+                        SELECT user_id, username, first_name
+                        FROM users
+                        WHERE user_id=?
+                        LIMIT 1
+                        """,
+                        (user_id,)
+                    )
+
+                    row = cur.fetchone()
+
+                except Exception:
+
+                    row = None
+
+                finally:
+
+                    if cur is not None:
+
+                        try:
+                            cur.close()
+                        except Exception:
+                            pass
+
+                    conn.close()
+
+                if row:
+
+                    username = (
+                        row[1]
+                        or None
+                    )
+
+                    first_name = (
+                        row[2]
+                        or username
+                        or str(user_id)
+                    )
+
+                    return User(
+                        id=user_id,
+                        first_name=str(first_name),
+                        is_bot=False,
+                        username=username
+                    )
 
                 continue
 
@@ -915,6 +973,24 @@ async def get_target_user(
 
             if not username:
                 continue
+
+            # --------------------------------------------------
+            # محاولة مباشرة من Telegram
+            # --------------------------------------------------
+
+            try:
+
+                return await context.bot.get_chat(
+                    f"@{username}"
+                )
+
+            except Exception:
+
+                pass
+
+            # --------------------------------------------------
+            # البحث في قاعدة البيانات
+            # --------------------------------------------------
 
             conn = connect()
             cur = None
@@ -958,6 +1034,7 @@ async def get_target_user(
                 first_name = (
                     row[2]
                     or username
+                    or str(user_id)
                 )
 
                 try:
