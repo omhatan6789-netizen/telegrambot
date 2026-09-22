@@ -1609,6 +1609,1106 @@ async def roles_command(
         return
 
 
+
+# ==================================================
+# قوائم الرتب + قائمة Dev
+# ==================================================
+
+ROLE_LIST_NAMES = {
+    "المميزين": "مميز",
+    "الادمنية": "ادمن",
+    "الادمنية الاساسيين": "ادمن اساسي",
+    "نواب المالك": "نائب المالك",
+    "المالكين": "المالك",
+}
+
+
+# ==================================================
+# منشن حقيقي
+# ==================================================
+
+def role_mention(user_id, name=None):
+
+    if name is None:
+        name = str(user_id)
+
+    name = escape(
+        str(name)
+    )
+
+    return (
+        f'<a href="tg://user?id={user_id}">'
+        f'{name}'
+        f'</a>'
+    )
+
+
+# ==================================================
+# جلب اسم + منشن المستخدم
+# ==================================================
+
+async def get_user_mention(
+    context,
+    user_id
+):
+
+    try:
+
+        user = await context.bot.get_chat(
+            user_id
+        )
+
+        name = (
+            getattr(user, "first_name", None)
+            or getattr(user, "title", None)
+            or getattr(user, "username", None)
+            or str(user_id)
+        )
+
+        return role_mention(
+            user_id,
+            name
+        )
+
+    except Exception:
+
+        return role_mention(
+            user_id,
+            str(user_id)
+        )
+
+
+# ==================================================
+# جلب أعضاء رتبة معينة
+# ==================================================
+
+def get_users_by_group_rank(
+    chat_id,
+    rank
+):
+
+    conn = connect()
+    cur = None
+
+    try:
+
+        cur = conn.cursor()
+
+        cur.execute(
+            """
+            SELECT user_id
+            FROM group_ranks
+            WHERE chat_id=?
+            AND rank=?
+            ORDER BY user_id
+            """,
+            (
+                chat_id,
+                rank
+            )
+        )
+
+        rows = cur.fetchall()
+
+        return [
+            int(row[0])
+            for row in rows
+        ]
+
+    finally:
+
+        if cur is not None:
+
+            try:
+                cur.close()
+            except Exception:
+                pass
+
+        conn.close()
+
+
+# ==================================================
+# جلب المطورين المساعدين
+#
+# Dev عالمي وليس خاص بمجموعة
+# ==================================================
+
+def get_secondary_developers():
+
+    conn = connect()
+    cur = None
+
+    try:
+
+        cur = conn.cursor()
+
+        cur.execute(
+            """
+            SELECT user_id
+            FROM developers
+            WHERE developer_type=?
+            ORDER BY user_id
+            """,
+            (
+                DEV_SECONDARY,
+            )
+        )
+
+        rows = cur.fetchall()
+
+        return [
+            int(row[0])
+            for row in rows
+        ]
+
+    finally:
+
+        if cur is not None:
+
+            try:
+                cur.close()
+            except Exception:
+                pass
+
+        conn.close()
+
+
+# ==================================================
+# مسح المطورين المساعدين
+#
+# المطور الأساسي لا يتأثر
+# ==================================================
+
+def clear_secondary_developers():
+
+    conn = connect()
+    cur = None
+
+    try:
+
+        cur = conn.cursor()
+
+        cur.execute(
+            """
+            DELETE FROM developers
+            WHERE developer_type=?
+            """,
+            (
+                DEV_SECONDARY,
+            )
+        )
+
+        deleted = cur.rowcount
+
+        conn.commit()
+
+    except Exception:
+
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+
+        raise
+
+    finally:
+
+        if cur is not None:
+
+            try:
+                cur.close()
+            except Exception:
+                pass
+
+        conn.close()
+
+    # --------------------------------------------------
+    # مسح كاش المطورين
+    # --------------------------------------------------
+
+    _developer_cache.clear()
+
+    _rank_cache.clear()
+
+    clear_command_permission_cache()
+
+    return int(
+        deleted or 0
+    )
+
+
+# ==================================================
+# صلاحية قائمة الرتبة
+#
+# لازم يكون المستخدم أعلى من الرتبة
+#
+# مثال:
+# ادمن يستطيع رؤية المميزين
+# ادمن لا يستطيع رؤية الادمنية
+# ادمن اساسي يستطيع رؤية الادمنية
+# المالك يستطيع رؤية الجميع
+# ==================================================
+
+def can_view_rank_list(
+    user_id,
+    chat_id,
+    rank
+):
+
+    if user_id == OWNER_ID:
+        return True
+
+    if is_primary_developer(
+        user_id
+    ):
+        return True
+
+    if is_secondary_developer(
+        user_id
+    ):
+        return True
+
+    user_level = get_rank_level(
+        user_id,
+        chat_id
+    )
+
+    target_level = RANK_LEVELS.get(
+        rank,
+        0
+    )
+
+    return (
+        user_level > target_level
+    )
+
+
+# ==================================================
+# رسالة عدم السماح بفتح القائمة
+# ==================================================
+
+def rank_list_permission_message(
+    rank
+):
+
+    if rank == "ادمن":
+        return (
+            "• هذا الامر للأدمن الاساسي وفوق ."
+        )
+
+    if rank == "ادمن اساسي":
+        return (
+            "• هذا الأمر لـ المالك وفوق ."
+        )
+
+    if rank == "المالك":
+        return (
+            "• هذا الامر لـ نواف والـ Dev فقط ."
+        )
+
+    return (
+        "• هذا الأمر لرتبة اعلى منك ."
+    )
+
+
+# ==================================================
+# صلاحية مسح قائمة رتبة
+#
+# لازم يكون أعلى من الرتبة
+# ==================================================
+
+def can_clear_rank_list(
+    user_id,
+    chat_id,
+    rank
+):
+
+    # --------------------------------------------------
+    # المالكين:
+    # المطور الأساسي + المالك
+    # --------------------------------------------------
+
+    if rank == "المالك":
+
+        if user_id == OWNER_ID:
+            return True
+
+        if is_primary_developer(
+            user_id
+        ):
+            return True
+
+        user_level = get_rank_level(
+            user_id,
+            chat_id
+        )
+
+        return user_level >= RANK_LEVELS["المالك"]
+
+    # --------------------------------------------------
+    # بقية الرتب
+    # --------------------------------------------------
+
+    if user_id == OWNER_ID:
+        return True
+
+    if is_primary_developer(
+        user_id
+    ):
+        return True
+
+    user_level = get_rank_level(
+        user_id,
+        chat_id
+    )
+
+    target_level = RANK_LEVELS.get(
+        rank,
+        0
+    )
+
+    return (
+        user_level > target_level
+    )
+
+
+# ==================================================
+# رسالة عدم السماح بمسح القائمة
+# ==================================================
+
+def rank_clear_permission_message(
+    rank
+):
+
+    if rank == "مميز":
+        return (
+            "• هذا الامر للأدمن وفوق ."
+        )
+
+    if rank == "ادمن":
+        return (
+            "• هذا الامر للأدمن الاساسي وفوق ."
+        )
+
+    if rank == "ادمن اساسي":
+        return (
+            "• هذا الأمر لـ المالك وفوق ."
+        )
+
+    if rank == "نائب المالك":
+        return (
+            "• هذا الأمر لـ المالك وفوق ."
+        )
+
+    if rank == "المالك":
+        return (
+            "• هذا الامر لـ نواف والـ Dev فقط ."
+        )
+
+    return (
+        "• هذا الأمر لرتبة اعلى منك ."
+    )
+
+
+# ==================================================
+# حذف قائمة رتبة
+# ==================================================
+
+def clear_rank_list(
+    chat_id,
+    rank
+):
+
+    conn = connect()
+    cur = None
+
+    try:
+
+        cur = conn.cursor()
+
+        cur.execute(
+            """
+            SELECT COUNT(*)
+            FROM group_ranks
+            WHERE chat_id=?
+            AND rank=?
+            """,
+            (
+                chat_id,
+                rank
+            )
+        )
+
+        row = cur.fetchone()
+
+        count = int(
+            row[0] or 0
+        )
+
+        cur.execute(
+            """
+            DELETE FROM group_ranks
+            WHERE chat_id=?
+            AND rank=?
+            """,
+            (
+                chat_id,
+                rank
+            )
+        )
+
+        conn.commit()
+
+    except Exception:
+
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+
+        raise
+
+    finally:
+
+        if cur is not None:
+
+            try:
+                cur.close()
+            except Exception:
+                pass
+
+        conn.close()
+
+    clear_group_rank_cache(
+        chat_id
+    )
+
+    clear_command_permission_cache()
+
+    return count
+
+
+# ==================================================
+# قائمة Dev
+#
+# قائمة Dev
+# قائمة dev
+# ==================================================
+
+async def dev_list_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not update.message:
+        return
+
+    actor = update.effective_user
+
+    if not actor:
+        return
+
+    # ==================================================
+    # المطور الأساسي فقط
+    # ==================================================
+
+    if not is_primary_developer(
+        actor.id
+    ):
+
+        owner_mention = await get_user_mention(
+            context,
+            OWNER_ID
+        )
+
+        await update.message.reply_text(
+            "• هذا الأمر للمطور الاساسي "
+            f"({owner_mention}) فقط !",
+            parse_mode="HTML"
+        )
+
+        return
+
+    # ==================================================
+    # جلب المطور الأساسي
+    # ==================================================
+
+    primary_mention = await get_user_mention(
+        context,
+        OWNER_ID
+    )
+
+    # ==================================================
+    # جلب المساعدين
+    # ==================================================
+
+    developers = get_secondary_developers()
+
+    # ==================================================
+    # بناء القائمة
+    # ==================================================
+
+    text = (
+        "اهلًا بك عزيزي المطور في قائمة Dev "
+        "الخاص بك🎖️\n\n"
+        "المطور الاساسي👇🏻\n\n"
+        f"{primary_mention}\n\n\n"
+       
+        "المساعدين 🎖️\n\n"
+        "—————————————————\n\n"
+    )
+
+    if developers:
+
+        for index, user_id in enumerate(
+            developers,
+            1
+        ):
+
+            mention = await get_user_mention(
+                context,
+                user_id
+            )
+
+            text += (
+                f"{index} - {mention}\n\n"
+            )
+
+    else:
+
+        text += "مافيه احد رتبته Dev حاليًا.\n"
+
+    # ==================================================
+    # الزر
+    # ==================================================
+
+    keyboard = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "مسح القائمة",
+                    callback_data="roles_clear:Dev"
+                )
+            ]
+        ]
+    )
+
+    await update.message.reply_text(
+        text,
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+
+
+# ==================================================
+# قائمة رتبة عادية
+# ==================================================
+
+async def rank_list_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not update.message:
+        return
+
+    actor = update.effective_user
+    chat = update.effective_chat
+
+    if not actor or not chat:
+        return
+
+    if chat.type not in (
+        "group",
+        "supergroup"
+    ):
+        return
+
+    text = (
+        update.message.text or ""
+    ).strip()
+
+    rank = ROLE_LIST_NAMES.get(
+        text
+    )
+
+    if not rank:
+        return
+
+    # ==================================================
+    # الصلاحية
+    # ==================================================
+
+    if not can_view_rank_list(
+        actor.id,
+        chat.id,
+        rank
+    ):
+
+        await update.message.reply_text(
+            rank_list_permission_message(
+                rank
+            )
+        )
+
+        return
+
+    # ==================================================
+    # جلب الأشخاص
+    # ==================================================
+
+    users = get_users_by_group_rank(
+        chat.id,
+        rank
+    )
+
+    # ==================================================
+    # عنوان القائمة
+    # ==================================================
+
+    text_map = {
+        "مميز": "المميزين",
+        "ادمن": "الادمنية",
+        "ادمن اساسي": "الادمنية الاساسيين",
+        "نائب المالك": "نواب المالك",
+        "المالك": "المالكين",
+    }
+
+    title = text_map[
+        rank
+    ]
+
+    message_text = (
+        f"• قائمة {title}\n"
+        "━━━━━━━━━━━━\n"
+    )
+
+    # ==================================================
+    # الأعضاء
+    # ==================================================
+
+    if users:
+
+        for index, user_id in enumerate(
+            users,
+            1
+        ):
+
+            mention = await get_user_mention(
+                context,
+                user_id
+            )
+
+            message_text += (
+                f"{index} - {mention}\n\n"
+            )
+
+    else:
+
+        message_text += (
+            "لا يوجد\n"
+        )
+
+    # ==================================================
+    # زر مسح القائمة
+    # ==================================================
+
+    keyboard = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "مسح القائمة",
+                    callback_data=(
+                        f"roles_clear:{rank}"
+                    )
+                )
+            ]
+        ]
+    )
+
+    await update.message.reply_text(
+        message_text,
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+
+
+# ==================================================
+# حذف Dev من الأمر
+#
+# مسح Dev
+# ==================================================
+
+async def clear_dev_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not update.message:
+        return
+
+    actor = update.effective_user
+
+    if not actor:
+        return
+
+    if not is_primary_developer(
+        actor.id
+    ):
+
+        owner_mention = await get_user_mention(
+            context,
+            OWNER_ID
+        )
+
+        await update.message.reply_text(
+            "• هذا الأمر للمطور الاساسي "
+            f"({owner_mention}) فقط !",
+            parse_mode="HTML"
+        )
+
+        return
+
+    deleted = clear_secondary_developers()
+
+    await update.message.reply_text(
+        "• تم مسح جميع مطورين Dev المساعدين بنجاح .\n"
+        f"「 {deleted} 」Dev/مساعدين المطور"
+    )
+
+
+# ==================================================
+# مسح رتبة عادية
+# ==================================================
+
+async def clear_rank_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not update.message:
+        return
+
+    actor = update.effective_user
+    chat = update.effective_chat
+
+    if not actor or not chat:
+        return
+
+    if chat.type not in (
+        "group",
+        "supergroup"
+    ):
+        return
+
+    text = (
+        update.message.text or ""
+    ).strip()
+
+    command_ranks = {
+        "مسح المميزين": "مميز",
+        "مسح الادمنية": "ادمن",
+        "مسح الادمنية الاساسيين": "ادمن اساسي",
+        "مسح نواب المالك": "نائب المالك",
+        "مسح المالكين": "المالك",
+    }
+
+    rank = command_ranks.get(
+        text
+    )
+
+    if not rank:
+        return
+
+    # ==================================================
+    # الصلاحية
+    # ==================================================
+
+    if not can_clear_rank_list(
+        actor.id,
+        chat.id,
+        rank
+    ):
+
+        await update.message.reply_text(
+            rank_clear_permission_message(
+                rank
+            )
+        )
+
+        return
+
+    deleted = clear_rank_list(
+        chat.id,
+        rank
+    )
+
+    title_map = {
+        "مميز": "المميزين",
+        "ادمن": "الادمنية",
+        "ادمن اساسي": "الادمنية الاساسيين",
+        "نائب المالك": "نواب المالك",
+        "المالك": "المالكين",
+    }
+
+    await update.message.reply_text(
+        "• تم مسح القائمة بنجاح .\n"
+        f"「 {deleted} 」{title_map[rank]}"
+    )
+
+
+# ==================================================
+# مسح الرتب كلها
+#
+# يمسح:
+# - Dev المساعدين
+# - المالكين
+# - نواب المالك
+# - الادمنية الاساسيين
+# - الادمنية
+# - المميزين
+#
+# ويُبقي المطور الأساسي
+# ==================================================
+
+async def clear_all_ranks_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not update.message:
+        return
+
+    actor = update.effective_user
+    chat = update.effective_chat
+
+    if not actor or not chat:
+        return
+
+    if chat.type not in (
+        "group",
+        "supergroup"
+    ):
+        return
+
+    # ==================================================
+    # المطور الأساسي فقط
+    # ==================================================
+
+    if not is_primary_developer(
+        actor.id
+    ):
+
+        owner_mention = await get_user_mention(
+            context,
+            OWNER_ID
+        )
+
+        await update.message.reply_text(
+            "• هذا الأمر للمطور الاساسي "
+            f"({owner_mention}) فقط !",
+            parse_mode="HTML"
+        )
+
+        return
+
+    # ==================================================
+    # أولًا: رتب المجموعة
+    # ==================================================
+
+    counts = clear_group_ranks(
+        chat.id
+    )
+
+    # ==================================================
+    # ثانيًا: Dev المساعدين
+    # ==================================================
+
+    dev_count = clear_secondary_developers()
+
+    # ==================================================
+    # النتيجة
+    # ==================================================
+
+    await update.message.reply_text(
+        "• تم مسح الكل بنجاح .\n"
+        f"「 {dev_count} 」Dev/مساعدين المطور\n"
+        f"• المالكين ↤︎「 {counts['المالك']} 」\n"
+        f"• نوّاب المالك ↤︎「 {counts['نائب المالك']} 」\n"
+        f"• الادمنية الاساسيين ↤︎「 {counts['ادمن اساسي']} 」\n"
+        f"• الادمنية ↤︎「 {counts['ادمن']} 」\n"
+        f"• المميزين ↤︎「 {counts['مميز']} 」"
+    )
+
+
+# ==================================================
+# Callback حذف القوائم
+# ==================================================
+
+async def roles_clear_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    query = update.callback_query
+
+    if not query:
+        return
+
+    actor = query.from_user
+
+    if not actor:
+        return
+
+    data = query.data or ""
+
+    if not data.startswith(
+        "roles_clear:"
+    ):
+        return
+
+    target_rank = data.split(
+        ":",
+        1
+    )[1]
+
+    # ==================================================
+    # قائمة Dev
+    # ==================================================
+
+    if target_rank == "Dev":
+
+        if not is_primary_developer(
+            actor.id
+        ):
+
+            owner_mention = await get_user_mention(
+                context,
+                OWNER_ID
+            )
+
+            await query.answer()
+
+            try:
+
+                await query.message.reply_text(
+                    "• هذا الأمر للمطور الاساسي "
+                    f"({owner_mention}) فقط !",
+                    parse_mode="HTML"
+                )
+
+            except Exception:
+                pass
+
+            return
+
+        # --------------------------------------------------
+        # مسح المساعدين
+        # --------------------------------------------------
+
+        deleted = clear_secondary_developers()
+
+        await query.answer(
+            "☑️ تم مسح القائمة."
+        )
+
+        try:
+
+            await query.edit_message_text(
+                "• تم مسح القائمة بنجاح .\n"
+                f"「 {deleted} 」Dev/مساعدين المطور"
+            )
+
+        except Exception as e:
+
+            print(
+                "⚠️ خطأ في تعديل قائمة Dev:",
+                e
+            )
+
+        return
+
+    # ==================================================
+    # التأكد أن الرتبة صحيحة
+    # ==================================================
+
+    if target_rank not in (
+        "مميز",
+        "ادمن",
+        "ادمن اساسي",
+        "نائب المالك",
+        "المالك",
+    ):
+
+        return
+
+    # ==================================================
+    # المجموعة
+    # ==================================================
+
+    message = query.message
+
+    if not message:
+        return
+
+    chat = message.chat
+
+    if not chat:
+        return
+
+    # ==================================================
+    # الصلاحية
+    # ==================================================
+
+    if not can_clear_rank_list(
+        actor.id,
+        chat.id,
+        target_rank
+    ):
+
+        await query.answer(
+            rank_clear_permission_message(
+                target_rank
+            ),
+            show_alert=True
+        )
+
+        return
+
+    # ==================================================
+    # حذف القائمة
+    # ==================================================
+
+    deleted = clear_rank_list(
+        chat.id,
+        target_rank
+    )
+
+    title_map = {
+        "مميز": "المميزين",
+        "ادمن": "الادمنية",
+        "ادمن اساسي": "الادمنية الاساسيين",
+        "نائب المالك": "نواب المالك",
+        "المالك": "المالكين",
+    }
+
+    await query.answer(
+        "☑️ تم مسح القائمة."
+    )
+
+    try:
+
+        await query.edit_message_text(
+            "• تم مسح القائمة بنجاح .\n"
+            f"「 {deleted} 」{title_map[target_rank]}"
+        )
+
+    except Exception as e:
+
+        print(
+            "⚠️ خطأ في تعديل قائمة الرتبة:",
+            e
+        )
 # ==================================================
 # رفع وتنزيل الرتب
 # ==================================================
