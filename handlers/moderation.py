@@ -3000,9 +3000,16 @@ async def reveal_command(
 
         use = ""
 
+    chat_id = (
+        update.effective_chat.id
+        if update.effective_chat
+        else None
+    )
+
     rank = await asyncio.to_thread(
         get_rank,
-        user_id
+        user_id,
+        chat_id
     )
 
     messages = await asyncio.to_thread(
