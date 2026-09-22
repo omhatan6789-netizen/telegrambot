@@ -308,8 +308,22 @@ async def user_id_command(update, context):
     # الرتبة
     # =====================================================
 
+    # =====================================================
+    # الرتبة الحالية
+    # =====================================================
+
     try:
 
+        # حذف الرتبة القديمة من الكاش
+        try:
+            from handlers.cache import _rank_cache
+
+            _rank_cache.pop(user_id, None)
+
+        except Exception:
+            pass
+
+        # جلب الرتبة الحالية
         rank = await asyncio.to_thread(
             get_rank,
             user_id
