@@ -258,6 +258,7 @@ from handlers.roles import (
     roles_command,
     change_rank,
     create_group_ranks_table,
+    rank_list_clear_callback,
 )
 
 
