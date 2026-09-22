@@ -2802,7 +2802,7 @@ async def warning_command(
                     InlineKeyboardButton(
                         "تقييد",
                         callback_data=(
-                            f"repetition_action:"
+                            f"repetition_punish:"
                             f"restrict:"
                             f"{target.id}"
                         )
@@ -2810,7 +2810,7 @@ async def warning_command(
                     InlineKeyboardButton(
                         "كتم",
                         callback_data=(
-                            f"repetition_action:"
+                            f"repetition_punish:"
                             f"mute:"
                             f"{target.id}"
                         )
