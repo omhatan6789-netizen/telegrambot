@@ -999,6 +999,11 @@ def main():
         context: ContextTypes.DEFAULT_TYPE
     ):
 
+        from custom_commands import is_alias_execution
+
+        if is_alias_execution(update):
+            return
+
         executed = await check_custom_commands(
             update,
             context,
