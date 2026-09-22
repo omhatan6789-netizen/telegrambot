@@ -572,16 +572,33 @@ def is_secondary_developer(user_id):
 # جلب رتبة المستخدم العامة
 # ==================================================
 
+# ==================================================
+# جلب رتبة المستخدم العامة
+# ==================================================
+
 def get_rank(
     user_id,
     chat_id=None
 ):
 
+    # ==================================================
+    # المطور الأساسي
+    # ==================================================
+
     if user_id == OWNER_ID:
         return "Dev"
 
+    # ==================================================
+    # Dev المساعدين
+    # ==================================================
+
     if is_secondary_developer(user_id):
         return "Dev"
+
+    # ==================================================
+    # إذا كنا داخل مجموعة
+    # نقرأ الرتبة الحالية من رتب المجموعة مباشرة
+    # ==================================================
 
     if chat_id is not None:
 
@@ -590,45 +607,22 @@ def get_rank(
             user_id
         )
 
-    if user_id in _rank_cache:
+    # ==================================================
+    # بدون مجموعة:
+    # Dev فقط من جدول developers
+    # ==================================================
 
-        return _rank_cache[
-            user_id
-        ]
-
-    cached = get_cached_user(
+    developer = is_developer(
         user_id
     )
 
-    if cached is not None:
+    if developer is not None:
 
-        rank = normalize_rank(
-            cached.get(
-                "rank",
-                "عضو"
-            )
-        )
+        return "Dev"
 
-        _rank_cache[user_id] = rank
-
-        return rank
-
-    data = get_user_data_sync(
-        user_id
-    )
-
-    if data is not None:
-
-        rank = normalize_rank(
-            data.get(
-                "rank",
-                "عضو"
-            )
-        )
-
-        _rank_cache[user_id] = rank
-
-        return rank
+    # ==================================================
+    # الرتبة العالمية القديمة/العادية
+    # ==================================================
 
     conn = connect()
     cur = None
@@ -642,52 +636,18 @@ def get_rank(
             SELECT rank
             FROM ranks
             WHERE user_id=?
+            LIMIT 1
             """,
             (user_id,)
         )
 
-        rank_data = cur.fetchone()
+        row = cur.fetchone()
 
-        if rank_data and rank_data[0]:
+        if row and row[0]:
 
-            rank = normalize_rank(
-                rank_data[0]
+            return normalize_rank(
+                row[0]
             )
-
-            cur.execute(
-                """
-                INSERT INTO users
-                (
-                    user_id,
-                    username,
-                    first_name,
-                    messages,
-                    rank
-                )
-                VALUES (?, '', '', 0, ?)
-
-                ON CONFLICT(user_id)
-                DO UPDATE SET
-                    rank=excluded.rank
-                """,
-                (
-                    user_id,
-                    rank
-                )
-            )
-
-            conn.commit()
-
-            set_cached_rank(
-                user_id,
-                rank
-            )
-
-            _rank_cache[user_id] = rank
-
-            return rank
-
-        _rank_cache[user_id] = "عضو"
 
         return "عضو"
 
@@ -701,7 +661,6 @@ def get_rank(
                 pass
 
         conn.close()
-
 
 # ==================================================
 # جلب أعلى رتبة المستخدم داخل مجموعة
