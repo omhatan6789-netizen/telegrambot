@@ -27,6 +27,7 @@ from handlers.moderation import (
     save_restriction,
     save_ban,
     mention_user,
+    clear_warnings,
 )
 
 
@@ -1643,17 +1644,29 @@ async def repetition_action_callback(
     # ==================================================
     # نجاح
     #
-    # لا نمسح الإنذارات.
-    # الإنذارات تبقى حتى يستخدم المشرف:
-    # مسح انذاراته
+    # بعد تطبيق العقوبة يتم تصفير جميع الإنذارات
     # ==================================================
-    clear_user_repetition_warnings(
-        chat.id,
-        target_id
-    )
+
+    try:
+
+        clear_warnings(
+            chat.id,
+            target_id
+        )
+
+        reset_repetition_messages(
+            chat.id,
+            target_id
+        )
+
+    except Exception as e:
+
+        print(
+            f"⚠️ خطأ في تصفير إنذارات المستخدم: {e}"
+        )
 
     await query.answer(
-        "تم اختيار العقوبة."
+        "تم اختيار العقوبة وتصفير إنذاراته."
     )
 
     try:
