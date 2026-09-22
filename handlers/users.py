@@ -327,6 +327,7 @@ async def user_id_command(update, context):
         rank = await asyncio.to_thread(
             get_rank,
             user_id
+            update.effective_chat.id if update.effective_chat else None
         )
 
     except Exception:
