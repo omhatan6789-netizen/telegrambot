@@ -1613,7 +1613,6 @@ async def roles_command(
         return
 
 
-
 # ==================================================
 # قوائم الرتب + قائمة Dev
 # ==================================================
@@ -2157,7 +2156,7 @@ async def dev_list_command(
         "الخاص بك🎖️\n\n"
         "المطور الاساسي👇🏻\n\n"
         f"{primary_mention}\n\n\n"
-       
+
         "المساعدين 🎖️\n\n"
         "—————————————————\n\n"
     )
@@ -2582,27 +2581,20 @@ async def roles_clear_callback(
 
     if target_rank == "Dev":
 
+        # --------------------------------------------------
+        # غير المطور الأساسي:
+        # تظهر الرسالة من الزر نفسه كـ Alert
+        # ولا يتم إرسال أي رسالة جديدة
+        # --------------------------------------------------
+
         if not is_primary_developer(
             actor.id
         ):
 
-            owner_mention = await get_user_mention(
-                context,
-                OWNER_ID
+            await query.answer(
+                "• رح اطلب من نواف يحولك ملكية البوت احسن .",
+                show_alert=True
             )
-
-            await query.answer()
-
-            try:
-
-                await query.message.reply_text(
-                    "• هذا الأمر للمطور الاساسي "
-                    f"({owner_mention}) فقط !",
-                    parse_mode="HTML"
-                )
-
-            except Exception:
-                pass
 
             return
 
@@ -2670,6 +2662,12 @@ async def roles_clear_callback(
         target_rank
     ):
 
+        # --------------------------------------------------
+        # غير المصرح له:
+        # تظهر الرسالة من الزر نفسه كـ Alert
+        # ولا يتم إرسال رسالة جديدة
+        # --------------------------------------------------
+
         await query.answer(
             rank_clear_permission_message(
                 target_rank
@@ -2713,6 +2711,8 @@ async def roles_clear_callback(
             "⚠️ خطأ في تعديل قائمة الرتبة:",
             e
         )
+
+
 # ==================================================
 # رفع وتنزيل الرتب
 # ==================================================
