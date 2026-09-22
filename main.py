@@ -182,6 +182,9 @@ from handlers.moderation import (
     enable_reasons_command,
     disable_reasons_command,
 
+    warning_command,
+    clear_warnings_command,
+    reveal_restrictions_command,
 
     moderation_expiry_loop,
     reveal_command,
@@ -1221,6 +1224,51 @@ def main():
 
 
 
+
+    # --------------------------------------------------
+    # كشف القيود
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(
+                r"^كشف القيود(?:\s+@[A-Za-z0-9_]+|\s+\d+)?$"
+            ),
+            reveal_restrictions_command
+        ),
+        group=-19
+    )
+
+    # --------------------------------------------------
+    # انذار
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(
+                r"^انذار(?:\s+.+)?$"
+            ),
+            warning_command
+        ),
+        group=-18
+    )
+
+    # --------------------------------------------------
+    # مسح انذاراته
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(
+                r"^مسح انذاراته$"
+            ),
+            clear_warnings_command
+        ),
+        group=-18
+    )
     # ==================================================
     # 🔁 التكرار
     # ==================================================
