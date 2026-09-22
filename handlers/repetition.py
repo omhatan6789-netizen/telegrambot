@@ -1647,6 +1647,10 @@ async def repetition_action_callback(
     # الإنذارات تبقى حتى يستخدم المشرف:
     # مسح انذاراته
     # ==================================================
+    clear_user_repetition_warnings(
+        chat.id,
+        target_id
+    )
 
     await query.answer(
         "تم اختيار العقوبة."
