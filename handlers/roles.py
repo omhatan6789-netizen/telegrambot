@@ -4,6 +4,7 @@ from telegram import (
     Update,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    User,
 )
 from telegram.ext import ContextTypes
 
@@ -61,8 +62,6 @@ _group_rank_cache = {}
 
 # ==================================================
 # إنشاء جدول رتب المجموعات
-#
-# النظام الجديد يسمح للمستخدم بأكثر من رتبة
 # ==================================================
 
 def create_group_ranks_table():
@@ -73,10 +72,6 @@ def create_group_ranks_table():
     try:
 
         cur = conn.cursor()
-
-        # --------------------------------------------------
-        # الجدول الجديد
-        # --------------------------------------------------
 
         cur.execute(
             """
@@ -111,13 +106,6 @@ def create_group_ranks_table():
             ON group_user_ranks(chat_id, rank)
             """
         )
-
-        # --------------------------------------------------
-        # ترحيل الجدول القديم إن كان موجودًا
-        #
-        # لا نحذف الجدول القديم.
-        # فقط ننقل الرتب الموجودة منه للجدول الجديد.
-        # --------------------------------------------------
 
         try:
 
@@ -154,7 +142,6 @@ def create_group_ranks_table():
 
         except Exception:
 
-            # الجدول القديم قد لا يكون موجودًا
             pass
 
         conn.commit()
@@ -327,10 +314,6 @@ def get_group_ranks(
     user_id
 ):
 
-    # --------------------------------------------------
-    # Dev عالمي
-    # --------------------------------------------------
-
     if user_id == OWNER_ID:
         return ["Dev"]
 
@@ -449,11 +432,7 @@ def has_group_rank(
         return True
 
     if rank == "Dev":
-
-        return (
-            is_developer(user_id)
-            is not None
-        )
+        return is_developer(user_id) is not None
 
     return rank in get_group_ranks(
         chat_id,
@@ -591,10 +570,6 @@ def is_secondary_developer(user_id):
 
 # ==================================================
 # جلب رتبة المستخدم العامة
-#
-# تستخدم للتوافق مع الأكواد القديمة.
-# في القروب استخدم:
-# get_rank(user_id, chat_id)
 # ==================================================
 
 def get_rank(
@@ -884,6 +859,10 @@ async def get_target_user(
 
     message = update.message
 
+    # --------------------------------------------------
+    # الرد على رسالة
+    # --------------------------------------------------
+
     if message.reply_to_message:
 
         replied_user = (
@@ -903,12 +882,16 @@ async def get_target_user(
         return None
 
     # --------------------------------------------------
-    # نبحث عن ID أو Username في الأمر
+    # البحث عن ID أو Username
     # --------------------------------------------------
 
     for part in parts[1:]:
 
         target = part.strip()
+
+        # ==================================================
+        # ID
+        # ==================================================
 
         if target.isdigit():
 
@@ -922,17 +905,75 @@ async def get_target_user(
 
                 continue
 
+        # ==================================================
+        # Username
+        # ==================================================
+
         if target.startswith("@"):
+
+            username = target[1:].strip()
+
+            if not username:
+                continue
+
+            conn = connect()
+            cur = None
+            row = None
 
             try:
 
-                return await context.bot.get_chat(
-                    target
+                cur = conn.cursor()
+
+                cur.execute(
+                    """
+                    SELECT user_id, username, first_name
+                    FROM users
+                    WHERE LOWER(username)=LOWER(?)
+                    LIMIT 1
+                    """,
+                    (username,)
                 )
+
+                row = cur.fetchone()
 
             except Exception:
 
-                continue
+                row = None
+
+            finally:
+
+                if cur is not None:
+
+                    try:
+                        cur.close()
+                    except Exception:
+                        pass
+
+                conn.close()
+
+            if row:
+
+                user_id = int(row[0])
+
+                first_name = (
+                    row[2]
+                    or username
+                )
+
+                try:
+
+                    return await context.bot.get_chat(
+                        user_id
+                    )
+
+                except Exception:
+
+                    return User(
+                        id=user_id,
+                        first_name=str(first_name),
+                        is_bot=False,
+                        username=username
+                    )
 
     return None
 
@@ -1052,10 +1093,6 @@ def rank_permission_message(
         rank,
         0
     )
-
-    # --------------------------------------------------
-    # الرتبة المطلوبة هي الرتبة الأعلى مباشرة
-    # --------------------------------------------------
 
     required = None
 
@@ -1184,10 +1221,6 @@ def can_promote_rank(
 
     # --------------------------------------------------
     # المستخدم العادي
-    #
-    # أعلى رتبة للفاعل تحدد ما يستطيع إعطاءه.
-    # رتبة الهدف الحالية لا تمنع إضافة رتبة أقل
-    # لم يكن يملكها.
     # --------------------------------------------------
 
     if target_id == OWNER_ID:
@@ -1331,8 +1364,6 @@ def can_demote_rank(
             "❌ لا يمكنك تعديل مطور Dev."
         )
 
-    # لا يمكن تنزيل رتبة مساوية أو أعلى من رتبة الفاعل
-
     if target_rank_level >= actor_level:
 
         return (
@@ -1358,7 +1389,11 @@ def can_change_rank(
 ):
 
     if chat_id is None:
-        return False, "❌ هذا الأمر داخل المجموعة فقط."
+
+        return (
+            False,
+            "❌ هذا الأمر داخل المجموعة فقط."
+        )
 
     if promoting:
 
@@ -1530,9 +1565,6 @@ def remove_group_rank(
 
 # ==================================================
 # تحديث رتبة داخل المجموعة
-#
-# للتوافق مع الأكواد القديمة:
-# الآن تضيف الرتبة بدل استبدالها.
 # ==================================================
 
 def update_group_rank(
@@ -1664,8 +1696,6 @@ def clear_group_rank_cache_for_user(
 
 # ==================================================
 # التحديث القديم
-#
-# يبقى للتوافق مع الأكواد الأخرى.
 # ==================================================
 
 def update_user_rank(
@@ -1808,8 +1838,6 @@ def clear_group_ranks(
 
 # ==================================================
 # جلب جميع أعضاء مجموعة حسب الرتب
-#
-# المستخدم يظهر أكثر من مرة إذا كان لديه أكثر من رتبة
 # ==================================================
 
 def get_group_rank_users(
@@ -1864,6 +1892,64 @@ def get_group_rank_users(
                 pass
 
         conn.close()
+
+
+# ==================================================
+# منشن حقيقي
+# ==================================================
+
+def role_mention(
+    user_id,
+    name=None
+):
+
+    if name is None:
+        name = str(user_id)
+
+    name = escape(
+        str(name)
+    )
+
+    return (
+        f'<a href="tg://user?id={user_id}">'
+        f'{name}'
+        f'</a>'
+    )
+
+
+# ==================================================
+# جلب اسم + منشن المستخدم
+# ==================================================
+
+async def get_user_mention(
+    context,
+    user_id
+):
+
+    try:
+
+        user = await context.bot.get_chat(
+            user_id
+        )
+
+        name = (
+            getattr(user, "first_name", None)
+            or getattr(user, "title", None)
+            or getattr(user, "username", None)
+            or str(user_id)
+        )
+
+        return role_mention(
+            user_id,
+            name
+        )
+
+    except Exception:
+
+        return role_mention(
+            user_id,
+            str(user_id)
+        )
 
 
 # ==================================================
@@ -2136,7 +2222,7 @@ async def roles_command(
 
 
 # ==================================================
-# قوائم الرتب + قائمة Dev
+# قوائم الرتب
 # ==================================================
 
 ROLE_LIST_NAMES = {
@@ -2146,64 +2232,6 @@ ROLE_LIST_NAMES = {
     "نواب المالك": "نائب المالك",
     "المالكين": "المالك",
 }
-
-
-# ==================================================
-# منشن حقيقي
-# ==================================================
-
-def role_mention(
-    user_id,
-    name=None
-):
-
-    if name is None:
-        name = str(user_id)
-
-    name = escape(
-        str(name)
-    )
-
-    return (
-        f'<a href="tg://user?id={user_id}">'
-        f'{name}'
-        f'</a>'
-    )
-
-
-# ==================================================
-# جلب اسم + منشن المستخدم
-# ==================================================
-
-async def get_user_mention(
-    context,
-    user_id
-):
-
-    try:
-
-        user = await context.bot.get_chat(
-            user_id
-        )
-
-        name = (
-            getattr(user, "first_name", None)
-            or getattr(user, "title", None)
-            or getattr(user, "username", None)
-            or str(user_id)
-        )
-
-        return role_mention(
-            user_id,
-            name
-        )
-
-    except Exception:
-
-        return role_mention(
-            user_id,
-            str(user_id)
-        )
 
 
 # ==================================================
@@ -2261,8 +2289,6 @@ def get_users_by_group_rank(
 
 # ==================================================
 # جلب المطورين المساعدين
-#
-# Dev عالمي وليس خاص بمجموعة
 # ==================================================
 
 def get_secondary_developers():
@@ -2307,8 +2333,6 @@ def get_secondary_developers():
 
 # ==================================================
 # مسح المطورين المساعدين
-#
-# المطور الأساسي لا يتأثر
 # ==================================================
 
 def clear_secondary_developers():
@@ -2355,9 +2379,7 @@ def clear_secondary_developers():
         conn.close()
 
     _developer_cache.clear()
-
     _rank_cache.clear()
-
     _group_rank_cache.clear()
 
     clear_command_permission_cache()
@@ -2369,8 +2391,6 @@ def clear_secondary_developers():
 
 # ==================================================
 # صلاحية قائمة الرتبة
-#
-# لازم يكون المستخدم أعلى من الرتبة
 # ==================================================
 
 def can_view_rank_list(
@@ -2440,8 +2460,6 @@ def rank_list_permission_message(
 
 # ==================================================
 # صلاحية مسح قائمة رتبة
-#
-# لازم يكون أعلى من الرتبة
 # ==================================================
 
 def can_clear_rank_list(
@@ -2791,9 +2809,7 @@ async def rank_list_command(
 
     else:
 
-        message_text += (
-            "لا يوجد\n"
-        )
+        message_text += "لا يوجد\n"
 
     keyboard = InlineKeyboardMarkup(
         [
@@ -2935,16 +2951,6 @@ async def clear_rank_command(
 
 # ==================================================
 # مسح الرتب كلها
-#
-# يمسح:
-# - Dev المساعدين
-# - المالكين
-# - نواب المالك
-# - الادمنية الاساسيين
-# - الادمنية
-# - المميزين
-#
-# ويُبقي المطور الأساسي
 # ==================================================
 
 async def clear_all_ranks_command(
@@ -3076,7 +3082,6 @@ async def roles_clear_callback(
     # ==================================================
 
     if target_rank not in NORMAL_RANKS:
-
         return
 
     message = query.message
@@ -3138,17 +3143,6 @@ async def roles_clear_callback(
 
 # ==================================================
 # تنزيل جميع الرتب الأقل من رتبة الفاعل
-#
-# يعمل فقط إذا كانت أعلى رتبة للهدف
-# مساوية لأعلى رتبة للفاعل.
-#
-# مثال:
-# الفاعل: ادمن اساسي
-# الهدف: ادمن اساسي + ادمن + مميز
-#
-# النتيجة:
-# يبقى ادمن اساسي
-# وتحذف ادمن + مميز
 # ==================================================
 
 def clear_lower_group_ranks(
@@ -3284,6 +3278,14 @@ async def change_rank(
 
             return
 
+        actor_dev = is_developer(
+            actor.id
+        )
+
+        target_dev = is_developer(
+            target.id
+        )
+
         actor_level = get_rank_level(
             actor.id,
             chat_id
@@ -3294,41 +3296,50 @@ async def change_rank(
             chat_id
         )
 
-        # --------------------------------------------------
+        # ==================================================
         # Dev الأساسي / المساعد
-        # --------------------------------------------------
+        # ==================================================
 
-        if actor_level >= 6:
+        if actor_dev in (
+            DEV_PRIMARY,
+            DEV_SECONDARY
+        ):
 
-            if is_secondary_developer(
-                target.id
+            # المساعد لا يستطيع إزالة Dev من نفسه
+            if (
+                actor_dev == DEV_SECONDARY
+                and target.id == actor.id
             ):
 
-                if (
-                    is_secondary_developer(actor.id)
-                    and target.id == actor.id
-                ):
-
-                    await update.message.reply_text(
-                        "❌ لا يمكنك إزالة Dev من نفسك."
-                    )
-
-                    return
-
-                # Dev العالمي لا يدخل في رتب المجموعة
-                target_level = get_rank_level(
-                    target.id,
-                    chat_id
+                await update.message.reply_text(
+                    "❌ لا يمكنك إزالة Dev من نفسك."
                 )
 
-            elif target_level < 6:
+                return
 
-                pass
+            # Dev يستطيع تنزيل جميع الرتب العادية
+            # ولا يتم المساس برتبة Dev العالمية.
+            deleted = clear_lower_group_ranks(
+                chat_id,
+                target.id,
+                6
+            )
 
-        # --------------------------------------------------
-        # تنزيل الكل حسب المواصفة:
-        # أعلى رتبة الهدف يجب أن تكون مساوية لأعلى رتبة الفاعل.
-        # --------------------------------------------------
+            await update.message.reply_text(
+                "• تم تنزيل جميع الرتب الأقل منه بنجاح .\n"
+                f"• المستخدم ↤︎ "
+                f"{await get_user_mention(context, target.id)}\n"
+                f"• عدد الرتب التي تم تنزيلها ↤︎「 {deleted} 」",
+                parse_mode="HTML"
+            )
+
+            return
+
+        # ==================================================
+        # المستخدم العادي
+        #
+        # لازم أعلى رتبة الهدف مساوية لأعلى رتبة الفاعل
+        # ==================================================
 
         if target_level != actor_level:
 
@@ -3517,10 +3528,6 @@ async def change_rank(
 
     if promoting:
 
-        # --------------------------------------------------
-        # التحقق من الصلاحية أولًا
-        # --------------------------------------------------
-
         allowed, reason = can_promote_rank(
             actor.id,
             target.id,
@@ -3536,10 +3543,6 @@ async def change_rank(
 
             return
 
-        # --------------------------------------------------
-        # هل الرتبة موجودة أصلًا؟
-        # --------------------------------------------------
-
         if has_group_rank(
             chat_id,
             target.id,
@@ -3554,10 +3557,6 @@ async def change_rank(
             )
 
             return
-
-        # --------------------------------------------------
-        # إضافة الرتبة بدون حذف الرتب السابقة
-        # --------------------------------------------------
 
         add_group_rank(
             chat_id,
@@ -3593,10 +3592,6 @@ async def change_rank(
 
         return
 
-    # --------------------------------------------------
-    # الرتبة غير موجودة
-    # --------------------------------------------------
-
     if not has_group_rank(
         chat_id,
         target.id,
@@ -3611,10 +3606,6 @@ async def change_rank(
         )
 
         return
-
-    # --------------------------------------------------
-    # حذف الرتبة المطلوبة فقط
-    # --------------------------------------------------
 
     remove_group_rank(
         chat_id,
