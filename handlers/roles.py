@@ -8,7 +8,10 @@ from telegram import (
 )
 from telegram.ext import ContextTypes
 
-from database import connect
+from database import (
+    connect,
+    acquire_schema_lock,
+)
 
 from handlers.cache import (
     get_cached_user,
@@ -72,6 +75,8 @@ def create_group_ranks_table():
     try:
 
         cur = conn.cursor()
+
+        acquire_schema_lock(conn)
 
         cur.execute(
             """
