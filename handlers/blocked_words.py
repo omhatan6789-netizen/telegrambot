@@ -1,6 +1,11 @@
 import asyncio
 import re
-from datetime import datetime, timezone, timedelta
+
+from datetime import (
+    datetime,
+    timezone,
+    timedelta,
+)
 
 from telegram import (
     Update,
@@ -8,6 +13,7 @@ from telegram import (
     InlineKeyboardMarkup,
     ChatPermissions,
 )
+
 from telegram.ext import (
     ContextTypes,
     ApplicationHandlerStop,
@@ -35,13 +41,14 @@ from handlers.moderation import (
 MIN_RANK_LEVEL = 4
 
 # --------------------------------------------------
-# الرتب التي يسمح لها بإدارة الكلمات المحظورة
+# الرتبة المطلوبة لإدارة الكلمات المحظورة
+# نائب المالك وفوق
 # --------------------------------------------------
 
 MANAGE_MIN_RANK_LEVEL = 4
 
 # --------------------------------------------------
-# الكلمات المحظورة تطبق فقط على:
+# الكلمات المحظورة تؤثر فقط على:
 #
 # عضو  = 0
 # مميز = 1
@@ -73,14 +80,15 @@ _blocked_sessions = {}
 # ==================================================
 # 🚀 كاش الكلمات المحظورة
 #
-# الهدف:
-# عدم ضرب Supabase مع كل رسالة.
-#
 # key:
 # (chat_id, list_id)
 #
 # value:
-# قائمة الكلمات
+# list of words
+#
+# مهم:
+# وجود key في القاموس يعني أن الكاش محمّل
+# حتى لو كانت القائمة فارغة.
 # ==================================================
 
 _blocked_words_cache = {}
@@ -93,10 +101,23 @@ _blocked_words_cache = {}
 # (chat_id, list_id)
 #
 # value:
-# dict settings
+# dict
 # ==================================================
 
 _blocked_settings_cache = {}
+
+
+# ==================================================
+# 🚀 كاش Regex
+#
+# key:
+# word
+#
+# value:
+# compiled regex
+# ==================================================
+
+_blocked_regex_cache = {}
 
 
 # ==================================================
@@ -116,6 +137,7 @@ def get_blocked_level(
 ):
 
     try:
+
         return int(
             get_rank_level(
                 user_id,
@@ -126,14 +148,19 @@ def get_blocked_level(
     except TypeError:
 
         try:
+
             return int(
-                get_rank_level(user_id)
+                get_rank_level(
+                    user_id
+                )
             )
 
         except Exception:
+
             return 0
 
     except Exception:
+
         return 0
 
 
@@ -204,6 +231,9 @@ def invalidate_blocked_words_cache(
                 None
             )
 
+        # Regex cache عالمي،
+        # ولا نحتاج حذفه هنا لأن الكلمات نفسها
+        # سيتم تحميلها من جديد.
         return
 
     _blocked_words_cache.pop(
@@ -237,11 +267,18 @@ def ensure_blocked_words_tables():
         cur = conn.cursor()
 
         # ==================================================
-        # الكلمات
+        # Advisory Lock
         #
-        # list_id:
-        # 1 = الكلمات المحظورة
-        # 2 = الكلمات المحظورة2
+        # يمنع أكثر من نسخة من البوت من إنشاء جداول
+        # الكلمات المحظورة في نفس الوقت.
+        # ==================================================
+
+        cur.execute("""
+        SELECT pg_advisory_xact_lock(8453977663)
+        """)
+
+        # ==================================================
+        # الكلمات
         # ==================================================
 
         cur.execute("""
@@ -298,10 +335,10 @@ def ensure_blocked_words_tables():
         """)
 
         # ==================================================
-        # الأشخاص الذين فتحوا القائمة من قبل
+        # جدول قديم للتوافق
         #
-        # يبقى الجدول موجودًا للتوافق مع النظام القديم،
-        # لكن لم نعد نعتمد عليه لتحديد ظهور الترحيب.
+        # لم نعد نعتمد عليه لمعرفة هل فتح المشرف
+        # القائمة من قبل أم لا.
         # ==================================================
 
         cur.execute("""
@@ -321,7 +358,7 @@ def ensure_blocked_words_tables():
         """)
 
         # ==================================================
-        # إنذارات الكلمات المؤقتة
+        # إنذارات الكلمات
         # ==================================================
 
         cur.execute("""
@@ -361,7 +398,7 @@ def ensure_blocked_words_tables():
         """)
 
         # ==================================================
-        # إنشاء إعدادات القائمتين
+        # إنشاء إعدادات القائمة الأولى
         # ==================================================
 
         cur.execute("""
@@ -383,7 +420,7 @@ def ensure_blocked_words_tables():
         """)
 
         # ==================================================
-        # نقل إعدادات النظام القديم للقائمة الأولى
+        # نقل إعدادات النظام القديم
         # ==================================================
 
         cur.execute("""
@@ -398,7 +435,7 @@ def ensure_blocked_words_tables():
         """)
 
         # ==================================================
-        # نقل الكلمات القديمة للقائمة الأولى
+        # نقل الكلمات القديمة
         # ==================================================
 
         cur.execute("""
@@ -432,7 +469,11 @@ def ensure_blocked_words_tables():
     finally:
 
         if cur:
-            cur.close()
+
+            try:
+                cur.close()
+            except Exception:
+                pass
 
         conn.close()
 
@@ -480,10 +521,18 @@ def ensure_list_settings(
     finally:
 
         if cur:
-            cur.close()
+
+            try:
+                cur.close()
+            except Exception:
+                pass
 
         conn.close()
 
+
+# ==================================================
+# قراءة الإعدادات من DB
+# ==================================================
 
 def get_settings(
     chat_id,
@@ -544,16 +593,23 @@ def get_settings(
     finally:
 
         if cur:
-            cur.close()
+
+            try:
+                cur.close()
+            except Exception:
+                pass
 
         conn.close()
 
 
 # ==================================================
-# 🚀 كاش إعدادات
+# 🚀 قراءة إعدادات الكاش
+#
+# هذه الدالة نفسها Sync لأنها لا تنفذ أثناء
+# فحص الرسائل إلا من خلال to_thread.
 # ==================================================
 
-def get_cached_settings(
+def get_cached_settings_sync(
     chat_id,
     list_id
 ):
@@ -563,25 +619,35 @@ def get_cached_settings(
         list_id
     )
 
-    cached = _blocked_settings_cache.get(
-        key
-    )
+    if key in _blocked_settings_cache:
 
-    if cached is not None:
-
-        return cached
+        return _blocked_settings_cache[key]
 
     settings = get_settings(
         chat_id,
         list_id
     )
 
-    _blocked_settings_cache[
-        key
-    ] = settings
+    _blocked_settings_cache[key] = settings
 
     return settings
 
+
+async def get_cached_settings(
+    chat_id,
+    list_id
+):
+
+    return await asyncio.to_thread(
+        get_cached_settings_sync,
+        chat_id,
+        list_id
+    )
+
+
+# ==================================================
+# تعديل حالة القائمة
+# ==================================================
 
 def set_enabled(
     chat_id,
@@ -618,13 +684,13 @@ def set_enabled(
     finally:
 
         if cur:
-            cur.close()
+
+            try:
+                cur.close()
+            except Exception:
+                pass
 
         conn.close()
-
-    # ==================================================
-    # تحديث الكاش مباشرة
-    # ==================================================
 
     key = (
         chat_id,
@@ -650,6 +716,10 @@ def set_enabled(
             list_id
         )
 
+
+# ==================================================
+# تعديل العقوبة المباشرة
+# ==================================================
 
 def set_direct_action(
     chat_id,
@@ -690,13 +760,13 @@ def set_direct_action(
     finally:
 
         if cur:
-            cur.close()
+
+            try:
+                cur.close()
+            except Exception:
+                pass
 
         conn.close()
-
-    # ==================================================
-    # تحديث الكاش
-    # ==================================================
 
     key = (
         chat_id,
@@ -721,6 +791,10 @@ def set_direct_action(
             list_id
         )
 
+
+# ==================================================
+# تعديل عقوبة الإنذار
+# ==================================================
 
 def set_warning_action(
     chat_id,
@@ -765,13 +839,13 @@ def set_warning_action(
     finally:
 
         if cur:
-            cur.close()
+
+            try:
+                cur.close()
+            except Exception:
+                pass
 
         conn.close()
-
-    # ==================================================
-    # تحديث الكاش
-    # ==================================================
 
     key = (
         chat_id,
@@ -785,15 +859,18 @@ def set_warning_action(
     if cached is not None:
 
         cached["action"] = "warning"
+
         cached["warning_duration"] = (
             warning_duration
         )
+
         cached["warning_action"] = (
             warning_action
         )
-        cached["warning_punishment_duration"] = (
-            warning_punishment_duration
-        )
+
+        cached[
+            "warning_punishment_duration"
+        ] = warning_punishment_duration
 
     else:
 
@@ -841,16 +918,20 @@ def get_words(
     finally:
 
         if cur:
-            cur.close()
+
+            try:
+                cur.close()
+            except Exception:
+                pass
 
         conn.close()
 
 
 # ==================================================
-# 🚀 كاش الكلمات
+# 🚀 تحميل الكلمات إلى الكاش
 # ==================================================
 
-def get_cached_words(
+def get_cached_words_sync(
     chat_id,
     list_id
 ):
@@ -860,25 +941,37 @@ def get_cached_words(
         list_id
     )
 
-    cached = _blocked_words_cache.get(
-        key
-    )
+    # مهم:
+    # لا نستخدم get() هنا لأن القائمة قد تكون فارغة.
+    if key in _blocked_words_cache:
 
-    if cached is not None:
-
-        return cached
+        return _blocked_words_cache[key]
 
     words = get_words(
         chat_id,
         list_id
     )
 
-    _blocked_words_cache[
-        key
-    ] = words
+    _blocked_words_cache[key] = words
 
     return words
 
+
+async def get_cached_words(
+    chat_id,
+    list_id
+):
+
+    return await asyncio.to_thread(
+        get_cached_words_sync,
+        chat_id,
+        list_id
+    )
+
+
+# ==================================================
+# إضافة كلمات
+# ==================================================
 
 def add_words(
     chat_id,
@@ -929,13 +1022,13 @@ def add_words(
     finally:
 
         if cur:
-            cur.close()
+
+            try:
+                cur.close()
+            except Exception:
+                pass
 
         conn.close()
-
-    # ==================================================
-    # تحديث الكاش بدون انتظار استعلام إضافي
-    # ==================================================
 
     key = (
         chat_id,
@@ -951,10 +1044,25 @@ def add_words(
         for word in words:
 
             if word not in cached:
-                cached.append(word)
+
+                cached.append(
+                    word
+                )
 
         cached.sort()
 
+        # حذف Regex القديم للكلمات المعدلة
+        for word in words:
+
+            _blocked_regex_cache.pop(
+                word,
+                None
+            )
+
+
+# ==================================================
+# حذف كلمات
+# ==================================================
 
 def delete_words(
     chat_id,
@@ -991,13 +1099,13 @@ def delete_words(
     finally:
 
         if cur:
-            cur.close()
+
+            try:
+                cur.close()
+            except Exception:
+                pass
 
         conn.close()
-
-    # ==================================================
-    # تحديث الكاش
-    # ==================================================
 
     key = (
         chat_id,
@@ -1020,12 +1128,16 @@ def delete_words(
             if word not in words_set
         ]
 
+    for word in words:
+
+        _blocked_regex_cache.pop(
+            word,
+            None
+        )
+
 
 # ==================================================
-# أول مرة يفتح فيها المشرف القائمة
-#
-# هذه الدوال تبقى للتوافق مع النظام القديم.
-# لكنها لم تعد مستخدمة لتحديد ظهور الترحيب.
+# توافق مع النظام القديم
 # ==================================================
 
 def was_opened_before(
@@ -1062,7 +1174,11 @@ def was_opened_before(
     finally:
 
         if cur:
-            cur.close()
+
+            try:
+                cur.close()
+            except Exception:
+                pass
 
         conn.close()
 
@@ -1111,7 +1227,11 @@ def mark_opened(
     finally:
 
         if cur:
-            cur.close()
+
+            try:
+                cur.close()
+            except Exception:
+                pass
 
         conn.close()
 
@@ -1120,7 +1240,9 @@ def mark_opened(
 # تنظيف الكلمة
 # ==================================================
 
-def normalize_word(word):
+def normalize_word(
+    word
+):
 
     word = (
         word
@@ -1137,7 +1259,9 @@ def normalize_word(word):
     return word.strip()
 
 
-def extract_input_words(text):
+def extract_input_words(
+    text
+):
 
     if not text:
         return []
@@ -1163,8 +1287,45 @@ def extract_input_words(text):
 
 
 # ==================================================
-# مطابقة الكلمات
+# Regex للكلمات
 # ==================================================
+
+def get_blocked_regex(
+    word
+):
+
+    cached = _blocked_regex_cache.get(
+        word
+    )
+
+    if cached is not None:
+
+        return cached
+
+    normalized = normalize_word(
+        word
+    )
+
+    if not normalized:
+        return None
+
+    escaped = re.escape(
+        normalized
+    )
+
+    pattern = re.compile(
+        rf"(?<!\w)"
+        rf"{escaped}"
+        rf"(?!\w)",
+        flags=re.UNICODE
+    )
+
+    _blocked_regex_cache[
+        word
+    ] = pattern
+
+    return pattern
+
 
 def word_matches(
     text,
@@ -1174,29 +1335,15 @@ def word_matches(
     if not text or not word:
         return False
 
-    word = normalize_word(
+    regex = get_blocked_regex(
         word
     )
 
-    if not word:
+    if regex is None:
         return False
 
-    escaped = re.escape(
-        word
-    )
-
-    pattern = (
-        rf"(?<!\w)"
-        rf"{escaped}"
-        rf"(?!\w)"
-    )
-
     return bool(
-        re.search(
-            pattern,
-            text,
-            flags=re.UNICODE
-        )
+        regex.search(text)
     )
 
 
@@ -1211,6 +1358,7 @@ def find_blocked_word(
             text,
             word
         ):
+
             return word
 
     return None
@@ -1229,9 +1377,12 @@ def current_timestamp():
     )
 
 
-def format_until(timestamp):
+def format_until(
+    timestamp
+):
 
     if timestamp is None:
+
         return "لا توجد مدة"
 
     dt = datetime.fromtimestamp(
@@ -1497,7 +1648,11 @@ def cleanup_user_warnings(
     finally:
 
         if cur:
-            cur.close()
+
+            try:
+                cur.close()
+            except Exception:
+                pass
 
         conn.close()
 
@@ -1543,7 +1698,11 @@ def get_active_warning_count(
     finally:
 
         if cur:
-            cur.close()
+
+            try:
+                cur.close()
+            except Exception:
+                pass
 
         conn.close()
 
@@ -1598,7 +1757,11 @@ def add_blocked_warning(
     finally:
 
         if cur:
-            cur.close()
+
+            try:
+                cur.close()
+            except Exception:
+                pass
 
         conn.close()
 
@@ -1633,7 +1796,11 @@ def clear_blocked_warnings(
     finally:
 
         if cur:
-            cur.close()
+
+            try:
+                cur.close()
+            except Exception:
+                pass
 
         conn.close()
 
@@ -1702,10 +1869,6 @@ async def handle_warning_punishment(
         target.id
     )
 
-    # ==================================================
-    # أول وثاني إنذار
-    # ==================================================
-
     if count < 3:
 
         await send_blocked_warning(
@@ -1715,10 +1878,6 @@ async def handle_warning_punishment(
         )
 
         return
-
-    # ==================================================
-    # الإنذار الثالث
-    # ==================================================
 
     await asyncio.to_thread(
         clear_blocked_warnings,
@@ -1746,6 +1905,7 @@ def list_title(
 ):
 
     if list_id == LIST_1:
+
         return "قائمة الكلمات المحظورة"
 
     return "قائمة الكلمات المحظورة2"
@@ -1756,26 +1916,23 @@ def list_command_name(
 ):
 
     if list_id == LIST_1:
+
         return "الكلمات المحظورة"
 
     return "الكلمات المحظورة2"
 
 
-def build_list_message(
+def build_list_message_sync(
     chat_id,
     list_id
 ):
 
-    # ==================================================
-    # 🚀 استخدام الكاش
-    # ==================================================
-
-    words = get_cached_words(
+    words = get_cached_words_sync(
         chat_id,
         list_id
     )
 
-    settings = get_cached_settings(
+    settings = get_cached_settings_sync(
         chat_id,
         list_id
     )
@@ -1853,6 +2010,18 @@ def build_list_message(
     return text, keyboard
 
 
+async def build_list_message(
+    chat_id,
+    list_id
+):
+
+    return await asyncio.to_thread(
+        build_list_message_sync,
+        chat_id,
+        list_id
+    )
+
+
 # ==================================================
 # رسالة الترحيب
 # ==================================================
@@ -1911,8 +2080,6 @@ async def blocked_words_command(
     # تحديد القائمة
     # ==================================================
 
-    list_id = None
-
     list_aliases = {
         "الكلمات المحظورة": 1,
         "الكلمات المحظورة/ه": 1,
@@ -1920,15 +2087,15 @@ async def blocked_words_command(
         "الكلمات المحظورة/ه2": 2,
     }
 
-    if text in list_aliases:
+    list_id = list_aliases.get(
+        text
+    )
 
-        list_id = list_aliases[text]
+    # ==================================================
+    # التفعيل / التعطيل
+    # ==================================================
 
-    else:
-
-        # ==================================================
-        # التفعيل والتعطيل
-        # ==================================================
+    if list_id is None:
 
         action_match = re.fullmatch(
             r"(تفعيل|تعطيل)\s+"
@@ -1956,10 +2123,13 @@ async def blocked_words_command(
             if not chat:
                 return
 
-            if not can_manage_blocked_words(
+            allowed = await asyncio.to_thread(
+                can_manage_blocked_words,
                 actor.id,
                 chat.id
-            ):
+            )
+
+            if not allowed:
 
                 await update.message.reply_text(
                     BLOCKED_PERMISSION_MESSAGE
@@ -2024,20 +2194,19 @@ async def blocked_words_command(
             if not chat:
                 return
 
-            if not can_manage_blocked_words(
+            allowed = await asyncio.to_thread(
+                can_manage_blocked_words,
                 actor.id,
                 chat.id
-            ):
+            )
+
+            if not allowed:
 
                 await update.message.reply_text(
                     BLOCKED_PERMISSION_MESSAGE
                 )
 
                 raise ApplicationHandlerStop
-
-            # ==================================================
-            # الإنذار
-            # ==================================================
 
             if punishment == "انذار":
 
@@ -2059,10 +2228,6 @@ async def blocked_words_command(
 
                 raise ApplicationHandlerStop
 
-            # ==================================================
-            # الحظر دائم
-            # ==================================================
-
             if punishment == "حظر":
 
                 await asyncio.to_thread(
@@ -2079,10 +2244,6 @@ async def blocked_words_command(
                 )
 
                 raise ApplicationHandlerStop
-
-            # ==================================================
-            # الكتم / التقييد
-            # ==================================================
 
             action = (
                 "mute"
@@ -2118,7 +2279,7 @@ async def blocked_words_command(
         return
 
     # ==================================================
-    # يجب أن يكون داخل قروب أو خاص
+    # القروب / الخاص
     # ==================================================
 
     chat = update.effective_chat
@@ -2127,7 +2288,7 @@ async def blocked_words_command(
         return
 
     # ==================================================
-    # الصلاحية
+    # القروب
     # ==================================================
 
     if chat.type in (
@@ -2135,10 +2296,13 @@ async def blocked_words_command(
         "supergroup"
     ):
 
-        if not can_manage_blocked_words(
+        allowed = await asyncio.to_thread(
+            can_manage_blocked_words,
             actor.id,
             chat.id
-        ):
+        )
+
+        if not allowed:
 
             await update.message.reply_text(
                 BLOCKED_PERMISSION_MESSAGE
@@ -2147,13 +2311,7 @@ async def blocked_words_command(
             raise ApplicationHandlerStop
 
         # ==================================================
-        # ⚡ كل مرة نرسل رسالة الترحيب
-        #
-        # لا يوجد:
-        # was_opened_before
-        # mark_opened
-        #
-        # وبالتالي لن تظهر القائمة مباشرة في المرات القادمة.
+        # ⚡ الترحيب يظهر كل مرة
         # ==================================================
 
         mention = (
@@ -2180,10 +2338,11 @@ async def blocked_words_command(
 
     if chat.type == "private":
 
-        message_text, keyboard = await asyncio.to_thread(
-            build_list_message,
-            chat.id,
-            list_id
+        message_text, keyboard = (
+            await build_list_message(
+                chat.id,
+                list_id
+            )
         )
 
         await update.message.reply_text(
@@ -2229,19 +2388,18 @@ async def handle_blocked_session(
     if not session:
         return False
 
-    # ==================================================
-    # الصلاحية
-    # ==================================================
-
     origin_chat_id = session.get(
         "origin_chat_id",
         chat.id
     )
 
-    if not can_manage_blocked_words(
+    allowed = await asyncio.to_thread(
+        can_manage_blocked_words,
         actor.id,
         origin_chat_id
-    ):
+    )
+
+    if not allowed:
 
         _blocked_sessions.pop(
             key,
@@ -2255,7 +2413,7 @@ async def handle_blocked_session(
         return True
 
     # ==================================================
-    # إضافة كلمات
+    # إضافة
     # ==================================================
 
     if session["type"] == "add":
@@ -2319,7 +2477,7 @@ async def handle_blocked_session(
         return True
 
     # ==================================================
-    # حذف كلمات
+    # حذف
     # ==================================================
 
     if session["type"] == "delete":
@@ -2383,7 +2541,7 @@ async def handle_blocked_session(
         return True
 
     # ==================================================
-    # مدة العقوبة المباشرة
+    # مدة العقوبة
     # ==================================================
 
     if session["type"] == "direct_duration":
@@ -2545,7 +2703,17 @@ async def handle_blocked_session(
 
 
 # ==================================================
-# فحص الكلمات
+# 🚀 فحص الكلمات
+#
+# الترتيب مهم جدًا للأداء:
+#
+# 1. نقرأ الكلمات من الكاش.
+# 2. إذا لا توجد كلمات -> خروج فوري.
+# 3. نبحث عن تطابق.
+# 4. فقط إذا وجدنا تطابقًا -> نفحص الرتبة.
+#
+# بهذا الشكل:
+# الرسائل العادية لا تستعلم عن الرتبة.
 # ==================================================
 
 async def check_blocked_words(
@@ -2558,10 +2726,6 @@ async def check_blocked_words(
 
     if not update.effective_chat:
         return False
-
-    # ==================================================
-    # الكلمات المحظورة في القروبات فقط
-    # ==================================================
 
     if update.effective_chat.type not in (
         "group",
@@ -2586,24 +2750,6 @@ async def check_blocked_words(
     )
 
     # ==================================================
-    # 🚨 مهم جدًا:
-    #
-    # ادمن وفوق لا يتأثرون بالكلمات المحظورة.
-    #
-    # يتم الفحص قبل الوصول للكلمات والكاش.
-    # ==================================================
-
-    affected = await asyncio.to_thread(
-        can_be_affected_by_blocked_words,
-        actor.id,
-        chat_id
-    )
-
-    if not affected:
-
-        return False
-
-    # ==================================================
     # القائمة الأولى والثانية
     # ==================================================
 
@@ -2613,28 +2759,22 @@ async def check_blocked_words(
     ):
 
         # ==================================================
-        # 🚀 الإعدادات من الكاش
+        # 🚀 الكلمات فقط
+        #
+        # لا نقرأ الإعدادات قبل العثور على كلمة.
         # ==================================================
 
-        settings = get_cached_settings(
-            chat_id,
-            list_id
-        )
-
-        if not settings["enabled"]:
-            continue
-
-        # ==================================================
-        # 🚀 الكلمات من الكاش
-        # ==================================================
-
-        words = get_cached_words(
+        words = await get_cached_words(
             chat_id,
             list_id
         )
 
         if not words:
             continue
+
+        # ==================================================
+        # بحث سريع من الكاش
+        # ==================================================
 
         matched = find_blocked_word(
             text,
@@ -2643,6 +2783,36 @@ async def check_blocked_words(
 
         if not matched:
             continue
+
+        # ==================================================
+        # 🚨 الآن فقط نفحص الرتبة
+        #
+        # ادمن وفوق:
+        # تجاهل كامل بدون عقوبة أو رسالة.
+        # ==================================================
+
+        affected = await asyncio.to_thread(
+            can_be_affected_by_blocked_words,
+            actor.id,
+            chat_id
+        )
+
+        if not affected:
+
+            return False
+
+        # ==================================================
+        # الآن فقط نحتاج الإعدادات
+        # ==================================================
+
+        settings = await get_cached_settings(
+            chat_id,
+            list_id
+        )
+
+        if not settings["enabled"]:
+
+            return False
 
         # ==================================================
         # حفظ المستخدم
@@ -2708,7 +2878,7 @@ async def check_blocked_words(
 
 
 # ==================================================
-# الراوتر الرئيسي للرسائل
+# الراوتر الرئيسي
 # ==================================================
 
 async def blocked_words_message_handler(
@@ -2736,10 +2906,6 @@ async def blocked_words_message_handler(
     if handled:
 
         raise ApplicationHandlerStop
-
-    # ==================================================
-    # أوامر القائمتين
-    # ==================================================
 
     text = (
         update.message.text or ""
@@ -2835,7 +3001,18 @@ async def blocked_words_callback(
     action = parts[1]
 
     # ==================================================
-    # تحديد القائمة
+    # ⚡ نرد على callback فورًا
+    #
+    # حتى لا يظهر للمستخدم أن الزر عالق.
+    # ==================================================
+
+    try:
+        await query.answer()
+    except Exception:
+        pass
+
+    # ==================================================
+    # تحديد البيانات
     # ==================================================
 
     list_id = None
@@ -2851,8 +3028,6 @@ async def blocked_words_callback(
     ):
 
         if len(parts) != 4:
-
-            await query.answer()
             return
 
         try:
@@ -2867,14 +3042,11 @@ async def blocked_words_callback(
 
         except Exception:
 
-            await query.answer()
             return
 
     elif action == "close":
 
         if len(parts) != 3:
-
-            await query.answer()
             return
 
         try:
@@ -2885,14 +3057,11 @@ async def blocked_words_callback(
 
         except Exception:
 
-            await query.answer()
             return
 
     elif action == "lift":
 
         if len(parts) != 5:
-
-            await query.answer()
             return
 
         punishment_action = parts[2]
@@ -2909,29 +3078,37 @@ async def blocked_words_callback(
 
         except Exception:
 
-            await query.answer()
             return
 
         list_id = None
 
     else:
 
-        await query.answer()
         return
 
     # ==================================================
-    # صلاحية القوائم
+    # صلاحية الإدارة
+    #
+    # خارج event loop
     # ==================================================
 
-    if not can_manage_blocked_words(
+    allowed = await asyncio.to_thread(
+        can_manage_blocked_words,
         actor.id,
         origin_chat_id
-    ):
+    )
 
-        await query.answer(
-            BLOCKED_PERMISSION_MESSAGE,
-            show_alert=True
-        )
+    if not allowed:
+
+        try:
+
+            await query.answer(
+                BLOCKED_PERMISSION_MESSAGE,
+                show_alert=True
+            )
+
+        except Exception:
+            pass
 
         return
 
@@ -2941,17 +3118,10 @@ async def blocked_words_callback(
 
     if action == "here":
 
-        # ==================================================
-        # ⚡ الرد على الضغط فورًا
-        # ==================================================
-
-        await query.answer()
-
         if not query.message:
             return
 
-        text, keyboard = await asyncio.to_thread(
-            build_list_message,
+        text, keyboard = await build_list_message(
             origin_chat_id,
             list_id
         )
@@ -2978,17 +3148,10 @@ async def blocked_words_callback(
 
     if action == "private":
 
-        # ==================================================
-        # الرد فورًا قبل أي عملية
-        # ==================================================
-
-        await query.answer()
-
         if not query.message:
             return
 
-        text, keyboard = await asyncio.to_thread(
-            build_list_message,
+        text, keyboard = await build_list_message(
             origin_chat_id,
             list_id
         )
@@ -3034,8 +3197,6 @@ async def blocked_words_callback(
 
     if action == "add":
 
-        await query.answer()
-
         if not query.message:
             return
 
@@ -3070,8 +3231,6 @@ async def blocked_words_callback(
     # ==================================================
 
     if action == "delete":
-
-        await query.answer()
 
         if not query.message:
             return
@@ -3108,11 +3267,7 @@ async def blocked_words_callback(
 
     if action == "toggle":
 
-        # ==================================================
-        # 🚀 نستخدم الكاش مباشرة
-        # ==================================================
-
-        settings = get_cached_settings(
+        settings = await get_cached_settings(
             origin_chat_id,
             list_id
         )
@@ -3122,19 +3277,13 @@ async def blocked_words_callback(
         ]
 
         # ==================================================
-        # الرد على الزر قبل قاعدة البيانات
+        # نحدث الكاش مباشرة
+        # حتى الواجهة تتغير فورًا.
         # ==================================================
 
-        await query.answer(
-            "تم تفعيل القائمة ✅"
-            if new_status
-            else
-            "تم تعطيل القائمة ✅"
-        )
-
-        # ==================================================
-        # تحديث قاعدة البيانات في Thread
-        # ==================================================
+        settings[
+            "enabled"
+        ] = new_status
 
         await asyncio.to_thread(
             set_enabled,
@@ -3146,8 +3295,7 @@ async def blocked_words_callback(
         if not query.message:
             return
 
-        text, keyboard = await asyncio.to_thread(
-            build_list_message,
+        text, keyboard = await build_list_message(
             origin_chat_id,
             list_id
         )
@@ -3174,13 +3322,10 @@ async def blocked_words_callback(
 
     if action == "back":
 
-        await query.answer()
-
         if not query.message:
             return
 
-        text, keyboard = await asyncio.to_thread(
-            build_list_message,
+        text, keyboard = await build_list_message(
             origin_chat_id,
             list_id
         )
@@ -3207,8 +3352,6 @@ async def blocked_words_callback(
 
     if action == "close":
 
-        await query.answer()
-
         if query.message:
 
             try:
@@ -3223,8 +3366,6 @@ async def blocked_words_callback(
     # ==================================================
 
     if action == "lift":
-
-        await query.answer()
 
         target = None
 
@@ -3243,6 +3384,7 @@ async def blocked_words_callback(
                 pass
 
             target = StoredUser()
+
             target.id = target_id
             target.username = None
             target.first_name = str(
@@ -3347,9 +3489,6 @@ async def blocked_words_callback(
 
 # ==================================================
 # تنظيف الإنذارات المنتهية
-#
-# مهم:
-# لا نشغل connect()/SQL مباشرة داخل event loop.
 # ==================================================
 
 def cleanup_expired_blocked_warnings():
@@ -3375,7 +3514,11 @@ def cleanup_expired_blocked_warnings():
     finally:
 
         if cur:
-            cur.close()
+
+            try:
+                cur.close()
+            except Exception:
+                pass
 
         conn.close()
 
@@ -3392,10 +3535,6 @@ async def blocked_words_expiry_loop(
 
         try:
 
-            # ==================================================
-            # 🚀 قاعدة البيانات خارج الـ event loop
-            # ==================================================
-
             await asyncio.to_thread(
                 cleanup_expired_blocked_warnings
             )
@@ -3405,12 +3544,5 @@ async def blocked_words_expiry_loop(
             print(
                 f"⚠️ خطأ في انتهاء إنذارات الكلمات المحظورة: {e}"
             )
-
-        # ==================================================
-        # 15 ثانية كافية بدل 5 ثواني.
-        #
-        # هذه العملية ليست فحص رسائل،
-        # لذلك لا تحتاج 5 ثواني.
-        # ==================================================
 
         await asyncio.sleep(15)
