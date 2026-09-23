@@ -19,7 +19,10 @@ from telegram.ext import (
     ApplicationHandlerStop,
 )
 
-from database import connect
+from database import (
+    connect,
+    acquire_schema_lock,
+)
 
 from handlers.roles import get_rank_level
 
@@ -267,15 +270,14 @@ def ensure_blocked_words_tables():
         cur = conn.cursor()
 
         # ==================================================
-        # Advisory Lock
+        # 🔒 قفل إنشاء الجداول الموحد
         #
-        # يمنع أكثر من نسخة من البوت من إنشاء جداول
-        # الكلمات المحظورة في نفس الوقت.
+        # نفس القفل المستخدم في جميع عمليات إنشاء الجداول.
+        # يمنع أكثر من نسخة من البوت من تنفيذ DDL
+        # في نفس الوقت.
         # ==================================================
 
-        cur.execute("""
-        SELECT pg_advisory_xact_lock(8453977663)
-        """)
+        acquire_schema_lock(conn)
 
         # ==================================================
         # الكلمات
