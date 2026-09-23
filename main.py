@@ -694,6 +694,7 @@ def main():
 
     message_flush_task = None
     moderation_expiry_task = None
+    blocked_words_expiry_task = None
 
 
     async def automatic_message_flush():
@@ -718,6 +719,7 @@ def main():
 
         global message_flush_task
         global moderation_expiry_task
+        global blocked_words_expiry_task
 
         message_flush_task = asyncio.create_task(
             automatic_message_flush()
@@ -730,7 +732,7 @@ def main():
         blocked_words_expiry_task = asyncio.create_task(
             blocked_words_expiry_loop(application)
         )
-        
+
         application.create_task(
             repetition_expiry_loop(
                 application
@@ -744,6 +746,11 @@ def main():
 
         global message_flush_task
         global moderation_expiry_task
+        global blocked_words_expiry_task
+
+        # ==================================================
+        # إيقاف حفظ الرسائل
+        # ==================================================
 
         if message_flush_task:
 
@@ -754,21 +761,38 @@ def main():
             except asyncio.CancelledError:
                 pass
 
+        # ==================================================
+        # إيقاف انتهاء القيود
+        # ==================================================
+
         if moderation_expiry_task:
 
             moderation_expiry_task.cancel()
-
-        
-        if blocked_words_expiry_task:
-            
-            blocked_words_expiry_task.cancel()
 
             try:
                 await moderation_expiry_task
             except asyncio.CancelledError:
                 pass
 
+        # ==================================================
+        # إيقاف انتهاء الكلمات المحظورة
+        # ==================================================
+
+        if blocked_words_expiry_task:
+
+            blocked_words_expiry_task.cancel()
+
+            try:
+                await blocked_words_expiry_task
+            except asyncio.CancelledError:
+                pass
+
+        # ==================================================
+        # حفظ الرسائل المعلقة
+        # ==================================================
+
         try:
+
             await flush_user_messages()
 
             print(
@@ -781,7 +805,12 @@ def main():
                 f"⚠️ تعذر حفظ الرسائل عند الإيقاف: {e}"
             )
 
+        # ==================================================
+        # حفظ النقاط المعلقة
+        # ==================================================
+
         try:
+
             await flush_pending_points()
 
             print(
