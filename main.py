@@ -380,6 +380,12 @@ from handlers.repetition import (
     repetition_action_callback,
 )
 
+from handlers.blocked_words import (
+    ensure_blocked_words_tables,
+    blocked_words_message_handler,
+    blocked_words_callback,
+    blocked_words_expiry_loop,
+)
 # ==================================================
 # الهمسات
 # ==================================================
@@ -671,6 +677,7 @@ def main():
 
     create_tables()
     create_developer_panel_tables()
+    ensure_blocked_words_tables()
     create_group_ranks_table()
     create_repetition_tables()
     create_profile_reply_tables()
@@ -719,6 +726,10 @@ def main():
         moderation_expiry_task = asyncio.create_task(
             moderation_expiry_loop(application)
         )
+
+        blocked_words_expiry_task = asyncio.create_task(
+            blocked_words_expiry_loop(application)
+        )
         
         application.create_task(
             repetition_expiry_loop(
@@ -746,6 +757,11 @@ def main():
         if moderation_expiry_task:
 
             moderation_expiry_task.cancel()
+
+        
+        if blocked_words_expiry_task:
+            
+            blocked_words_expiry_task.cancel()
 
             try:
                 await moderation_expiry_task
@@ -1042,6 +1058,30 @@ def main():
 
     print("✅ check_muted_message تم تسجيلها")   
 
+
+
+    # ==================================================
+    # الكلمات المحظورة
+    # ==================================================
+    app.add_handler(
+        MessageHandler(
+            filters.TEXT
+            & (
+                filters.ChatType.GROUPS
+                | filters.ChatType.PRIVATE
+            ),
+            blocked_words_message_handler
+        ),
+        group=-20
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            blocked_words_callback,
+            pattern=r"^bw:"
+        ),
+        group=-20
+    )
     # --------------------------------------------------
     # تفعيل المدة
     # --------------------------------------------------
