@@ -13,7 +13,10 @@ from telegram import (
 
 from telegram.ext import ContextTypes
 
-from database import connect
+from database import (
+    connect,
+    acquire_schema_lock,
+)
 
 from handlers.roles import (
     OWNER_ID,
@@ -112,6 +115,16 @@ def create_repetition_tables():
         cur = conn.cursor()
 
         # --------------------------------------------------
+        # 🔒 قفل إنشاء الجداول الموحد
+        #
+        # يمنع أكثر من نسخة من البوت من تنفيذ
+        # ALTER TABLE / CREATE TABLE / CREATE INDEX
+        # في نفس الوقت.
+        # --------------------------------------------------
+
+        acquire_schema_lock(conn)
+
+        # --------------------------------------------------
         # إعدادات التكرار القديمة التي ما زالت مستخدمة
         # --------------------------------------------------
 
@@ -135,16 +148,6 @@ def create_repetition_tables():
 
         # --------------------------------------------------
         # جدول الإنذارات الجديد موجود في database.py
-        #
-        # warnings:
-        # chat_id
-        # user_id
-        # warning_id
-        # source
-        # created_at
-        #
-        # لا ننشئ جدول repetition_warnings الجديد
-        # لأن الإنذارات اليدوية والتكرار أصبحت في نفس الجدول.
         # --------------------------------------------------
 
         cur.execute(
