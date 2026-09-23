@@ -20,7 +20,10 @@ from telegram.ext import (
     ApplicationHandlerStop,
 )
 
-from database import connect
+from database import (
+    connect,
+    acquire_schema_lock,
+)
 
 from handlers.cache import get_user_data
 
@@ -85,6 +88,7 @@ def create_developer_panel_tables():
 
     conn = connect()
     cur = conn.cursor()
+    acquire_schema_lock(conn)
 
     try:
 
