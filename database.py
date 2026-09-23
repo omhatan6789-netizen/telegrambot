@@ -13,6 +13,7 @@ if not DATABASE_URL:
         "DATABASE_URL غير موجود في Environment Variables"
     )
 
+
 # ==================================================
 # Connection Pool
 # ==================================================
@@ -125,6 +126,7 @@ class CompatibleConnection:
             get_pool().putconn(
                 self._connection
             )
+
         except Exception:
 
             try:
@@ -152,6 +154,7 @@ def connect():
     try:
 
         if conn.closed:
+
             pool_instance.putconn(
                 conn,
                 close=True
@@ -184,6 +187,23 @@ def create_tables():
     cur = conn.cursor()
 
     try:
+
+        # ==================================================
+        # PostgreSQL Advisory Lock
+        #
+        # يمنع أكثر من نسخة من البوت من تنفيذ
+        # CREATE TABLE / ALTER TABLE / CREATE INDEX
+        # في نفس الوقت.
+        #
+        # مهم جدًا مع Render + Supabase.
+        #
+        # pg_advisory_xact_lock يتم تحريره تلقائيًا
+        # عند COMMIT أو ROLLBACK.
+        # ==================================================
+
+        cur.execute("""
+        SELECT pg_advisory_xact_lock(8453977662)
+        """)
 
         # ==================================================
         # المستخدمين
@@ -977,6 +997,10 @@ def create_tables():
         CREATE INDEX IF NOT EXISTS idx_moderation_logs_user
         ON moderation_logs (user_id)
         """)
+
+        # ==================================================
+        # حفظ جميع تغييرات إنشاء الجداول
+        # ==================================================
 
         conn.commit()
 
