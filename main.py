@@ -1,5 +1,4 @@
 from telegram import Update
-
 from telegram.ext import (
     Application,
     ApplicationHandlerStop,
@@ -11,11 +10,9 @@ from telegram.ext import (
     filters,
     ConversationHandler
 )
-
 from config import BOT_TOKEN
 from permissions import permission_command
 from database import create_tables
-
 from games.hide_and_seek import (
     start_hide_game,
     join_hide_game,
@@ -24,9 +21,7 @@ from games.hide_and_seek import (
     hide_number_callback,
     search_number_callback
 )
-
 from handlers.games_help import games_help
-
 from games.penalties import (
     start_penalty_game,
     join_penalty_game,
@@ -38,12 +33,8 @@ from games.penalties import (
     continue_penalties,
     end_penalty_game,
 )
-
-
 from handlers.delete_messages import delete_messages
-
 from games.big_game_join import join_big_game_router
-
 from games.word_race import (
     start_word_race,
     join_word_race,
@@ -59,11 +50,9 @@ from games.word_race import (
     end_word_race,
     WordRaceActiveFilter,
 )
-
 # ==================================================
 # 🖼️ توقع الصورة
 # ==================================================
-
 from games.image_quiz.image_quiz import (
     start_image_quiz,
     join_image_quiz,
@@ -76,7 +65,6 @@ from games.image_quiz.image_quiz import (
     check_image_quiz_message,
     image_quiz_callback,
 )
-
 from games.liars_table import (
     start_liars_table,
     join_liars_table,
@@ -86,13 +74,10 @@ from games.liars_table import (
     liars_table_callback,
     liars_table_private_start,
 )
-
 from handlers.games_menu import (
     games_menu_command,
     games_menu_callback,
 )
-
-
 from games.liar import (
     start_liar_game_lobby,
     join_liar_game,
@@ -105,52 +90,36 @@ from games.liar import (
     liar_guess_callback,
     check_liar_message,
 )
-
 # ==================================================
 # الأنمي
 # ==================================================
-
 from games.anime_game import (
     start_anime_quiz,
     check_anime_answer
 )
-
-
 # ==================================================
 # البداية
 # ==================================================
-
 from handlers.start import start
-
-
 from handlers.commands_menu import (
     commands_menu_start,
     commands_menu_callback
 )
-
-
 # ==================================================
 # قفل الأوامر
 # ==================================================
-
 from handlers.command_lock import (
     lock_command,
     save_lock_rank,
     open_command
 )
-
-
 # ==================================================
 # حارس الأوامر
 # ==================================================
-
 from handlers.command_guard import command_guard
-
-
 # ==================================================
 # الأوامر المضافة
 # ==================================================
-
 from custom_commands import (
     add_command_start,
     receive_old_command,
@@ -163,65 +132,47 @@ from custom_commands import (
     WAIT_OLD,
     WAIT_NEW
 )
-
-
 from handlers.moderation import (
     moderation_command,
     check_muted_message,
-
     unmute_command,
     unrestrict_command,
     unban_command,
     clear_restrictions_command,
-
     moderation_lists_command,
     clear_list_callback,
-
     enable_durations_command,
     disable_durations_command,
     enable_reasons_command,
     disable_reasons_command,
-
     warning_command,
     clear_warnings_command,
     reveal_restrictions_command,
-
     moderation_expiry_loop,
     reveal_command,
 )
-
 # ==================================================
 # الملفات الشخصية وردود الادمن
 # ==================================================
-
 from handlers.profile_replies import (
     create_profile_reply_tables,
-
     developer_command,
     change_developer_username,
-
     owner_command,
     change_owner_username,
-
     add_my_admin_reply,
     delete_my_admin_reply,
     delete_other_admin_reply,
-
     admin_replies_list,
     enable_admin_replies,
     disable_admin_replies,
     delete_all_admin_replies_command,
-
     check_admin_profile_reply,
     profile_reply_pending_handler,
 )
-
-
-
 # ==================================================
 # النقاط
 # ==================================================
-
 from handlers.points import (
     my_points,
     top_points,
@@ -230,8 +181,6 @@ from handlers.points import (
     sell_points,
     flush_pending_points
 )
-
-
 from handlers.developer_panel import (
     create_developer_panel_tables,
     developer_panel_command,
@@ -240,131 +189,96 @@ from handlers.developer_panel import (
     track_private_start,
     track_bot_chat_member,
 )
-
 # ==================================================
 # المستخدمين
 # ==================================================
-
 from handlers.users import (
     user_id_command,
     save_join_date,
     save_user_message,
     flush_user_messages
 )
-
-
 # ==================================================
 # الرتب
 # ==================================================
-
 from handlers.roles import (
     roles_command,
     change_rank,
     create_group_ranks_table,
-
-    # قوائم الرتب
     dev_list_command,
     rank_list_command,
-
-    # مسح القوائم
     clear_dev_command,
     clear_rank_command,
     clear_all_ranks_command,
-
-    # أزرار مسح القوائم
     roles_clear_callback,
 )
-
-
 from handlers.start_editor import (
     start_editor_command,
     start_editor_callback,
     start_editor_special_callback,
     start_editor_message,
 )
-
 # ==================================================
 # الردود
 # ==================================================
-
 from handlers.replies import (
     add_reply_start,
     add_reply_handler,
     check_replies,
     replies_list,
-
     add_special_reply_start,
     add_special_reply_handler,
     special_replies_list,
-
     edit_special_reply_start,
     edit_special_reply_handler,
-
     edit_reply_start,
     edit_reply_handler,
-
     delete_special_reply_start,
     delete_special_reply_handler,
-
     delete_reply_start,
     delete_reply_handler,
-
     delete_all_replies,
     delete_all_special_replies
 )
-
-  
 # ==================================================
 # أسرع كلمة
 # ==================================================
-
 from games.speed_words import (
     start_speed_words,
     check_speed_words
 )
-
-
 # ==================================================
 # الألعاب
 # ==================================================
-
 from games.games_manager import (
     add_game_start,
     add_game_handler,
-
     games_list,
     delete_game,
     enable_game,
     disable_game,
     enable_all_games,
     disable_all_games,
-
     add_question_start,
     add_question_handler,
-
     questions_list,
     delete_question,
-
     play_game,
     check_game_answer
 )
-
 from button_colors import (
     patch_inline_keyboard_buttons,
     register_existing_panel_buttons
 )
-
 from handlers.button_colors import (
     change_button_color_start,
     change_button_color_handler
 )
-
 from handlers.send import (
     send_command,
     delete_slash_command,
     handle_send_media,
 )
-
 from handlers.repetition import (
     create_repetition_tables,
     repetition_message_handler,
@@ -379,7 +293,6 @@ from handlers.repetition import (
     clear_user_repetition_warnings,
     repetition_action_callback,
 )
-
 from handlers.blocked_words import (
     ensure_blocked_words_tables,
     blocked_words_message_handler,
@@ -389,7 +302,6 @@ from handlers.blocked_words import (
 # ==================================================
 # الهمسات
 # ==================================================
-
 from handlers.whisper import (
     whisper_command,
     whisper_start,
@@ -399,129 +311,89 @@ from handlers.whisper import (
     disable_whispers_command,
     whispers_list_command,
 )
-
 import os
 import asyncio
 import threading
-
 from http.server import SimpleHTTPRequestHandler, HTTPServer
-from functools import partial
 from urllib.parse import unquote
-
+# ==================================================
+# 👑 المالك
+# ==================================================
+OWNER_ID = 8453977662
 # =========================================================
 # 🌐 Mini App Web Server
 # =========================================================
 class MiniAppHandler(SimpleHTTPRequestHandler):
-
     def do_GET(self):
-
         if self.path == "/health":
-
             self.send_response(200)
-
             self.send_header(
                 "Content-Type",
                 "text/plain; charset=utf-8"
             )
-
             self.end_headers()
-
             self.wfile.write(
                 b"Bot is running"
             )
-
             return
-
         if self.path == "/":
-
             self.path = "/index.html"
-
         return super().do_GET()
-
     def translate_path(self, path):
-
         path = path.split("?", 1)[0]
-
         path = unquote(path)
-
         path = path.lstrip("/")
-
         # ==========================================
         # 🖼️ صور Mini App
         # ==========================================
-
         if path.startswith("images/"):
-
             image_name = path[len("images/"):]
-
             return os.path.join(
                 self.base_path,
                 "mini_app",
                 "images",
                 image_name
             )
-
         # ==========================================
         # 📄 ملفات Mini App
         # ==========================================
-
         return os.path.join(
             self.base_path,
             "mini_app",
             path
         )
-
     def log_message(self, format, *args):
         return
-
-
 # ==================================================
 # 🌐 تشغيل سيرفر Mini App
 # ==================================================
-
 def start_web_server():
-
     port = int(
         os.environ.get(
             "PORT",
             10000
         )
     )
-
     base_path = os.path.dirname(
         os.path.abspath(__file__)
     )
-
-    # ==========================================
-    # 📁 المسار الأساسي
-    # ==========================================
-
     MiniAppHandler.base_path = base_path
-
     mini_app_path = os.path.join(
         base_path,
         "mini_app"
     )
-
     images_path = os.path.join(
         base_path,
         "mini_app",
         "images"
     )
-
-    # ==========================================
-    # 🌐 معلومات Mini App
-    # ==========================================
-
     print("==========================================")
     print("🌐 Mini App Server")
     print("==========================================")
-
     print(
         "📁 Mini App path:",
         mini_app_path
     )
-
     print(
         "📄 index.html:",
         os.path.isfile(
@@ -531,7 +403,6 @@ def start_web_server():
             )
         )
     )
-
     print(
         "🎨 style.css:",
         os.path.isfile(
@@ -541,7 +412,6 @@ def start_web_server():
             )
         )
     )
-
     print(
         "⚙️ app.js:",
         os.path.isfile(
@@ -551,16 +421,10 @@ def start_web_server():
             )
         )
     )
-
-    # ==========================================
-    # 🖼️ مجلد الصور
-    # ==========================================
-
     print(
         "🖼️ images folder:",
         os.path.isdir(images_path)
     )
-
     for filename in [
         "bot.JPG",
         "background.JPG",
@@ -568,7 +432,6 @@ def start_web_server():
         "channel.JPG",
         "developer.JPG"
     ]:
-
         print(
             f"🖼️ {filename}:",
             os.path.isfile(
@@ -578,13 +441,12 @@ def start_web_server():
                 )
             )
         )
-
-    # ==========================================
-    # 🚀 تشغيل السيرفر
-    # ==========================================
-
+    print("==========================================")
+    print(
+        f"🚀 Mini App running on port {port}"
+    )
+    print("==========================================")
     handler = MiniAppHandler
-
     server = HTTPServer(
         (
             "0.0.0.0",
@@ -592,89 +454,61 @@ def start_web_server():
         ),
         handler
     )
-
-    print("==========================================")
-
-    print(
-        f"🚀 Mini App running on port {port}"
-    )
-
-    print("==========================================")
-
     server.serve_forever()
 # ==================================================
 # استخراج ID الصورة - الخاص فقط
 # ==================================================
-
-async def get_photo_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
+async def get_photo_id(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+    if not update.effective_user:
+        return
     if update.effective_user.id != OWNER_ID:
         return
-
     if not update.message or not update.message.photo:
         return
-
     photo = update.message.photo[-1]
-
     await update.message.reply_text(
         f"🆔 ID الصورة:\n\n`{photo.file_id}`",
         parse_mode="Markdown"
     )
-
-
 # ==================================================
 # عرض صورة عن طريق ID - الخاص فقط
 # ==================================================
-
 WAIT_PHOTO_ID = 999
-
-
 async def show_photo_start(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
-
     await update.message.reply_text(
         "• أرسل ID الصورة"
     )
-
     return WAIT_PHOTO_ID
-
-
 async def show_photo_by_id(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
-
     if not update.message or not update.message.text:
         return WAIT_PHOTO_ID
-
     photo_id = update.message.text.strip()
-
     try:
         await update.message.reply_photo(
             photo=photo_id
         )
-
         return ConversationHandler.END
-
     except Exception:
         await update.message.reply_text(
             "• الـID غير صحيح أو الصورة غير متاحة."
         )
-
         return WAIT_PHOTO_ID
-
 # ==================================================
 # MAIN
 # ==================================================
-
 def main():
-
     # ==================================================
     # إنشاء الجداول
     # ==================================================
-
     create_tables()
     create_developer_panel_tables()
     ensure_blocked_words_tables()
@@ -683,151 +517,99 @@ def main():
     create_profile_reply_tables()
     patch_inline_keyboard_buttons()
     register_existing_panel_buttons()
-
     # ==================================================
-    # إنشاء التطبيق
+    # مهام الخلفية
     # ==================================================
-
-    # ==================================================
-    # الحفظ التلقائي لرسائل المستخدمين
-    # ==================================================
-
     message_flush_task = None
     moderation_expiry_task = None
     blocked_words_expiry_task = None
-
-
     async def automatic_message_flush():
-
         while True:
-
             try:
                 await flush_user_messages()
-
             except asyncio.CancelledError:
                 break
-
             except Exception as e:
                 print(
                     f"⚠️ خطأ في الحفظ التلقائي للرسائل: {e}"
                 )
-
             await asyncio.sleep(5)
-
-
     async def post_init(application):
-
         global message_flush_task
         global moderation_expiry_task
         global blocked_words_expiry_task
-
         message_flush_task = asyncio.create_task(
             automatic_message_flush()
         )
-
         moderation_expiry_task = asyncio.create_task(
             moderation_expiry_loop(application)
         )
-
         blocked_words_expiry_task = asyncio.create_task(
             blocked_words_expiry_loop(application)
         )
-
         application.create_task(
             repetition_expiry_loop(
                 application
             )
         )
-
-    
-
-
     async def post_shutdown(application):
-
         global message_flush_task
         global moderation_expiry_task
         global blocked_words_expiry_task
-
         # ==================================================
         # إيقاف حفظ الرسائل
         # ==================================================
-
         if message_flush_task:
-
             message_flush_task.cancel()
-
             try:
                 await message_flush_task
             except asyncio.CancelledError:
                 pass
-
         # ==================================================
         # إيقاف انتهاء القيود
         # ==================================================
-
         if moderation_expiry_task:
-
             moderation_expiry_task.cancel()
-
             try:
                 await moderation_expiry_task
             except asyncio.CancelledError:
                 pass
-
         # ==================================================
         # إيقاف انتهاء الكلمات المحظورة
         # ==================================================
-
         if blocked_words_expiry_task:
-
             blocked_words_expiry_task.cancel()
-
             try:
                 await blocked_words_expiry_task
             except asyncio.CancelledError:
                 pass
-
         # ==================================================
         # حفظ الرسائل المعلقة
         # ==================================================
-
         try:
-
             await flush_user_messages()
-
             print(
                 "💾 تم حفظ الرسائل المعلقة قبل إيقاف البوت"
             )
-
         except Exception as e:
-
             print(
                 f"⚠️ تعذر حفظ الرسائل عند الإيقاف: {e}"
             )
-
         # ==================================================
         # حفظ النقاط المعلقة
         # ==================================================
-
         try:
-
             await flush_pending_points()
-
             print(
                 "💰 تم حفظ النقاط المعلقة قبل إيقاف البوت"
             )
-
         except Exception as e:
-
             print(
                 f"⚠️ تعذر حفظ النقاط عند الإيقاف: {e}"
             )
-
-
     # ==================================================
     # إنشاء التطبيق
     # ==================================================
-
     app = (
         Application
         .builder()
@@ -836,7 +618,9 @@ def main():
         .post_shutdown(post_shutdown)
         .build()
     )
-
+    # ==================================================
+    # /send
+    # ==================================================
     app.add_handler(
         MessageHandler(
             filters.Regex(
@@ -846,8 +630,6 @@ def main():
         ),
         group=-30,
     )
-
-
     app.add_handler(
         MessageHandler(
             filters.ChatType.PRIVATE
@@ -865,10 +647,6 @@ def main():
         ),
         group=-28,
     )
-    
-
-    
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^/[\s\S]+$"),
@@ -879,65 +657,45 @@ def main():
     # ==================================================
     # الأوامر المضافة
     # ==================================================
-
     add_command_conv = ConversationHandler(
-
         entry_points=[
             MessageHandler(
                 filters.Regex(r"^اضف امر$"),
                 add_command_start
             )
         ],
-
         states={
-
             WAIT_OLD: [
                 MessageHandler(
                     filters.TEXT & ~filters.COMMAND,
                     receive_old_command
                 )
             ],
-
             WAIT_NEW: [
                 MessageHandler(
                     filters.TEXT & ~filters.COMMAND,
                     receive_new_command
                 )
             ]
-
         },
-
         fallbacks=[]
-
-    )    
+    )
     app.add_handler(
         add_command_conv,
         group=-2
     )
-
-
-    # قائمة الأوامر المضافة
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^الاوامر المضافة$"),
             custom_commands_list
         )
     )
-
-
-    # بدء حذف أمر
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^مسح امر$"),
             delete_command_start
         )
     )
-
-
-    # استقبال اسم الأمر المراد حذفه
-
     app.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND,
@@ -945,22 +703,15 @@ def main():
         ),
         group=-2
     )
-
-
-    # حذف جميع الأوامر
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^مسح الاوامر المضافة$"),
             delete_all_commands
         )
     )
-
-
     # ==================================================
     # منع / سماح
     # ==================================================
-
     app.add_handler(
         MessageHandler(
             filters.Regex(
@@ -970,8 +721,9 @@ def main():
         ),
         group=-10
     )
-
-    
+    # ==================================================
+    # تعديل الستارت
+    # ==================================================
     app.add_handler(
         MessageHandler(
             filters.ChatType.PRIVATE
@@ -980,7 +732,6 @@ def main():
         ),
         group=-8
     )
-
     app.add_handler(
         CallbackQueryHandler(
             start_editor_callback,
@@ -988,7 +739,6 @@ def main():
         ),
         group=-7
     )
-
     app.add_handler(
         CallbackQueryHandler(
             start_editor_special_callback,
@@ -996,7 +746,6 @@ def main():
         ),
         group=-7
     )
-
     app.add_handler(
         MessageHandler(
             filters.ChatType.PRIVATE & ~filters.COMMAND,
@@ -1004,8 +753,9 @@ def main():
         ),
         group=-8
     )
-
-
+    # ==================================================
+    # لوحة المطور
+    # ==================================================
     app.add_handler(
         CallbackQueryHandler(
             developer_panel_callback,
@@ -1013,8 +763,6 @@ def main():
         ),
         group=-10
     )
-
-
     app.add_handler(
         MessageHandler(
             filters.ChatType.PRIVATE
@@ -1023,8 +771,6 @@ def main():
         ),
         group=-9
     )
-
-
     app.add_handler(
         ChatMemberHandler(
             track_bot_chat_member,
@@ -1033,33 +779,22 @@ def main():
         group=-10
     )
     # ==================================================
-    # حارس الأوامر
-    # ==================================================
-
-    # ==================================================
     # الأوامر المضافة وتشغيلها
     # ==================================================
-
     async def custom_command_alias_handler(
         update: Update,
         context: ContextTypes.DEFAULT_TYPE
     ):
-
         from custom_commands import is_alias_execution
-
         if is_alias_execution(update):
             return
-
         executed = await check_custom_commands(
             update,
             context,
             application=app
         )
-
         if executed:
             raise ApplicationHandlerStop()
-
-
     app.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND,
@@ -1067,16 +802,19 @@ def main():
         ),
         group=-7
     )
-    
+    # ==================================================
+    # حارس الأوامر
+    # ==================================================
     app.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND,
             command_guard
         ),
         group=-5
-    )   
-
-    
+    )
+    # ==================================================
+    # الكتم
+    # ==================================================
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS,
@@ -1084,14 +822,82 @@ def main():
         ),
         group=-30
     )
-
-    print("✅ check_muted_message تم تسجيلها")   
-
-
-
+    print("✅ check_muted_message تم تسجيلها")
     # ==================================================
     # الكلمات المحظورة
+    #
+    # ملاحظة:
+    # الأوامر المحددة الموجودة في group=-20
+    # مسجلة قبل هذا الهاندر العام.
     # ==================================================
+    # --------------------------------------------------
+    # تفعيل المدة
+    # --------------------------------------------------
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(
+                r"^تفعيل المدة للمشرفين$"
+            ),
+            enable_durations_command
+        ),
+        group=-20
+    )
+    # --------------------------------------------------
+    # تعطيل المدة
+    # --------------------------------------------------
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(
+                r"^تعطيل المدة للمشرفين$"
+            ),
+            disable_durations_command
+        ),
+        group=-20
+    )
+    # --------------------------------------------------
+    # تفعيل الأسباب
+    # --------------------------------------------------
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(
+                r"^تفعيل الاسباب$"
+            ),
+            enable_reasons_command
+        ),
+        group=-20
+    )
+    # --------------------------------------------------
+    # تعطيل الأسباب
+    # --------------------------------------------------
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(
+                r"^تعطيل الاسباب$"
+            ),
+            disable_reasons_command
+        ),
+        group=-20
+    )
+    # --------------------------------------------------
+    # تعديل لون
+    #
+    # تم وضعه قبل blocked_words_message_handler.
+    # --------------------------------------------------
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(r"^تعديل لون$"),
+            change_button_color_start
+        ),
+        group=-20
+    )
+    # --------------------------------------------------
+    # مراقبة الكلمات المحظورة
+    # --------------------------------------------------
     app.add_handler(
         MessageHandler(
             filters.TEXT
@@ -1103,7 +909,6 @@ def main():
         ),
         group=-20
     )
-
     app.add_handler(
         CallbackQueryHandler(
             blocked_words_callback,
@@ -1111,71 +916,9 @@ def main():
         ),
         group=-20
     )
-    # --------------------------------------------------
-    # تفعيل المدة
-    # --------------------------------------------------
-
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.Regex(
-                r"^تفعيل المدة للمشرفين$"
-            ),
-            enable_durations_command
-        ),
-        group=-20
-    )
-
-    # --------------------------------------------------
-    # تعطيل المدة
-    # --------------------------------------------------
-
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.Regex(
-                r"^تعطيل المدة للمشرفين$"
-            ),
-            disable_durations_command
-        ),
-        group=-20
-    )
-
-    # --------------------------------------------------
-    # تفعيل الأسباب
-    # --------------------------------------------------
-
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.Regex(
-                r"^تفعيل الاسباب$"
-            ),
-            enable_reasons_command
-        ),
-        group=-20
-    )
-    
-
-    # --------------------------------------------------
-    # تعطيل الأسباب
-    # --------------------------------------------------
-
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.Regex(
-                r"^تعطيل الاسباب$"
-            ),
-            disable_reasons_command
-        ),
-        group=-20
-    )
-
-    # --------------------------------------------------
+    # ==================================================
     # كشف
-    # --------------------------------------------------
-
+    # ==================================================
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -1186,118 +929,9 @@ def main():
         ),
         group=-19
     )
-
-    # --------------------------------------------------
-    # كتم / تقييد / حظر
-    #
-    # يسمح بوجود مدة وهدف وسبب.
-    # --------------------------------------------------
-
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.Regex(
-                r"^(كتم|تقييد|حظر)(?:\s+.+)?$"
-            ),
-            moderation_command
-        ),
-        group=-18
-    )
-
-    # --------------------------------------------------
-    # إلغاء الكتم
-    # --------------------------------------------------
-
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.Regex(
-                r"^الغاء الكتم(?:\s+.+)?$"
-            ),
-            unmute_command
-        ),
-        group=-18
-    )
-
-    # --------------------------------------------------
-    # إلغاء التقييد
-    # --------------------------------------------------
-
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.Regex(
-                r"^الغاء التقييد(?:\s+.+)?$"
-            ),
-            unrestrict_command
-        ),
-        group=-18
-    )
-
-    # --------------------------------------------------
-    # إلغاء الحظر
-    # --------------------------------------------------
-
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.Regex(
-                r"^الغاء الحظر(?:\s+.+)?$"
-            ),
-            unban_command
-        ),
-        group=-18
-    )
-
-    # --------------------------------------------------
-    # رفع القيود
-    # --------------------------------------------------
-
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.Regex(
-                r"^رفع القيود(?:\s+.+)?$"
-            ),
-            clear_restrictions_command
-        ),
-        group=-18
-    )
-
-    # --------------------------------------------------
-    # القوائم
-    # --------------------------------------------------
-
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.Regex(
-                r"^(المكتومين|المقيدين|المحظورين)$"
-            ),
-            moderation_lists_command
-        ),
-        group=-18
-    )
-
-    # --------------------------------------------------
-    # أزرار مسح القوائم
-    # --------------------------------------------------
-
-    app.add_handler(
-        CallbackQueryHandler(
-            clear_list_callback,
-            pattern=r"^moderation:clear:"
-        ),
-        group=-18
-    )
-
-
-
-
-    # --------------------------------------------------
+    # ==================================================
     # كشف القيود
-    # --------------------------------------------------
-
+    # ==================================================
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -1308,11 +942,79 @@ def main():
         ),
         group=-19
     )
-
-    # --------------------------------------------------
+    # ==================================================
+    # كتم / تقييد / حظر
+    # ==================================================
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(
+                r"^(كتم|تقييد|حظر)(?:\s+.+)?$"
+            ),
+            moderation_command
+        ),
+        group=-18
+    )
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(
+                r"^الغاء الكتم(?:\s+.+)?$"
+            ),
+            unmute_command
+        ),
+        group=-18
+    )
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(
+                r"^الغاء التقييد(?:\s+.+)?$"
+            ),
+            unrestrict_command
+        ),
+        group=-18
+    )
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(
+                r"^الغاء الحظر(?:\s+.+)?$"
+            ),
+            unban_command
+        ),
+        group=-18
+    )
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(
+                r"^رفع القيود(?:\s+.+)?$"
+            ),
+            clear_restrictions_command
+        ),
+        group=-18
+    )
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(
+                r"^(المكتومين|المقيدين|المحظورين)$"
+            ),
+            moderation_lists_command
+        ),
+        group=-18
+    )
+    app.add_handler(
+        CallbackQueryHandler(
+            clear_list_callback,
+            pattern=r"^moderation:clear:"
+        ),
+        group=-18
+    )
+    # ==================================================
     # انذار
-    # --------------------------------------------------
-
+    # ==================================================
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -1323,11 +1025,6 @@ def main():
         ),
         group=-18
     )
-
-    # --------------------------------------------------
-    # مسح انذاراته
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -1341,11 +1038,6 @@ def main():
     # ==================================================
     # 🔁 التكرار
     # ==================================================
-
-    # --------------------------------------------------
-    # تفعيل التكرار
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -1356,12 +1048,6 @@ def main():
         ),
         group=-17
     )
-
-
-    # --------------------------------------------------
-    # تعطيل التكرار
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -1372,12 +1058,6 @@ def main():
         ),
         group=-17
     )
-
-
-   # --------------------------------------------------
-   # بدء إعداد التكرار
-   # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -1385,15 +1065,9 @@ def main():
                 r"^ضع تكرار \d+$"
             ),
             set_repetition_start
-       ),
-       group=-17
+        ),
+        group=-17
     )
-
-
-    # --------------------------------------------------
-    # مدة الكتم للتكرار
-    #---------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -1404,12 +1078,6 @@ def main():
         ),
         group=-17
     )
-
-
-    # --------------------------------------------------
-    # مدة التقييد للتكرار
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -1420,12 +1088,6 @@ def main():
         ),
         group=-17
     )
-
-
-    # --------------------------------------------------
-    # رتبة التكرار
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -1437,12 +1099,6 @@ def main():
         ),
         group=-17
     )
-
-
-    # --------------------------------------------------
-    # مسح إنذارات المستخدم
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -1453,12 +1109,6 @@ def main():
         ),
         group=-17
     )
-
-
-    # --------------------------------------------------
-    # أزرار عقوبة التكرار
-    # --------------------------------------------------
-
     app.add_handler(
         CallbackQueryHandler(
             repetition_action_callback,
@@ -1466,30 +1116,21 @@ def main():
         ),
         group=-17
     )
-
-
     # --------------------------------------------------
     # استقبال مدة التكرار
-    #
-    # هذا لازم يكون بعد أوامر التكرار
-    # وفي Group مختلف.
     # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
             & filters.TEXT
             & ~filters.COMMAND,
             receive_repetition_duration
-        ), 
+        ),
         group=-16
     )
-
-
-    # ==================================================
-    # 🔥 مراقبة رسائل التكرار
-    # ==================================================
-
+    # --------------------------------------------------
+    # مراقبة التكرار
+    # --------------------------------------------------
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS,
@@ -1497,11 +1138,23 @@ def main():
         ),
         group=-15
     )
-
+    # ==================================================
+    # 🎨 استقبال اختيار لون الزر
+    #
+    # هذا هاندر عام، لذلك وضعناه في group مستقل.
+    # ==================================================
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.TEXT
+            & ~filters.COMMAND,
+            change_button_color_handler
+        ),
+        group=-14
+    )
     # ==================================================
     # قفل وفتح الأوامر
     # ==================================================
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^قفل امر .+$"),
@@ -1509,8 +1162,6 @@ def main():
         ),
         group=0
     )
-
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^فتح امر .+$"),
@@ -1518,14 +1169,6 @@ def main():
         ),
         group=0
     )
-
-
-    # --------------------------------------------------
-    # حفظ الرتبة التي اختارها المستخدم لقفل الأمر
-    #
-    # هذا كان ناقصًا عندك
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND,
@@ -1533,19 +1176,15 @@ def main():
         ),
         group=1
     )
-
-
     # ==================================================
     # الهمسات - /start
     # ==================================================
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^/start\s+whisper_[A-Za-z0-9_-]+$"),
             whisper_start,
         )
     )
-
     app.add_handler(
         MessageHandler(
             filters.ChatType.PRIVATE
@@ -1553,24 +1192,19 @@ def main():
             track_private_start
         ),
         group=-10
-    )    
-
+    )
     # ==================================================
     # START
     # ==================================================
-
     app.add_handler(
         CommandHandler(
             "start",
             start
         )
     )
-    
     # ==================================================
-    # 📋 Mini App - أوامر البوت
-    # /start commands
+    # Mini App - أوامر البوت
     # ==================================================
-
     app.add_handler(
         MessageHandler(
             filters.ChatType.PRIVATE
@@ -1579,13 +1213,6 @@ def main():
         ),
         group=-5
     )
-
-
-    # ==================================================
-    # 📋 قائمة أوامر البوت
-    # ==================================================
-
-    # /help
     app.add_handler(
         CommandHandler(
             "help",
@@ -1593,8 +1220,6 @@ def main():
         ),
         group=-5
     )
-
-    # الأوامر / الاوامر
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^(?:الأوامر|الاوامر)$"),
@@ -1605,19 +1230,15 @@ def main():
     # ==================================================
     # المستخدم
     # ==================================================
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^ايدي$"),
             user_id_command
         )
     )
-
-
     # ==================================================
     # رتبتي / رتبته
     # ==================================================
-
     app.add_handler(
         MessageHandler(
             filters.Regex(
@@ -1626,12 +1247,9 @@ def main():
             roles_command
         )
     )
-
-
-    # --------------------------------------------------
-    # قائمة Dev
-    # --------------------------------------------------
-
+    # ==================================================
+    # قوائم الرتب
+    # ==================================================
     app.add_handler(
         MessageHandler(
             filters.Regex(
@@ -1641,12 +1259,6 @@ def main():
         ),
         group=-9
     )
-
-
-    # --------------------------------------------------
-    # قوائم الرتب العادية
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.Regex(
@@ -1656,12 +1268,6 @@ def main():
         ),
         group=-9
     )
-
-
-    # --------------------------------------------------
-    # مسح قائمة Dev
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.Regex(
@@ -1671,27 +1277,15 @@ def main():
         ),
         group=-9
     )
-
-
-    # --------------------------------------------------
-    # مسح القوائم العادية
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.Regex(
                 r"^مسح (?:المميزين|الادمنية|الادمنية الاساسيين|نواب المالك|المالكين)$"
             ),
             clear_rank_command
-            ),
-            group=-9
+        ),
+        group=-9
     )
-
-
-    # --------------------------------------------------
-    # مسح جميع الرتب
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.Regex(
@@ -1701,12 +1295,6 @@ def main():
         ),
         group=-9
     )
-
-
-    # ==================================================
-    # 🗑️ أزرار مسح قوائم الرتب
-    # ==================================================
-
     app.add_handler(
         CallbackQueryHandler(
             roles_clear_callback,
@@ -1717,12 +1305,6 @@ def main():
     # ==================================================
     # الملفات الشخصية وردود الادمن
     # ==================================================
-
-    # --------------------------------------------------
-    # انتظار البيانات المؤقتة
-    # لازم يكون قبل المعالجات العامة
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND,
@@ -1730,10 +1312,6 @@ def main():
         ),
         group=-11
     )
-    # --------------------------------------------------
-    # المطور
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^المطور$"),
@@ -1741,11 +1319,6 @@ def main():
         ),
         group=0
     )
-
-    # --------------------------------------------------
-    # تغيير يوزر المطور
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^تغيير يوزر المطور$"),
@@ -1753,11 +1326,6 @@ def main():
         ),
         group=0
     )
-
-    # --------------------------------------------------
-    # المالك
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^المالك$"),
@@ -1765,11 +1333,6 @@ def main():
         ),
         group=0
     )
-
-    # --------------------------------------------------
-    # تغيير يوزر المالك
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^تغيير يوزر المالك$"),
@@ -1777,11 +1340,6 @@ def main():
         ),
         group=0
     )
-
-    # --------------------------------------------------
-    # إضافة ردي
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^اضف ردي$"),
@@ -1789,11 +1347,6 @@ def main():
         ),
         group=0
     )
-
-    # --------------------------------------------------
-    # حذف ردي
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^حذف ردي$"),
@@ -1801,11 +1354,6 @@ def main():
         ),
         group=0
     )
-
-    # --------------------------------------------------
-    # حذف رده
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^حذف رده$"),
@@ -1813,11 +1361,6 @@ def main():
         ),
         group=0
     )
-
-    # --------------------------------------------------
-    # قائمة ردود الادمن
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^ردود الادمن$"),
@@ -1825,11 +1368,6 @@ def main():
         ),
         group=0
     )
-
-    # --------------------------------------------------
-    # تفعيل ردود الادمن
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^تفعيل ردود الادمن$"),
@@ -1837,11 +1375,6 @@ def main():
         ),
         group=0
     )
-
-    # --------------------------------------------------
-    # تعطيل ردود الادمن
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^تعطيل ردود الادمن$"),
@@ -1849,11 +1382,6 @@ def main():
         ),
         group=0
     )
-
-    # --------------------------------------------------
-    # حذف جميع ردود الادمن
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^حذف ردود الادمن$"),
@@ -1861,12 +1389,6 @@ def main():
         ),
         group=0
     )
-
-    # --------------------------------------------------
-    # تشغيل ردود الادمن
-    # بعد أوامر النظام وقبل الردود العادية
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -1879,7 +1401,6 @@ def main():
     # ==================================================
     # كشف المجموعة
     # ==================================================
-
     app.add_handler(
         MessageHandler(
             filters.Regex(
@@ -1888,13 +1409,9 @@ def main():
             roles_command
         )
     )
-
-
-
     # ==================================================
     # تنزيل جميع الرتب
     # ==================================================
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^تنزيل الكل$"),
@@ -1902,11 +1419,9 @@ def main():
         ),
         group=-9
     )
-
     # ==================================================
     # رفع / تنزيل الرتب
     # ==================================================
-
     app.add_handler(
         MessageHandler(
             filters.Regex(
@@ -1917,13 +1432,9 @@ def main():
             change_rank
         )
     )
-
     # ==================================================
     # الردود المميزة
     # ==================================================
-
-    # بدء إضافة رد مميز
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^اضف رد مميز$"),
@@ -1931,10 +1442,6 @@ def main():
         ),
         group=0
     )
-
-
-    # استقبال خطوات إضافة الرد المميز
-
     app.add_handler(
         MessageHandler(
             filters.ALL,
@@ -1942,12 +1449,6 @@ def main():
         ),
         group=2
     )
-
-
-    # --------------------------------------------------
-    # تعديل رد مميز
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^تعديل رد مميز$"),
@@ -1955,8 +1456,6 @@ def main():
         ),
         group=0
     )
-
-
     app.add_handler(
         MessageHandler(
             filters.ALL,
@@ -1964,12 +1463,6 @@ def main():
         ),
         group=3
     )
-
-
-    # --------------------------------------------------
-    # حذف رد مميز
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^مسح رد مميز$"),
@@ -1977,8 +1470,6 @@ def main():
         ),
         group=0
     )
-
-
     app.add_handler(
         MessageHandler(
             filters.ALL,
@@ -1986,28 +1477,15 @@ def main():
         ),
         group=4
     )
-
-
-    # --------------------------------------------------
-    # قائمة الردود المميزة
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^الردود المميزة$"),
             special_replies_list
         )
     )
-
-
     # ==================================================
     # الردود العادية
     # ==================================================
-
-    # --------------------------------------------------
-    # إضافة رد
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^اضف رد$"),
@@ -2015,8 +1493,6 @@ def main():
         ),
         group=-6
     )
-
-
     app.add_handler(
         MessageHandler(
             filters.ALL,
@@ -2024,12 +1500,6 @@ def main():
         ),
         group=5
     )
-
-
-    # --------------------------------------------------
-    # تعديل رد
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^تعديل رد$"),
@@ -2037,8 +1507,6 @@ def main():
         ),
         group=0
     )
-
-
     app.add_handler(
         MessageHandler(
             filters.ALL,
@@ -2046,12 +1514,6 @@ def main():
         ),
         group=6
     )
-
-
-    # --------------------------------------------------
-    # حذف رد
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^مسح رد$"),
@@ -2059,8 +1521,6 @@ def main():
         ),
         group=0
     )
-
-
     app.add_handler(
         MessageHandler(
             filters.ALL,
@@ -2068,44 +1528,24 @@ def main():
         ),
         group=7
     )
-
-
-    # --------------------------------------------------
-    # قائمة الردود
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^الردود$"),
             replies_list
         )
     )
-
-
-    # --------------------------------------------------
-    # حذف جميع الردود
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^مسح الردود$"),
             delete_all_replies
         )
     )
-
-
-    # --------------------------------------------------
-    # حذف جميع الردود المميزة
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^مسح الردود المميزة$"),
             delete_all_special_replies
         )
     )
-
-
     # ==================================================
     # النقاط
     # ==================================================
@@ -2116,8 +1556,6 @@ def main():
         ),
         group=-1
     )
-
-    
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^خصم \d+$"),
@@ -2125,8 +1563,6 @@ def main():
         ),
         group=-1
     )
-
-    
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^بيع نقاطي \d+$"),
@@ -2134,29 +1570,21 @@ def main():
         ),
         group=-1
     )
-
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^نقاطي$"),
             my_points
         )
     )
-
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^توب$"),
             top_points
         )
     )
-    
-
-
     # ==================================================
-    # الهمسات - أوامر القروب
+    # الهمسات
     # ==================================================
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^(همسه|همسة|اهمس)$"),
@@ -2164,7 +1592,6 @@ def main():
         ),
         group=0,
     )
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^تفعيل الهمسات$"),
@@ -2172,7 +1599,6 @@ def main():
         ),
         group=0,
     )
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^تعطيل الهمسات$"),
@@ -2180,11 +1606,6 @@ def main():
         ),
         group=0,
     )
-
-    # ==================================================
-    # الهمسات - استقبال الهمسة في الخاص
-    # ==================================================
-
     app.add_handler(
         MessageHandler(
             filters.ChatType.PRIVATE,
@@ -2192,15 +1613,6 @@ def main():
         ),
         group=0,
     )
-
-    # ==================================================
-    # الهمسات - أمر المطور
-    # ==================================================
-
-    # ==================================================
-    # الهمسات - أمر المطور
-    # ==================================================
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^الهمسات$"),
@@ -2208,8 +1620,9 @@ def main():
         ),
         group=-1,
     )
-
-
+    # ==================================================
+    # الألعاب - القائمة
+    # ==================================================
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS & filters.Regex(r"^\.لعبة$"),
@@ -2220,8 +1633,6 @@ def main():
     # ==================================================
     # 🐎 سباق الكلمات
     # ==================================================
-
-    # بدء سباق الكلمات
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -2230,8 +1641,6 @@ def main():
         ),
         group=-4
     )
-
-    # خروج
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -2240,8 +1649,6 @@ def main():
         ),
         group=-4
     )
-
-    # .الطور
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -2250,8 +1657,6 @@ def main():
         ),
         group=-4
     )
-
-    # .توزيع
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -2260,8 +1665,6 @@ def main():
         ),
         group=-4
     )
-
-    # .اضافة احمر / ازرق / اخضر / اصفر
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -2272,8 +1675,6 @@ def main():
         ),
         group=-4
     )
-
-    # .ابدا
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -2282,8 +1683,6 @@ def main():
         ),
         group=-4
     )
-
-    # .كمل
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -2292,8 +1691,6 @@ def main():
         ),
         group=-4
     )
-
-    # إنهاء سباق الكلمات
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -2304,8 +1701,6 @@ def main():
         ),
         group=-4
     )
-
-    # أزرار سباق الكلمات
     app.add_handler(
         CallbackQueryHandler(
             word_race_callback,
@@ -2313,8 +1708,6 @@ def main():
         ),
         group=-4
     )
-
-    # إجابات سباق الكلمات
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -2324,7 +1717,6 @@ def main():
         ),
         group=9
     )
-
     app.add_handler(
         MessageHandler(
             filters.ChatType.PRIVATE
@@ -2334,19 +1726,15 @@ def main():
         ),
         group=9
     )
-
     # ==================================================
     # أسرع كلمة
     # ==================================================
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^كلمات$"),
             start_speed_words
         )
     )
-
-
     app.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND,
@@ -2354,41 +1742,10 @@ def main():
         ),
         group=10
     )
-
-
-    # ==================================================
-    # الألعاب
-    # ==================================================
-
-    # ==================================================
-    # تعديل لون زر
-    # ==================================================
-
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.Regex(r"^تعديل لون$"),
-            change_button_color_start
-        ),
-        group=-20
-    )
-
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.TEXT
-            & ~filters.COMMAND,
-            change_button_color_handler
-        ),
-        group=-19
-    )
-
     # ==================================================
     # أدوات الصور - الخاص فقط
     # ==================================================
-
     show_photo_conv = ConversationHandler(
-
         entry_points=[
             MessageHandler(
                 filters.ChatType.PRIVATE
@@ -2396,7 +1753,6 @@ def main():
                 show_photo_start
             )
         ],
-
         states={
             WAIT_PHOTO_ID: [
                 MessageHandler(
@@ -2407,18 +1763,13 @@ def main():
                 )
             ]
         },
-
-        fallbacks=[],    
-            
+        fallbacks=[],
         allow_reentry=True
     )
-
     app.add_handler(
         show_photo_conv,
         group=-21
     )
-
-
     app.add_handler(
         MessageHandler(
             filters.ChatType.PRIVATE
@@ -2427,11 +1778,9 @@ def main():
         ),
         group=-20
     )
-
-    # --------------------------------------------------
-    # إضافة لعبة
-    # --------------------------------------------------
-
+    # ==================================================
+    # الألعاب المخصصة
+    # ==================================================
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^اضف لعبة$"),
@@ -2439,8 +1788,6 @@ def main():
         ),
         group=0
     )
-
-
     app.add_handler(
         MessageHandler(
             filters.ALL,
@@ -2448,24 +1795,15 @@ def main():
         ),
         group=21
     )
-
-
-    # --------------------------------------------------
-    # قائمة الألعاب
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^الالعاب$"),
             games_list
         )
     )
-
-
     # ==================================================
     # الأسئلة
     # ==================================================
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^اضف سؤال(?:\s|$)"),
@@ -2473,116 +1811,69 @@ def main():
         ),
         group=0
     )
-
-
     app.add_handler(
-        MessageHandler(
-            (
-                filters.TEXT |
-                filters.PHOTO
-            ) & ~filters.COMMAND,
-            add_question_handler
+        (
+            MessageHandler(
+                (
+                    filters.TEXT |
+                    filters.PHOTO
+                ) & ~filters.COMMAND,
+                add_question_handler
+            )
         ),
         group=23
     )
-
-
-    # --------------------------------------------------
-    # قائمة الأسئلة
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^اسئلة"),
             questions_list
         )
     )
-
-
-    # --------------------------------------------------
-    # حذف سؤال
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^حذف سؤال"),
             delete_question
         )
     )
-
-
-    # --------------------------------------------------
-    # حذف لعبة
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^حذف لعبة"),
             delete_game
         )
     )
-
-
-    # --------------------------------------------------
-    # تفعيل لعبة
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^تفعيل لعبة"),
             enable_game
         )
     )
-
-
-    # --------------------------------------------------
-    # تعطيل لعبة
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^تعطيل لعبة"),
             disable_game
         )
     )
-
-
-    # --------------------------------------------------
-    # تفعيل جميع الألعاب
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^تفعيل الالعاب$"),
             enable_all_games
         )
     )
-
-
-    # --------------------------------------------------
-    # تعطيل جميع الألعاب
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^تعطيل الالعاب$"),
             disable_all_games
         )
     )
-
-
     # ==================================================
     # لعبة الأنمي
     # ==================================================
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^انمي$"),
             start_anime_quiz
         )
     )
-
-
     app.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND,
@@ -2590,12 +1881,9 @@ def main():
         ),
         group=32
     )
-
-
     # ==================================================
     # الألعاب المخصصة
     # ==================================================
-
     app.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND,
@@ -2603,8 +1891,6 @@ def main():
         ),
         group=30
     )
-
-
     app.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND,
@@ -2612,13 +1898,9 @@ def main():
         ),
         group=31
     )
-
-
-
     # ==================================================
     # تشغيل الردود
     # ==================================================
-
     app.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND,
@@ -2626,20 +1908,15 @@ def main():
         ),
         group=40
     )
-
-
     # ==================================================
     # المستخدمين
     # ==================================================
-
     app.add_handler(
         ChatMemberHandler(
             save_join_date,
             ChatMemberHandler.CHAT_MEMBER
         )
     )
-
-
     app.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND,
@@ -2647,17 +1924,9 @@ def main():
         ),
         group=50
     )
-
-
-
     # ==================================================
     # 🖼️ توقع الصورة
     # ==================================================
-
-    # --------------------------------------------------
-    # بدء لعبة توقع الصورة
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -2666,13 +1935,6 @@ def main():
         ),
         group=-6
     )
-
-    # --------------------------------------------------
-    # دخول توقع الصورة
-    #
-    # لازم يكون قبل join_big_game_router
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -2681,13 +1943,6 @@ def main():
         ),
         group=-6
     )
-
-    # --------------------------------------------------
-    # خروج توقع الصورة
-    #
-    # يعمل قبل وبعد بدء القيم
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -2696,13 +1951,6 @@ def main():
         ),
         group=-6
     )
-
-    # --------------------------------------------------
-    # .اضافة
-    #
-    # يستخدم بالرد على رسالة الشخص
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -2711,11 +1959,6 @@ def main():
         ),
         group=-6
     )
-
-    # --------------------------------------------------
-    # .اعدادات
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -2724,11 +1967,6 @@ def main():
         ),
         group=-6
     )
-
-    # --------------------------------------------------
-    # .ابدا
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -2737,11 +1975,6 @@ def main():
         ),
         group=-6
     )
-
-    # --------------------------------------------------
-    # .كمل
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -2750,11 +1983,6 @@ def main():
         ),
         group=-6
     )
-
-    # --------------------------------------------------
-    # .انهاء
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -2763,11 +1991,6 @@ def main():
         ),
         group=-6
     )
-
-    # --------------------------------------------------
-    # أزرار إعدادات توقع الصورة
-    # --------------------------------------------------
-
     app.add_handler(
         CallbackQueryHandler(
             image_quiz_callback,
@@ -2775,13 +1998,6 @@ def main():
         ),
         group=-6
     )
-
-    # --------------------------------------------------
-    # إجابات توقع الصورة
-    #
-    # لازم تكون قبل معالجات إجابات الألعاب الأخرى
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -2794,11 +2010,6 @@ def main():
     # ==================================================
     # 🍻 طاولة الكذب
     # ==================================================
-
-    # --------------------------------------------------
-    # بدء طاولة الكذب
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -2807,14 +2018,6 @@ def main():
         ),
         group=-4
     )
-
-
-    # --------------------------------------------------
-    # دخول طاولة الكذب
-    # يتم عبر big_game_join_router
-    # لكن يجب أن يكون قبل الهاندلرات القديمة
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -2823,12 +2026,6 @@ def main():
         ),
         group=-4
     )
-
-
-    # --------------------------------------------------
-    # خروج من طاولة الكذب
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -2837,12 +2034,6 @@ def main():
         ),
         group=-4
     )
-
-
-    # --------------------------------------------------
-    # بدء طاولة الكذب
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -2851,13 +2042,6 @@ def main():
         ),
         group=-4
     )
-
-
-    # --------------------------------------------------
-    # إنهاء طاولة الكذب
-    # للأدمن والمالك
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -2866,12 +2050,6 @@ def main():
         ),
         group=-4
     )
-
-
-    # --------------------------------------------------
-    # أزرار طاولة الكذب
-    # --------------------------------------------------
-
     app.add_handler(
         CallbackQueryHandler(
             liars_table_callback,
@@ -2879,12 +2057,6 @@ def main():
         ),
         group=-4
     )
-
-
-    # --------------------------------------------------
-    # /start الخاص بطاولة الكذب
-    # --------------------------------------------------
-
     app.add_handler(
         CommandHandler(
             "start",
@@ -2892,12 +2064,9 @@ def main():
         ),
         group=-4
     )
-
-   
-    # --------------------------------------------------
-    # بدء لعبة الكذاب
-    # --------------------------------------------------
-
+    # ==================================================
+    # لعبة الكذاب
+    # ==================================================
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^الكذاب$"),
@@ -2905,12 +2074,6 @@ def main():
         ),
         group=0
     )
-
-    
-    # --------------------------------------------------
-    # خروج من لعبة الكذاب
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^\.خروج$"),
@@ -2918,11 +2081,6 @@ def main():
         ),
         group=-3
     )
-
-    # --------------------------------------------------
-    # بدء لعبة الكذاب
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^\.ابدا$"),
@@ -2930,11 +2088,6 @@ def main():
         ),
         group=-3
     )
-
-    # --------------------------------------------------
-    # بدء التصويت يدويًا
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^\.التصويت$"),
@@ -2942,11 +2095,6 @@ def main():
         ),
         group=-3
     )
-
-    # --------------------------------------------------
-    # إنهاء لعبة الكذاب
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^انهاء الكذاب$"),
@@ -2954,23 +2102,13 @@ def main():
         ),
         group=0
     )
-
-    # --------------------------------------------------
-    # أزرار دخول / خروج الكذاب
-    # --------------------------------------------------
-
     app.add_handler(
         CallbackQueryHandler(
             liar_lobby_callback,
             pattern=r"^liar_lobby:"
-        ),  
+        ),
         group=-3
     )
-
-    # --------------------------------------------------
-    # أزرار التصويت
-    # --------------------------------------------------
-
     app.add_handler(
         CallbackQueryHandler(
             liar_vote_callback,
@@ -2978,11 +2116,6 @@ def main():
         ),
         group=-3
     )
-
-    # --------------------------------------------------
-    # أزرار تخمين الكذاب
-    # --------------------------------------------------
-
     app.add_handler(
         CallbackQueryHandler(
             liar_guess_callback,
@@ -2990,12 +2123,6 @@ def main():
         ),
         group=-3
     )
-
-    # --------------------------------------------------
-    # رسائل لعبة الكذاب
-    # يستخدم لكشف من يكتب الكلمة السرية أثناء النقاش
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND,
@@ -3003,25 +2130,16 @@ def main():
         ),
         group=9
     )
-
-
     # ==================================================
     # لعبة البلنتيات
     # ==================================================
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^بلنتيات$"),
             start_penalty_game
-        ),  
+        ),
         group=0
     )
-
-    
-    # --------------------------------------------------
-    # توزيع البلنتيات
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^\.وزع$"),
@@ -3029,13 +2147,6 @@ def main():
         ),
         group=0
     )
-
-    # --------------------------------------------------
-    # التوزيع اليدوي
-    # .احمر 1 2
-    # .ازرق 1 2
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.Regex(
@@ -3045,11 +2156,6 @@ def main():
         ),
         group=0
     )
-
-    # --------------------------------------------------
-    # بدء البلنتيات
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^\.ابدا$"),
@@ -3057,11 +2163,6 @@ def main():
         ),
         group=0
     )
-
-    # --------------------------------------------------
-    # كمل
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^\.كمل$"),
@@ -3069,11 +2170,6 @@ def main():
         ),
         group=0
     )
-
-    # --------------------------------------------------
-    # إنهاء البلنتيات
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^انهاء بلنتيات$"),
@@ -3081,11 +2177,6 @@ def main():
         ),
         group=0
     )
-
-    # --------------------------------------------------
-    # أزرار توزيع البلنتيات
-    # --------------------------------------------------
-
     app.add_handler(
         CallbackQueryHandler(
             distribution_callback,
@@ -3093,11 +2184,6 @@ def main():
         ),
         group=-3
     )
-
-    # --------------------------------------------------
-    # أزرار اتجاه البلنتي
-    # --------------------------------------------------
-
     app.add_handler(
         CallbackQueryHandler(
             penalty_direction_callback,
@@ -3105,13 +2191,9 @@ def main():
         ),
         group=-3
     )
-
-
-
     # ==================================================
     # لعبة الغميضة
     # ==================================================
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^غميضة$"),
@@ -3119,12 +2201,6 @@ def main():
         ),
         group=0
     )
-
-   
-    # --------------------------------------------------
-    # بدء الغميضة
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^ابدا$"),
@@ -3132,11 +2208,6 @@ def main():
         ),
         group=0
     )
-
-    # --------------------------------------------------
-    # إنهاء الغميضة
-    # --------------------------------------------------
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^انهاء غميضة$"),
@@ -3144,11 +2215,6 @@ def main():
         ),
         group=0
     )
-
-    # --------------------------------------------------
-    # أزرار الغميضة
-    # --------------------------------------------------
-
     app.add_handler(
         CallbackQueryHandler(
             hide_number_callback,
@@ -3156,7 +2222,6 @@ def main():
         ),
         group=-3
     )
-
     app.add_handler(
         CallbackQueryHandler(
             search_number_callback,
@@ -3164,8 +2229,9 @@ def main():
         ),
         group=-3
     )
-
-
+    # ==================================================
+    # لوحة المطور - الخاص
+    # ==================================================
     app.add_handler(
         MessageHandler(
             filters.ChatType.PRIVATE
@@ -3174,41 +2240,36 @@ def main():
         ),
         group=-10
     )
-
     # ==================================================
     # شرح الألعاب
     # ==================================================
-
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^شرح الالعاب$"),
             games_help
         )
     )
-
     # ==================================================
     # الهمسات - CallbackQuery
     # ==================================================
-
     app.add_handler(
         CallbackQueryHandler(
             whisper_callbacks,
             pattern=r"^wh_",
         )
     )
-
-
+    # ==================================================
+    # قائمة الألعاب - CallbackQuery
+    # ==================================================
     app.add_handler(
         CallbackQueryHandler(
             games_menu_callback,
             pattern=r"^game_menu:"
         )
     )
-
     # ==================================================
-    # 📋 أزرار قائمة الأوامر
+    # قائمة الأوامر - CallbackQuery
     # ==================================================
-
     app.add_handler(
         CallbackQueryHandler(
             commands_menu_callback,
@@ -3216,15 +2277,9 @@ def main():
         ),
         group=-4
     )
-    # --------------------------------------------------
-    # لوحة الأدمن
-    #
-    # ملاحظة:
-    # هذا الـ Handler عام، لذلك لازم تكون أزرار
-    # الألعاب في group=-3 حتى لا تصل إليه.
-    # --------------------------------------------------
-
-
+    # ==================================================
+    # حذف الرسائل
+    # ==================================================
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^مسح(?:\s*\d+)?$"),
@@ -3232,34 +2287,20 @@ def main():
         ),
         group=-3
     )
-
-    
     # ==================================================
     # إيقاف المعالجات بعد الفوز في الألعاب
     # ==================================================
-
     async def stop_after_game(
         update: Update,
         context: ContextTypes.DEFAULT_TYPE
     ):
-
         from games.games_manager import active_games
-
-
         if not update.effective_chat:
             return
-
-
         chat_id = update.effective_chat.id
-
-
         if chat_id not in active_games:
             return
-
-
         raise ApplicationHandlerStop()
-
-
     app.add_handler(
         MessageHandler(
             filters.ALL,
@@ -3267,25 +2308,17 @@ def main():
         ),
         group=100
     )
-
-
     # ==================================================
     # تشغيل البوت
     # ==================================================
-
     print("🤖 Bot Started...")
-
     threading.Thread(
         target=start_web_server,
         daemon=True
     ).start()
-
     app.run_polling()
-
-
 # ==================================================
 # التشغيل
 # ==================================================
-
 if __name__ == "__main__":
     main()
