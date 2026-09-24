@@ -41,6 +41,8 @@ from handlers.moderation import (
 # إعدادات عامة
 # ==================================================
 
+OWNER_ID = 8453977662
+
 MIN_RANK_LEVEL = 4
 
 # --------------------------------------------------
@@ -51,12 +53,13 @@ MIN_RANK_LEVEL = 4
 MANAGE_MIN_RANK_LEVEL = 4
 
 # --------------------------------------------------
-# الكلمات المحظورة تؤثر فقط على:
+# الكلمات المحظورة تؤثر بالعقوبة فقط على:
 #
 # عضو  = 0
 # مميز = 1
 #
-# ادمن وفوق = لا يتأثر
+# ادمن وفوق = حذف الرسالة فقط
+# OWNER_ID = استثناء كامل
 # --------------------------------------------------
 
 BLOCKED_WORDS_MAX_AFFECTED_RANK = 1
@@ -186,11 +189,16 @@ def can_be_affected_by_blocked_words(
 ):
 
     """
-    الكلمات المحظورة تؤثر فقط على:
+    الكلمات المحظورة تؤثر بالعقوبة فقط على:
     عضو + مميز.
 
-    أي رتبة ادمن وفوق يتم تجاهلها.
+    ادمن وفوق:
+    حذف الرسالة فقط.
     """
+
+    # المالك الأساسي مستثنى بالكامل
+    if user_id == OWNER_ID:
+        return False
 
     level = get_blocked_level(
         user_id,
@@ -271,10 +279,6 @@ def ensure_blocked_words_tables():
 
         # ==================================================
         # 🔒 قفل إنشاء الجداول الموحد
-        #
-        # نفس القفل المستخدم في جميع عمليات إنشاء الجداول.
-        # يمنع أكثر من نسخة من البوت من تنفيذ DDL
-        # في نفس الوقت.
         # ==================================================
 
         acquire_schema_lock(conn)
@@ -338,9 +342,6 @@ def ensure_blocked_words_tables():
 
         # ==================================================
         # جدول قديم للتوافق
-        #
-        # لم نعد نعتمد عليه لمعرفة هل فتح المشرف
-        # القائمة من قبل أم لا.
         # ==================================================
 
         cur.execute("""
@@ -606,9 +607,6 @@ def get_settings(
 
 # ==================================================
 # 🚀 قراءة إعدادات الكاش
-#
-# هذه الدالة نفسها Sync لأنها لا تنفذ أثناء
-# فحص الرسائل إلا من خلال to_thread.
 # ==================================================
 
 def get_cached_settings_sync(
@@ -943,8 +941,6 @@ def get_cached_words_sync(
         list_id
     )
 
-    # مهم:
-    # لا نستخدم get() هنا لأن القائمة قد تكون فارغة.
     if key in _blocked_words_cache:
 
         return _blocked_words_cache[key]
@@ -1053,7 +1049,6 @@ def add_words(
 
         cached.sort()
 
-        # حذف Regex القديم للكلمات المعدلة
         for word in words:
 
             _blocked_regex_cache.pop(
@@ -1593,10 +1588,20 @@ async def apply_punishment(
 
         return False
 
-    if update and update.message:
+    # ==================================================
+    # إرسال رسالة العقوبة
+    #
+    # نستخدم bot.send_message بدل
+    # update.message.reply_text
+    #
+    # لأن الرسالة الأصلية قد تكون حُذفت.
+    # ==================================================
 
-        await update.message.reply_text(
-            punishment_message(
+    try:
+
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=punishment_message(
                 action,
                 target,
                 until_timestamp
@@ -1607,6 +1612,12 @@ async def apply_punishment(
                 chat_id,
                 target.id
             )
+        )
+
+    except Exception as e:
+
+        print(
+            f"⚠️ فشل إرسال رسالة عقوبة الكلمات المحظورة: {e}"
         )
 
     return True
@@ -1813,16 +1824,28 @@ def clear_blocked_warnings(
 
 async def send_blocked_warning(
     update,
+    context,
     target,
     count
 ):
 
-    await update.message.reply_text(
-        "• كتب كلمة محظورة وجاه انذار .\n"
-        f"• المستخدم ↤︎ {mention_user(target)}\n"
-        f"• عدد إنذاراته ↤︎ {count}",
-        parse_mode="HTML"
-    )
+    try:
+
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=(
+                "• كتب كلمة محظورة وجاه انذار .\n"
+                f"• المستخدم ↤︎ {mention_user(target)}\n"
+                f"• عدد إنذاراته ↤︎ {count}"
+            ),
+            parse_mode="HTML"
+        )
+
+    except Exception as e:
+
+        print(
+            f"⚠️ فشل إرسال إنذار الكلمات المحظورة: {e}"
+        )
 
 
 # ==================================================
@@ -1875,6 +1898,7 @@ async def handle_warning_punishment(
 
         await send_blocked_warning(
             update,
+            context,
             target,
             count
         )
@@ -2312,10 +2336,6 @@ async def blocked_words_command(
 
             raise ApplicationHandlerStop
 
-        # ==================================================
-        # ⚡ الترحيب يظهر كل مرة
-        # ==================================================
-
         mention = (
             f'<a href="tg://user?id={actor.id}">'
             f'{html_escape(actor.first_name or "المشرف")}'
@@ -2707,15 +2727,17 @@ async def handle_blocked_session(
 # ==================================================
 # 🚀 فحص الكلمات
 #
-# الترتيب مهم جدًا للأداء:
+# القواعد:
 #
-# 1. نقرأ الكلمات من الكاش.
-# 2. إذا لا توجد كلمات -> خروج فوري.
-# 3. نبحث عن تطابق.
-# 4. فقط إذا وجدنا تطابقًا -> نفحص الرتبة.
+# OWNER_ID:
+#   لا حذف ولا عقوبة.
 #
-# بهذا الشكل:
-# الرسائل العادية لا تستعلم عن الرتبة.
+# عضو / مميز:
+#   حذف الرسالة + العقوبة.
+#
+# ادمن وفوق:
+#   حذف الرسالة فقط.
+#
 # ==================================================
 
 async def check_blocked_words(
@@ -2740,6 +2762,15 @@ async def check_blocked_words(
     if not actor:
         return False
 
+    # ==================================================
+    # 👑 OWNER_ID
+    #
+    # استثناء كامل قبل أي فحص.
+    # ==================================================
+
+    if actor.id == OWNER_ID:
+        return False
+
     text = (
         update.message.text or ""
     )
@@ -2761,9 +2792,7 @@ async def check_blocked_words(
     ):
 
         # ==================================================
-        # 🚀 الكلمات فقط
-        #
-        # لا نقرأ الإعدادات قبل العثور على كلمة.
+        # 🚀 الكلمات فقط من الكاش
         # ==================================================
 
         words = await get_cached_words(
@@ -2775,7 +2804,7 @@ async def check_blocked_words(
             continue
 
         # ==================================================
-        # بحث سريع من الكاش
+        # بحث عن كلمة محظورة
         # ==================================================
 
         matched = find_blocked_word(
@@ -2787,24 +2816,7 @@ async def check_blocked_words(
             continue
 
         # ==================================================
-        # 🚨 الآن فقط نفحص الرتبة
-        #
-        # ادمن وفوق:
-        # تجاهل كامل بدون عقوبة أو رسالة.
-        # ==================================================
-
-        affected = await asyncio.to_thread(
-            can_be_affected_by_blocked_words,
-            actor.id,
-            chat_id
-        )
-
-        if not affected:
-
-            return False
-
-        # ==================================================
-        # الآن فقط نحتاج الإعدادات
+        # قراءة الإعدادات
         # ==================================================
 
         settings = await get_cached_settings(
@@ -2812,69 +2824,150 @@ async def check_blocked_words(
             list_id
         )
 
+        # إذا القائمة معطلة
         if not settings["enabled"]:
+            continue
 
+        # ==================================================
+        # فحص الرتبة
+        # ==================================================
+
+        level = await asyncio.to_thread(
+            get_blocked_level,
+            actor.id,
+            chat_id
+        )
+
+        # ==================================================
+        # 👑 OWNER_ID
+        #
+        # استثناء كامل.
+        # ==================================================
+
+        if actor.id == OWNER_ID:
             return False
 
         # ==================================================
-        # حفظ المستخدم
+        # 👮 ادمن وفوق
+        #
+        # حذف فقط بدون عقوبة.
+        # ==================================================
+
+        if level >= 2:
+
+            try:
+
+                await update.message.delete()
+
+            except Exception as e:
+
+                print(
+                    f"⚠️ فشل حذف رسالة كلمة محظورة "
+                    f"من ادمن وفوق: {e}"
+                )
+
+            return True
+
+        # ==================================================
+        # 👤 عضو / مميز
+        #
+        # حذف + عقوبة.
+        # ==================================================
+
+        if level <= BLOCKED_WORDS_MAX_AFFECTED_RANK:
+
+            # ==================================================
+            # حفظ المستخدم
+            # ==================================================
+
+            try:
+
+                from handlers.moderation import (
+                    save_target_user
+                )
+
+                await asyncio.to_thread(
+                    save_target_user,
+                    actor
+                )
+
+            except Exception:
+                pass
+
+            # ==================================================
+            # حذف الرسالة أولًا
+            # ==================================================
+
+            try:
+
+                await update.message.delete()
+
+            except Exception as e:
+
+                print(
+                    f"⚠️ فشل حذف رسالة كلمة محظورة: {e}"
+                )
+
+            # ==================================================
+            # عقوبة مباشرة
+            # ==================================================
+
+            if settings["action"] in (
+                "mute",
+                "restrict",
+                "ban"
+            ):
+
+                duration = settings[
+                    "duration"
+                ]
+
+                await apply_punishment(
+                    update,
+                    context,
+                    chat_id,
+                    actor,
+                    settings["action"],
+                    duration
+                )
+
+                return True
+
+            # ==================================================
+            # عقوبة الإنذار
+            # ==================================================
+
+            if settings["action"] == "warning":
+
+                await handle_warning_punishment(
+                    update,
+                    context,
+                    chat_id,
+                    list_id,
+                    actor,
+                    settings
+                )
+
+                return True
+
+            return True
+
+        # ==================================================
+        # أي رتبة أخرى غير معروفة:
+        # حذف فقط بدون عقوبة.
         # ==================================================
 
         try:
 
-            from handlers.moderation import (
-                save_target_user
+            await update.message.delete()
+
+        except Exception as e:
+
+            print(
+                f"⚠️ فشل حذف رسالة كلمة محظورة: {e}"
             )
 
-            await asyncio.to_thread(
-                save_target_user,
-                actor
-            )
-
-        except Exception:
-            pass
-
-        # ==================================================
-        # عقوبة مباشرة
-        # ==================================================
-
-        if settings["action"] in (
-            "mute",
-            "restrict",
-            "ban"
-        ):
-
-            duration = settings[
-                "duration"
-            ]
-
-            await apply_punishment(
-                update,
-                context,
-                chat_id,
-                actor,
-                settings["action"],
-                duration
-            )
-
-            return True
-
-        # ==================================================
-        # عقوبة الإنذار
-        # ==================================================
-
-        if settings["action"] == "warning":
-
-            await handle_warning_punishment(
-                update,
-                context,
-                chat_id,
-                list_id,
-                actor,
-                settings
-            )
-
-            return True
+        return True
 
     return False
 
@@ -3004,8 +3097,6 @@ async def blocked_words_callback(
 
     # ==================================================
     # ⚡ نرد على callback فورًا
-    #
-    # حتى لا يظهر للمستخدم أن الزر عالق.
     # ==================================================
 
     try:
@@ -3090,8 +3181,6 @@ async def blocked_words_callback(
 
     # ==================================================
     # صلاحية الإدارة
-    #
-    # خارج event loop
     # ==================================================
 
     allowed = await asyncio.to_thread(
@@ -3277,11 +3366,6 @@ async def blocked_words_callback(
         new_status = not settings[
             "enabled"
         ]
-
-        # ==================================================
-        # نحدث الكاش مباشرة
-        # حتى الواجهة تتغير فورًا.
-        # ==================================================
 
         settings[
             "enabled"
