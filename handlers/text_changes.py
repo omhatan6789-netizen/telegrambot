@@ -1,8 +1,8 @@
 import contextvars
 import json
 import re
-from datetime import datetime
 from copy import deepcopy
+from datetime import datetime
 
 from telegram import (
     MessageEntity,
@@ -12,19 +12,16 @@ from telegram import (
 from telegram.ext import (
     ApplicationHandlerStop,
     ContextTypes,
-    ExtBot,
 )
 
 from database import connect
 from handlers.roles import get_rank_level
-
 
 # ==================================================
 # الجلسات
 # ==================================================
 
 _text_change_sessions = {}
-
 
 # ==================================================
 # المستخدم الحالي الذي تسبب في إرسال رسالة البوت
@@ -35,7 +32,6 @@ _text_change_actor = contextvars.ContextVar(
     default=None,
 )
 
-
 # ==================================================
 # منع اعتراض رسائل النظام نفسه
 # ==================================================
@@ -45,14 +41,12 @@ _text_change_internal = contextvars.ContextVar(
     default=False,
 )
 
-
 # ==================================================
 # الكاش
 # ==================================================
 
 _text_changes_cache = []
 _known_bot_texts = set()
-
 
 # ==================================================
 # المتغيرات
@@ -70,9 +64,8 @@ TEXT_VARIABLES = (
     "#منشن",
 )
 
-
 # ==================================================
-# إنشاء الجدول
+# إنشاء الجداول
 # ==================================================
 
 def create_text_changes_table():
@@ -97,7 +90,6 @@ def create_text_changes_table():
     conn.close()
 
     load_text_changes()
-
 
 # ==================================================
 # تحميل التغييرات
@@ -148,14 +140,12 @@ def load_text_changes():
             }
         )
 
-
 # ==================================================
 # هل توجد تغييرات؟
 # ==================================================
 
 def has_text_changes():
     return bool(_text_changes_cache)
-
 
 # ==================================================
 # تطبيع المسافات
@@ -168,12 +158,11 @@ def normalize_spaces(text):
     return re.sub(
         r"\s+",
         " ",
-        text,
+        text
     ).strip()
 
-
 # ==================================================
-# UTF-16 map
+# إنشاء خريطة UTF-16
 # ==================================================
 
 def utf16_map(text):
@@ -189,9 +178,8 @@ def utf16_map(text):
 
     return mapping
 
-
 # ==================================================
-# Entity UTF-16 -> Python
+# تحويل entity من UTF-16 إلى Python index
 # ==================================================
 
 def entity_python_range(text, entity):
@@ -209,14 +197,13 @@ def entity_python_range(text, entity):
     if end_utf16 >= len(mapping):
         end_utf16 = len(mapping) - 1
 
-    return (
-        mapping[start_utf16],
-        mapping[end_utf16],
-    )
+    start = mapping[start_utf16]
+    end = mapping[end_utf16]
 
+    return start, end
 
 # ==================================================
-# نسخ Entity
+# نسخ entity مع offsets جديدة
 # ==================================================
 
 def clone_entity(
@@ -236,17 +223,19 @@ def clone_entity(
         kwargs["language"] = entity.language
 
     if getattr(entity, "custom_emoji_id", None):
-        kwargs["custom_emoji_id"] = (
-            entity.custom_emoji_id
-        )
+        kwargs[
+            "custom_emoji_id"
+        ] = entity.custom_emoji_id
 
     if getattr(entity, "date_time_format", None):
-        kwargs["date_time_format"] = (
-            entity.date_time_format
-        )
+        kwargs[
+            "date_time_format"
+        ] = entity.date_time_format
 
     if getattr(entity, "unix_time", None):
-        kwargs["unix_time"] = entity.unix_time
+        kwargs[
+            "unix_time"
+        ] = entity.unix_time
 
     return MessageEntity(
         type=entity.type,
@@ -255,9 +244,8 @@ def clone_entity(
         **kwargs,
     )
 
-
 # ==================================================
-# حفظ Entities
+# حفظ entities
 # ==================================================
 
 def serialize_entities(entities):
@@ -280,19 +268,19 @@ def serialize_entities(entities):
             item["language"] = entity.language
 
         if entity.custom_emoji_id:
-            item["custom_emoji_id"] = (
-                entity.custom_emoji_id
-            )
+            item[
+                "custom_emoji_id"
+            ] = entity.custom_emoji_id
 
         if entity.date_time_format:
-            item["date_time_format"] = (
-                entity.date_time_format
-            )
+            item[
+                "date_time_format"
+            ] = entity.date_time_format
 
         if entity.unix_time:
-            item["unix_time"] = (
-                entity.unix_time.isoformat()
-            )
+            item[
+                "unix_time"
+            ] = entity.unix_time.isoformat()
 
         if entity.user:
             item["user"] = {
@@ -323,9 +311,8 @@ def serialize_entities(entities):
         ensure_ascii=False,
     )
 
-
 # ==================================================
-# استرجاع Entities
+# استرجاع entities
 # ==================================================
 
 def deserialize_entities(data):
@@ -333,10 +320,7 @@ def deserialize_entities(data):
         return []
 
     if isinstance(data, str):
-        try:
-            data = json.loads(data)
-        except Exception:
-            return []
+        data = json.loads(data)
 
     result = []
 
@@ -347,26 +331,30 @@ def deserialize_entities(data):
             kwargs["url"] = item["url"]
 
         if item.get("language"):
-            kwargs["language"] = (
-                item["language"]
-            )
+            kwargs[
+                "language"
+            ] = item["language"]
 
         if item.get("custom_emoji_id"):
-            kwargs["custom_emoji_id"] = (
-                item["custom_emoji_id"]
-            )
+            kwargs[
+                "custom_emoji_id"
+            ] = item[
+                "custom_emoji_id"
+            ]
 
         if item.get("date_time_format"):
-            kwargs["date_time_format"] = (
-                item["date_time_format"]
-            )
+            kwargs[
+                "date_time_format"
+            ] = item[
+                "date_time_format"
+            ]
 
         if item.get("unix_time"):
             try:
-                kwargs["unix_time"] = (
-                    datetime.fromisoformat(
-                        item["unix_time"]
-                    )
+                kwargs[
+                    "unix_time"
+                ] = datetime.fromisoformat(
+                    item["unix_time"]
                 )
             except Exception:
                 pass
@@ -382,16 +370,20 @@ def deserialize_entities(data):
                     )
                     or "مستخدم"
                 ),
-                last_name=user_data.get(
-                    "last_name"
+                last_name=(
+                    user_data.get(
+                        "last_name"
+                    )
                 ),
-                username=user_data.get(
-                    "username"
+                username=(
+                    user_data.get(
+                        "username"
+                    )
                 ),
                 is_bot=bool(
                     user_data.get(
                         "is_bot",
-                        False,
+                        False
                     )
                 ),
             )
@@ -407,9 +399,8 @@ def deserialize_entities(data):
 
     return result
 
-
 # ==================================================
-# Custom Emoji
+# custom emoji signature
 # ==================================================
 
 def get_custom_emoji_signature(
@@ -419,12 +410,15 @@ def get_custom_emoji_signature(
     result = []
 
     for entity in entities or []:
-        if entity.type != MessageEntity.CUSTOM_EMOJI:
+        if (
+            entity.type
+            != MessageEntity.CUSTOM_EMOJI
+        ):
             continue
 
         entity_range = entity_python_range(
             text,
-            entity,
+            entity
         )
 
         if not entity_range:
@@ -453,9 +447,8 @@ def get_custom_emoji_signature(
 
     return result
 
-
 # ==================================================
-# تطبيع النص مع خريطة المواقع
+# تطبيع مع خريطة للمواقع الأصلية
 # ==================================================
 
 def normalize_with_map(text):
@@ -476,10 +469,11 @@ def normalize_with_map(text):
             ):
                 end += 1
 
-            if chars and chars[-1] != " ":
-                chars.append(" ")
-                starts.append(index)
-                ends.append(end)
+            if chars:
+                if chars[-1] != " ":
+                    chars.append(" ")
+                    starts.append(index)
+                    ends.append(end)
 
             index = end
             continue
@@ -490,12 +484,18 @@ def normalize_with_map(text):
 
         index += 1
 
-    while chars and chars[0] == " ":
+    while (
+        chars
+        and chars[0] == " "
+    ):
         chars.pop(0)
         starts.pop(0)
         ends.pop(0)
 
-    while chars and chars[-1] == " ":
+    while (
+        chars
+        and chars[-1] == " "
+    ):
         chars.pop()
         starts.pop()
         ends.pop()
@@ -506,9 +506,8 @@ def normalize_with_map(text):
         ends,
     )
 
-
 # ==================================================
-# إيجاد التطابقات
+# إيجاد كل التطابقات
 # ==================================================
 
 def find_matches(
@@ -529,6 +528,7 @@ def find_matches(
         return []
 
     matches = []
+
     position = 0
 
     while True:
@@ -557,12 +557,17 @@ def find_matches(
 
         for entity in entities or []:
 
-            if entity.type != MessageEntity.CUSTOM_EMOJI:
+            if (
+                entity.type
+                != MessageEntity.CUSTOM_EMOJI
+            ):
                 continue
 
-            entity_range = entity_python_range(
-                text,
-                entity,
+            entity_range = (
+                entity_python_range(
+                    text,
+                    entity
+                )
             )
 
             if not entity_range:
@@ -590,10 +595,12 @@ def find_matches(
             current_signature.append(
                 {
                     "start": (
-                        entity_start - start
+                        entity_start -
+                        start
                     ),
                     "end": (
-                        entity_end - start
+                        entity_end -
+                        start
                     ),
                     "id": (
                         entity.custom_emoji_id
@@ -612,7 +619,8 @@ def find_matches(
             )
 
             expected_signature = (
-                old_custom_emojis or []
+                old_custom_emojis
+                or []
             )
 
             if (
@@ -630,9 +638,8 @@ def find_matches(
 
     return matches
 
-
 # ==================================================
-# تجهيز المتغيرات
+# تحضير النص الجديد والمتغيرات
 # ==================================================
 
 async def prepare_new_text(
@@ -700,7 +707,6 @@ async def prepare_new_text(
         actor,
     )
 
-
 # ==================================================
 # استبدال المتغيرات
 # ==================================================
@@ -751,9 +757,11 @@ def replace_variables(
     )
 
     selected = []
+
     last_end = -1
 
     for item in found:
+
         start, end, token = item
 
         if start < last_end:
@@ -763,14 +771,16 @@ def replace_variables(
         last_end = end
 
     parts = []
-    replacement_ranges = []
+    replacements_entities = []
 
     cursor = 0
     output_length = 0
 
     for start, end, token in selected:
 
-        before = text[cursor:start]
+        before = text[
+            cursor:start
+        ]
 
         parts.append(before)
         output_length += len(before)
@@ -785,88 +795,97 @@ def replace_variables(
         parts.append(replacement)
         output_length += len(replacement)
 
-        replacement_ranges.append(
-            (
-                start,
-                end,
-                replacement_start,
-                output_length,
-                token,
+        if token == "#منشن":
+            replacements_entities.append(
+                MessageEntity(
+                    type=MessageEntity.TEXT_MENTION,
+                    offset=replacement_start,
+                    length=len(replacement),
+                    user=actor,
+                )
             )
-        )
 
         cursor = end
 
-    parts.append(text[cursor:])
+    parts.append(
+        text[cursor:]
+    )
 
     new_text = "".join(parts)
 
+    # تحويل entities القديمة إلى Python indexes
     old_entity_ranges = []
 
     for entity in entities or []:
 
-        entity_range = entity_python_range(
-            text,
-            entity,
+        entity_range = (
+            entity_python_range(
+                text,
+                entity
+            )
         )
 
         if not entity_range:
             continue
 
+        start, end = entity_range
+
         old_entity_ranges.append(
             (
                 entity,
-                entity_range[0],
-                entity_range[1],
+                start,
+                end,
             )
         )
 
-    new_entities = []
-
-    # نحافظ على Entities القديمة فقط إذا لم
-    # تكن داخل الجزء الذي تم استبداله
-    for entity, start, end in old_entity_ranges:
-
-        intersects_replacement = False
-
-        for (
-            token_start,
-            token_end,
-            replacement_start,
-            replacement_end,
-            token,
-        ) in replacement_ranges:
-
-            if (
-                start < token_end
-                and end > token_start
-            ):
-                intersects_replacement = True
-                break
-
-        if intersects_replacement:
-            continue
-
+    def map_position(position):
         delta = 0
 
         for (
             token_start,
             token_end,
-            replacement_start,
-            replacement_end,
             token,
-        ) in replacement_ranges:
+        ) in selected:
 
-            if end <= token_start:
-                break
-
-            delta += (
-                (replacement_end - replacement_start)
-                - (token_end - token_start)
+            replacement = replacements.get(
+                token,
+                token,
             )
 
-        new_start = start + delta
-        new_end = end + delta
+            replacement_length = len(
+                replacement
+            )
+
+            if position <= token_start:
+                break
+
+            if position < token_end:
+                return (
+                    token_start
+                    + delta
+                )
+
+            delta += (
+                replacement_length
+                - (
+                    token_end -
+                    token_start
+                )
+            )
+
+        return position + delta
+
+    new_entities = []
+
+    for entity, start, end in (
+        old_entity_ranges
+    ):
+
+        new_start = map_position(start)
+        new_end = map_position(end)
+
+        if new_end <= new_start:
+            continue
 
         new_entities.append(
             clone_entity(
@@ -876,40 +895,17 @@ def replace_variables(
             )
         )
 
-    # #منشن = Mention حقيقي
-    for (
-        token_start,
-        token_end,
-        replacement_start,
-        replacement_end,
-        token,
-    ) in replacement_ranges:
-
-        if token == "#منشن":
-            new_entities.append(
-                MessageEntity(
-                    type=MessageEntity.TEXT_MENTION,
-                    offset=replacement_start,
-                    length=(
-                        replacement_end
-                        - replacement_start
-                    ),
-                    user=actor,
-                )
-            )
-
-    new_entities = (
-        MessageEntity.adjust_message_entities_to_utf_16(
-            new_text,
-            new_entities,
-        )
+    new_entities.extend(
+        replacements_entities
     )
 
     return (
         new_text,
-        new_entities,
+        MessageEntity.adjust_message_entities_to_utf_16(
+            new_text,
+            new_entities,
+        ),
     )
-
 
 # ==================================================
 # تطبيق تغيير واحد
@@ -922,7 +918,7 @@ async def apply_one_change(
     actor,
 ):
     old_text = row["old_text"]
-    replacement_text = row["new_text"]
+    new_text = row["new_text"]
 
     old_custom_emojis = []
 
@@ -942,15 +938,11 @@ async def apply_one_change(
     )
 
     if not matches:
-        return (
-            text,
-            entities,
-            False,
-        )
+        return text, entities, False
 
-    replacement_text, replacement_entities = (
+    new_text, new_entities = (
         await prepare_new_text(
-            replacement_text,
+            new_text,
             deserialize_entities(
                 row["new_entities"]
             ),
@@ -958,19 +950,22 @@ async def apply_one_change(
         )
     )
 
-    replacement_entity_ranges = []
+    # تحويل entities الجديدة إلى Python
+    new_entity_ranges = []
 
-    for entity in replacement_entities or []:
+    for entity in new_entities or []:
 
-        entity_range = entity_python_range(
-            replacement_text,
-            entity,
+        entity_range = (
+            entity_python_range(
+                new_text,
+                entity
+            )
         )
 
         if not entity_range:
             continue
 
-        replacement_entity_ranges.append(
+        new_entity_ranges.append(
             (
                 entity,
                 entity_range[0],
@@ -982,9 +977,11 @@ async def apply_one_change(
 
     for entity in entities or []:
 
-        entity_range = entity_python_range(
-            text,
-            entity,
+        entity_range = (
+            entity_python_range(
+                text,
+                entity
+            )
         )
 
         if not entity_range:
@@ -1014,7 +1011,8 @@ async def apply_one_change(
             return
 
         segment = text[
-            segment_start:segment_end
+            segment_start:
+            segment_end
         ]
 
         base = output_length
@@ -1047,15 +1045,19 @@ async def apply_one_change(
                 continue
 
             new_start = (
-                base +
-                clipped_start -
-                segment_start
+                base
+                + (
+                    clipped_start -
+                    segment_start
+                )
             )
 
             new_end = (
-                base +
-                clipped_end -
-                segment_start
+                base
+                + (
+                    clipped_end -
+                    segment_start
+                )
             )
 
             output_entities.append(
@@ -1078,25 +1080,27 @@ async def apply_one_change(
         replacement_base = output_length
 
         output_parts.append(
-            replacement_text
+            new_text
         )
 
         for (
             entity,
             entity_start,
             entity_end,
-        ) in replacement_entity_ranges:
+        ) in new_entity_ranges:
 
             output_entities.append(
                 clone_entity(
                     entity,
-                    replacement_base + entity_start,
-                    entity_end - entity_start,
+                    replacement_base
+                    + entity_start,
+                    entity_end
+                    - entity_start,
                 )
             )
 
         output_length += len(
-            replacement_text
+            new_text
         )
 
         cursor = match_end
@@ -1122,7 +1126,6 @@ async def apply_one_change(
         result_entities,
         True,
     )
-
 
 # ==================================================
 # تطبيق جميع التغييرات
@@ -1159,15 +1162,15 @@ async def transform_text(
             actor,
         )
 
-    _known_bot_texts.add(
-        current_text
-    )
+    if current_text:
+        _known_bot_texts.add(
+            current_text
+        )
 
     return (
         current_text,
         current_entities,
     )
-
 
 # ==================================================
 # تسجيل الشخص الذي تسبب في الرد
@@ -1180,14 +1183,17 @@ async def register_text_change_actor(
     actor = update.effective_user
 
     if actor:
-        _text_change_actor.set(actor)
-
+        _text_change_actor.set(
+            actor
+        )
 
 # ==================================================
-# الصلاحية
+# صلاحية الأمر
 # ==================================================
 
-def can_change_text(update: Update):
+def can_change_text(
+    update: Update,
+):
     user = update.effective_user
 
     if not user:
@@ -1211,16 +1217,18 @@ def can_change_text(update: Update):
 
     return level >= 6
 
-
 # ==================================================
 # البحث عن تغيير موجود
 # ==================================================
 
-def find_existing_change(old_text):
+def find_existing_change(
+    old_text,
+):
     normalized = normalize_spaces(
         old_text
     )
 
+    # أولًا old_text
     for row in _text_changes_cache:
 
         if normalize_spaces(
@@ -1228,6 +1236,7 @@ def find_existing_change(old_text):
         ) == normalized:
             return row
 
+    # ثم new_text
     for row in _text_changes_cache:
 
         if normalize_spaces(
@@ -1237,12 +1246,13 @@ def find_existing_change(old_text):
 
     return None
 
-
 # ==================================================
-# هل النص موجود في رسائل البوت؟
+# هل الكلمة موجودة في رسالة بوت سبق إرسالها؟
 # ==================================================
 
-def known_bot_text_contains(old_text):
+def known_bot_text_contains(
+    old_text,
+):
     normalized_old = normalize_spaces(
         old_text
     )
@@ -1252,32 +1262,40 @@ def known_bot_text_contains(old_text):
 
     for bot_text in _known_bot_texts:
 
-        if normalized_old in normalize_spaces(
-            bot_text
-        ):
+        normalized_bot = (
+            normalize_spaces(
+                bot_text
+            )
+        )
+
+        if normalized_old in normalized_bot:
             return True
 
     return False
 
-
 # ==================================================
-# رد داخلي بدون تعديل
+# إرسال رسالة داخلية بدون اعتراض
 # ==================================================
 
 async def internal_reply(
     message,
     text,
 ):
-    token = _text_change_internal.set(True)
+    token = _text_change_internal.set(
+        True
+    )
 
     try:
-        await message.reply_text(text)
+        await message.reply_text(
+            text
+        )
     finally:
-        _text_change_internal.reset(token)
-
+        _text_change_internal.reset(
+            token
+        )
 
 # ==================================================
-# أمر تغيير كلمة
+# بداية تغيير كلمة
 # ==================================================
 
 async def text_change_command(
@@ -1292,7 +1310,9 @@ async def text_change_command(
     if not user:
         return
 
-    _text_change_sessions[user.id] = {
+    _text_change_sessions[
+        user.id
+    ] = {
         "step": "old",
     }
 
@@ -1306,9 +1326,8 @@ async def text_change_command(
 
     raise ApplicationHandlerStop()
 
-
 # ==================================================
-# جلسة تغيير كلمة
+# استقبال خطوات تغيير كلمة
 # ==================================================
 
 async def text_change_session(
@@ -1333,11 +1352,13 @@ async def text_change_session(
         raise ApplicationHandlerStop()
 
     # ==================================================
-    # القديمة
+    # الخطوة الأولى
+    # الكلمة الحالية
     # ==================================================
 
     if session["step"] == "old":
 
+        # الستكر لا يحسب
         if not message.text:
             raise ApplicationHandlerStop()
 
@@ -1368,12 +1389,14 @@ async def text_change_session(
 
             raise ApplicationHandlerStop()
 
-        session["old_text"] = old_text
+        session[
+            "old_text"
+        ] = old_text
 
-        session["old_entities"] = (
-            serialize_entities(
-                message.entities
-            )
+        session[
+            "old_entities"
+        ] = serialize_entities(
+            message.entities
         )
 
         session["step"] = "new"
@@ -1386,19 +1409,29 @@ async def text_change_session(
         raise ApplicationHandlerStop()
 
     # ==================================================
-    # الجديدة
+    # الخطوة الثانية
+    # الكلمة الجديدة
     # ==================================================
 
     if session["step"] == "new":
 
+        # الستكر أو أي رسالة بدون نص
+        # يتم تجاهلها ونبقى في نفس الخطوة
         if not message.text:
             raise ApplicationHandlerStop()
 
-        old_text = session["old_text"]
+        old_text = session[
+            "old_text"
+        ]
+
         new_text = message.text
 
-        old_entities = deserialize_entities(
-            session.get("old_entities")
+        old_entities = (
+            deserialize_entities(
+                session.get(
+                    "old_entities"
+                )
+            )
         )
 
         old_custom_emojis = (
@@ -1408,8 +1441,10 @@ async def text_change_session(
             )
         )
 
-        new_entities = serialize_entities(
-            message.entities
+        new_entities = (
+            serialize_entities(
+                message.entities
+            )
         )
 
         existing = find_existing_change(
@@ -1427,12 +1462,17 @@ async def text_change_session(
                 SET
                     new_text = ?,
                     new_entities = ?,
+                    old_custom_emojis = ?,
                     updated_at = NOW()
                 WHERE id = ?
                 """,
                 (
                     new_text,
                     new_entities,
+                    json.dumps(
+                        old_custom_emojis,
+                        ensure_ascii=False,
+                    ),
                     existing["id"],
                 ),
             )
@@ -1479,7 +1519,6 @@ async def text_change_session(
 
         raise ApplicationHandlerStop()
 
-
 # ==================================================
 # تغيير arguments
 # ==================================================
@@ -1503,185 +1542,193 @@ def set_argument(
 
     return args, kwargs
 
-
 # ==================================================
-# تعديل نص + Entities
+# Bot مخصص لتطبيق تغييرات النص
 # ==================================================
 
-async def _transform_argument_text(
-    args,
-    kwargs,
-    text_index,
-    text_name,
-    entity_index=None,
-    entity_name=None,
-    parse_mode_index=None,
-):
-    args = list(args)
-
-    text = kwargs.get(text_name)
-
-    if text is None and len(args) > text_index:
-        text = args[text_index]
-
-    if not isinstance(text, str):
-        return args, kwargs
-
-    entities = None
-
-    if entity_name:
-        entities = kwargs.get(entity_name)
-
-    if (
-        entities is None
-        and entity_index is not None
-        and len(args) > entity_index
-    ):
-        entities = args[entity_index]
-
-    new_text, new_entities = (
-        await transform_text(
-            text,
-            entities,
-        )
-    )
-
-    changed = (
-        new_text != text
-        or list(new_entities or [])
-        != list(entities or [])
-    )
-
-    if not changed:
-        return args, kwargs
-
-    args, kwargs = set_argument(
-        args,
-        kwargs,
-        text_index,
-        text_name,
-        new_text,
-    )
-
-    if entity_name:
-        args, kwargs = set_argument(
-            args,
-            kwargs,
-            entity_index,
-            entity_name,
-            new_entities or None,
-        )
-
-    if parse_mode_index is not None:
-        args, kwargs = set_argument(
-            args,
-            kwargs,
-            parse_mode_index,
-            "parse_mode",
-            None,
-        )
-
-    return args, kwargs
-
-
-# ==================================================
-# Bot مخصص
-# ==================================================
+from telegram.ext import ExtBot
 
 class TextChangeBot(ExtBot):
 
-    # ==================================================
-    # الرسائل النصية
-    # ==================================================
-
-    async def send_message(
-        self,
-        *args,
-        **kwargs,
-    ):
+    async def send_message(self, *args, **kwargs):
         if not _text_change_internal.get():
 
-            args, kwargs = (
-                await _transform_argument_text(
-                    args,
-                    kwargs,
-                    text_index=1,
-                    text_name="text",
-                    entity_index=5,
-                    entity_name="entities",
-                    parse_mode_index=2,
+            args = list(args)
+
+            text = kwargs.get("text")
+
+            if text is None and len(args) > 1:
+                text = args[1]
+
+            if isinstance(text, str):
+
+                entities = kwargs.get("entities")
+
+                if entities is None and len(args) > 5:
+                    entities = args[5]
+
+                new_text, new_entities = await transform_text(
+                    text,
+                    entities,
                 )
-            )
+
+                if (
+                    new_text != text
+                    or list(new_entities or [])
+                    != list(entities or [])
+                ):
+                    args, kwargs = set_argument(
+                        args,
+                        kwargs,
+                        1,
+                        "text",
+                        new_text,
+                    )
+
+                    args, kwargs = set_argument(
+                        args,
+                        kwargs,
+                        5,
+                        "entities",
+                        new_entities or None,
+                    )
+
+                    # مهم:
+                    # لا نسمح لـ parse_mode القديم بإعادة
+                    # تنسيق النص الجديد
+                    args, kwargs = set_argument(
+                        args,
+                        kwargs,
+                        2,
+                        "parse_mode",
+                        None,
+                    )
 
         return await super().send_message(
             *args,
             **kwargs,
         )
 
-    # ==================================================
-    # تعديل رسالة نصية
-    # ==================================================
-
-    async def edit_message_text(
-        self,
-        *args,
-        **kwargs,
-    ):
+    async def edit_message_text(self, *args, **kwargs):
         if not _text_change_internal.get():
 
-            args, kwargs = (
-                await _transform_argument_text(
-                    args,
-                    kwargs,
-                    text_index=2,
-                    text_name="text",
-                    entity_index=4,
-                    entity_name="entities",
-                    parse_mode_index=3,
+            args = list(args)
+
+            text = kwargs.get("text")
+
+            if text is None and len(args) > 2:
+                text = args[2]
+
+            if isinstance(text, str):
+
+                entities = kwargs.get("entities")
+
+                if entities is None and len(args) > 4:
+                    entities = args[4]
+
+                new_text, new_entities = await transform_text(
+                    text,
+                    entities,
                 )
-            )
+
+                if (
+                    new_text != text
+                    or list(new_entities or [])
+                    != list(entities or [])
+                ):
+                    args, kwargs = set_argument(
+                        args,
+                        kwargs,
+                        2,
+                        "text",
+                        new_text,
+                    )
+
+                    args, kwargs = set_argument(
+                        args,
+                        kwargs,
+                        4,
+                        "entities",
+                        new_entities or None,
+                    )
+
+                    args, kwargs = set_argument(
+                        args,
+                        kwargs,
+                        3,
+                        "parse_mode",
+                        None,
+                    )
 
         return await super().edit_message_text(
             *args,
             **kwargs,
         )
 
-    # ==================================================
-    # Caption
-    # ==================================================
-
-    async def edit_message_caption(
-        self,
-        *args,
-        **kwargs,
-    ):
+    async def edit_message_caption(self, *args, **kwargs):
         if not _text_change_internal.get():
 
-            args, kwargs = (
-                await _transform_argument_text(
-                    args,
-                    kwargs,
-                    text_index=2,
-                    text_name="caption",
-                    entity_index=4,
-                    entity_name="caption_entities",
-                    parse_mode_index=3,
+            args = list(args)
+
+            caption = kwargs.get("caption")
+
+            if caption is None and len(args) > 2:
+                caption = args[2]
+
+            if isinstance(caption, str):
+
+                entities = kwargs.get(
+                    "caption_entities"
                 )
-            )
+
+                if (
+                    entities is None
+                    and len(args) > 4
+                ):
+                    entities = args[4]
+
+                new_caption, new_entities = (
+                    await transform_text(
+                        caption,
+                        entities,
+                    )
+                )
+
+                if (
+                    new_caption != caption
+                    or list(new_entities or [])
+                    != list(entities or [])
+                ):
+                    args, kwargs = set_argument(
+                        args,
+                        kwargs,
+                        2,
+                        "caption",
+                        new_caption,
+                    )
+
+                    args, kwargs = set_argument(
+                        args,
+                        kwargs,
+                        4,
+                        "caption_entities",
+                        new_entities or None,
+                    )
+
+                    args, kwargs = set_argument(
+                        args,
+                        kwargs,
+                        3,
+                        "parse_mode",
+                        None,
+                    )
 
         return await super().edit_message_caption(
             *args,
             **kwargs,
         )
 
-
-# ==================================================
-# تغليف طرق Media
-# ==================================================
-
-def _wrap_caption_method(
-    method_name,
-):
+def _wrap_media_method(method_name):
     original = getattr(
         TextChangeBot,
         method_name,
@@ -1694,17 +1741,60 @@ def _wrap_caption_method(
     ):
         if not _text_change_internal.get():
 
-            args, kwargs = (
-                await _transform_argument_text(
-                    args,
-                    kwargs,
-                    text_index=2,
-                    text_name="caption",
-                    entity_index=4,
-                    entity_name="caption_entities",
-                    parse_mode_index=3,
+            args = list(args)
+
+            caption = kwargs.get("caption")
+
+            if caption is None and len(args) > 2:
+                caption = args[2]
+
+            if isinstance(caption, str):
+
+                entities = kwargs.get(
+                    "caption_entities"
                 )
-            )
+
+                if (
+                    entities is None
+                    and len(args) > 4
+                ):
+                    entities = args[4]
+
+                new_caption, new_entities = (
+                    await transform_text(
+                        caption,
+                        entities,
+                    )
+                )
+
+                if (
+                    new_caption != caption
+                    or list(new_entities or [])
+                    != list(entities or [])
+                ):
+                    args, kwargs = set_argument(
+                        args,
+                        kwargs,
+                        2,
+                        "caption",
+                        new_caption,
+                    )
+
+                    args, kwargs = set_argument(
+                        args,
+                        kwargs,
+                        4,
+                        "caption_entities",
+                        new_entities or None,
+                    )
+
+                    args, kwargs = set_argument(
+                        args,
+                        kwargs,
+                        3,
+                        "parse_mode",
+                        None,
+                    )
 
         return await original(
             self,
@@ -1714,7 +1804,6 @@ def _wrap_caption_method(
 
     return wrapped
 
-
 for _method_name in (
     "send_photo",
     "send_video",
@@ -1722,293 +1811,11 @@ for _method_name in (
     "send_audio",
     "send_document",
     "send_voice",
-    "send_live_photo",
-    "send_paid_media",
 ):
-    if hasattr(TextChangeBot, _method_name):
-        setattr(
-            TextChangeBot,
-            _method_name,
-            _wrap_caption_method(
-                _method_name
-            ),
-        )
-
-
-# ==================================================
-# Media Group
-# ==================================================
-
-async def _transform_media_item(
-    media,
-):
-    try:
-        caption = getattr(
-            media,
-            "caption",
-            None,
-        )
-
-        if not isinstance(
-            caption,
-            str,
-        ):
-            return media
-
-        entities = getattr(
-            media,
-            "caption_entities",
-            None,
-        )
-
-        new_caption, new_entities = (
-            await transform_text(
-                caption,
-                entities,
-            )
-        )
-
-        if (
-            new_caption == caption
-            and list(new_entities or [])
-            == list(entities or [])
-        ):
-            return media
-
-        item = deepcopy(media)
-
-        item.caption = new_caption
-        item.caption_entities = (
-            new_entities or None
-        )
-
-        # حتى لا يعيد Telegram تطبيق
-        # parse_mode على النص بعد تحويله
-        if hasattr(item, "parse_mode"):
-            item.parse_mode = None
-
-        return item
-
-    except Exception:
-        return media
-
-
-async def _transform_media_list(
-    media,
-):
-    if not media:
-        return media
-
-    result = []
-
-    for item in media:
-        result.append(
-            await _transform_media_item(
-                item
-            )
-        )
-
-    return result
-
-
-_original_send_media_group = (
-    TextChangeBot.send_media_group
-)
-
-
-async def _send_media_group(
-    self,
-    *args,
-    **kwargs,
-):
-    if not _text_change_internal.get():
-
-        args = list(args)
-
-        media = kwargs.get("media")
-
-        if media is None and len(args) > 1:
-            media = args[1]
-
-        if media:
-            new_media = (
-                await _transform_media_list(
-                    media
-                )
-            )
-
-            args, kwargs = set_argument(
-                args,
-                kwargs,
-                1,
-                "media",
-                new_media,
-            )
-
-        # Caption مستقل إن تم تمريره
-        args, kwargs = (
-            await _transform_argument_text(
-                args,
-                kwargs,
-                text_index=7,
-                text_name="caption",
-                entity_index=8,
-                entity_name="caption_entities",
-                parse_mode_index=7,
-            )
-        )
-
-    return await _original_send_media_group(
-        self,
-        *args,
-        **kwargs,
-    )
-
-
-TextChangeBot.send_media_group = (
-    _send_media_group
-)
-
-
-# ==================================================
-# الاستطلاعات
-# ==================================================
-
-_original_send_poll = (
-    TextChangeBot.send_poll
-)
-
-
-async def _send_poll(
-    self,
-    *args,
-    **kwargs,
-):
-    if not _text_change_internal.get():
-
-        args = list(args)
-
-        # السؤال
-        question = kwargs.get(
-            "question"
-        )
-
-        if question is None and len(args) > 1:
-            question = args[1]
-
-        if isinstance(question, str):
-
-            new_question, new_entities = (
-                await transform_text(
-                    question,
-                    kwargs.get(
-                        "question_entities"
-                    ),
-                )
-            )
-
-            if new_question != question:
-
-                args, kwargs = set_argument(
-                    args,
-                    kwargs,
-                    1,
-                    "question",
-                    new_question,
-                )
-
-                if "question_entities" in kwargs:
-                    kwargs[
-                        "question_entities"
-                    ] = (
-                        new_entities
-                        or None
-                    )
-
-        # الشرح
-        explanation = kwargs.get(
-            "explanation"
-        )
-
-        if isinstance(
-            explanation,
-            str,
-        ):
-
-            new_explanation, new_entities = (
-                await transform_text(
-                    explanation,
-                    kwargs.get(
-                        "explanation_entities"
-                    ),
-                )
-            )
-
-            if (
-                new_explanation
-                != explanation
-            ):
-                kwargs[
-                    "explanation"
-                ] = new_explanation
-
-                kwargs[
-                    "explanation_entities"
-                ] = (
-                    new_entities
-                    or None
-                )
-
-    return await _original_send_poll(
-        self,
-        *args,
-        **kwargs,
-    )
-
-
-TextChangeBot.send_poll = (
-    _send_poll
-)
-
-
-# ==================================================
-# send_message_draft
-# ==================================================
-
-if hasattr(
-    TextChangeBot,
-    "send_message_draft",
-):
-
-    _original_send_message_draft = (
-        TextChangeBot.send_message_draft
-    )
-
-    async def _send_message_draft(
-        self,
-        *args,
-        **kwargs,
-    ):
-        if not _text_change_internal.get():
-
-            args, kwargs = (
-                await _transform_argument_text(
-                    args,
-                    kwargs,
-                    text_index=1,
-                    text_name="text",
-                    entity_index=4,
-                    entity_name="entities",
-                    parse_mode_index=3,
-                )
-            )
-
-        return await _original_send_message_draft(
-            self,
-            *args,
-            **kwargs,
-        )
-
-    TextChangeBot.send_message_draft = (
-        _send_message_draft
+    setattr(
+        TextChangeBot,
+        _method_name,
+        _wrap_media_method(
+            _method_name
+        ),
     )
