@@ -306,7 +306,7 @@ from handlers.text_changes import (
     register_text_change_actor,
     text_change_command,
     text_change_session,
-    install_text_change_interceptor,
+    TextChangeBot,
 )
 # ==================================================
 # الهمسات
@@ -623,12 +623,15 @@ def main():
     app = (
         Application
         .builder()
-        .token(BOT_TOKEN)
+        .bot(
+            TextChangeBot(
+                token=BOT_TOKEN
+            )
+        )
         .post_init(post_init)
         .post_shutdown(post_shutdown)
         .build()
     )
-    install_text_change_interceptor(app)
 
     # ==================================================
     # تغيير كلمات ورسائل البوت
