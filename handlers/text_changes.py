@@ -1573,285 +1573,116 @@ def set_argument(
 
 
 # ==================================================
-# اعتراض send/edit
+# Bot مخصص لتطبيق تغييرات النص
 # ==================================================
 
-def install_text_change_interceptor(
-    application,
-):
-    bot = application.bot
+from telegram.ext import ExtBot
 
-    if getattr(
-        bot,
-        "_text_change_interceptor_installed",
-        False,
-    ):
-        return
 
-    bot._text_change_interceptor_installed = True
+class TextChangeBot(ExtBot):
 
-    # ==================================================
-    # send_message
-    # ==================================================
-
-    original_send_message = (
-        bot.send_message
-    )
-
-    async def wrapped_send_message(
-        *args,
-        **kwargs,
-    ):
-        if _text_change_internal.get():
-            return await original_send_message(
-                *args,
-                **kwargs,
-            )
-
-        args = list(args)
-
-        text = kwargs.get("text")
-
-        if text is None and len(args) > 1:
-            text = args[1]
-
-        if not isinstance(text, str):
-            return await original_send_message(
-                *args,
-                **kwargs,
-            )
-
-        entities = kwargs.get(
-            "entities"
-        )
-
-        if entities is None and len(args) > 5:
-            entities = args[5]
-
-        new_text, new_entities = (
-            await transform_text(
-                text,
-                entities,
-            )
-        )
-
-        if (
-            new_text != text
-            or list(new_entities or [])
-            != list(entities or [])
-        ):
-            args, kwargs = set_argument(
-                args,
-                kwargs,
-                1,
-                "text",
-                new_text,
-            )
-
-            args, kwargs = set_argument(
-                args,
-                kwargs,
-                5,
-                "entities",
-                new_entities or None,
-            )
-
-            if new_entities:
-                args, kwargs = set_argument(
-                    args,
-                    kwargs,
-                    2,
-                    "parse_mode",
-                    None,
-                )
-
-        return await original_send_message(
-            *args,
-            **kwargs,
-        )
-
-    bot.send_message = (
-        wrapped_send_message
-    )
-
-    # ==================================================
-    # edit_message_text
-    # ==================================================
-
-    original_edit_message_text = (
-        bot.edit_message_text
-    )
-
-    async def wrapped_edit_message_text(
-        *args,
-        **kwargs,
-    ):
-        if _text_change_internal.get():
-            return await original_edit_message_text(
-                *args,
-                **kwargs,
-            )
-
-        args = list(args)
-
-        text = kwargs.get("text")
-
-        if text is None and len(args) > 2:
-            text = args[2]
-
-        if not isinstance(text, str):
-            return await original_edit_message_text(
-                *args,
-                **kwargs,
-            )
-
-        entities = kwargs.get(
-            "entities"
-        )
-
-        if entities is None and len(args) > 4:
-            entities = args[4]
-
-        new_text, new_entities = (
-            await transform_text(
-                text,
-                entities,
-            )
-        )
-
-        if (
-            new_text != text
-            or list(new_entities or [])
-            != list(entities or [])
-        ):
-            args, kwargs = set_argument(
-                args,
-                kwargs,
-                2,
-                "text",
-                new_text,
-            )
-
-            args, kwargs = set_argument(
-                args,
-                kwargs,
-                4,
-                "entities",
-                new_entities or None,
-            )
-
-            if new_entities:
-                args, kwargs = set_argument(
-                    args,
-                    kwargs,
-                    3,
-                    "parse_mode",
-                    None,
-                )
-
-        return await original_edit_message_text(
-            *args,
-            **kwargs,
-        )
-
-    bot.edit_message_text = (
-        wrapped_edit_message_text
-    )
-
-    # ==================================================
-    # إرسال الكابشن
-    # ==================================================
-
-    media_methods = (
-        "send_photo",
-        "send_video",
-        "send_animation",
-        "send_audio",
-        "send_document",
-        "send_voice",
-    )
-
-    for method_name in media_methods:
-
-        original = getattr(
-            bot,
-            method_name,
-        )
-
-        async def wrapper(
-            *args,
-            __original=original,
-            __method_name=method_name,
-            **kwargs,
-        ):
-            if _text_change_internal.get():
-                return await __original(
-                    *args,
-                    **kwargs,
-                )
+    async def send_message(self, *args, **kwargs):
+        if not _text_change_internal.get():
 
             args = list(args)
 
-            caption = kwargs.get(
-                "caption"
-            )
+            text = kwargs.get("text")
 
-            if caption is None and len(args) > 2:
-                caption = args[2]
+            if text is None and len(args) > 1:
+                text = args[1]
 
-            if not isinstance(
-                caption,
-                str,
-            ):
-                return await __original(
-                    *args,
-                    **kwargs,
+            if isinstance(text, str):
+
+                entities = kwargs.get("entities")
+
+                if entities is None and len(args) > 5:
+                    entities = args[5]
+
+                new_text, new_entities = await transform_text(
+                    text,
+                    entities,
                 )
 
-            caption_entities = (
-                kwargs.get(
-                    "caption_entities"
-                )
-            )
+                if (
+                    new_text != text
+                    or list(new_entities or [])
+                    != list(entities or [])
+                ):
+                    args, kwargs = set_argument(
+                        args,
+                        kwargs,
+                        1,
+                        "text",
+                        new_text,
+                    )
 
-            if (
-                caption_entities is None
-                and len(args) > 4
-            ):
-                caption_entities = args[4]
+                    args, kwargs = set_argument(
+                        args,
+                        kwargs,
+                        5,
+                        "entities",
+                        new_entities or None,
+                    )
 
-            new_caption, new_entities = (
-                await transform_text(
-                    caption,
-                    caption_entities,
-                )
-            )
+                    # مهم:
+                    # لا نسمح لـ parse_mode القديم بإعادة
+                    # تنسيق النص الجديد
+                    args, kwargs = set_argument(
+                        args,
+                        kwargs,
+                        2,
+                        "parse_mode",
+                        None,
+                    )
 
-            if (
-                new_caption != caption
-                or list(new_entities or [])
-                != list(
-                    caption_entities
-                    or []
-                )
-            ):
-                args, kwargs = set_argument(
-                    args,
-                    kwargs,
-                    2,
-                    "caption",
-                    new_caption,
+        return await super().send_message(
+            *args,
+            **kwargs,
+        )
+
+    async def edit_message_text(self, *args, **kwargs):
+        if not _text_change_internal.get():
+
+            args = list(args)
+
+            text = kwargs.get("text")
+
+            if text is None and len(args) > 2:
+                text = args[2]
+
+            if isinstance(text, str):
+
+                entities = kwargs.get("entities")
+
+                if entities is None and len(args) > 4:
+                    entities = args[4]
+
+                new_text, new_entities = await transform_text(
+                    text,
+                    entities,
                 )
 
-                args, kwargs = set_argument(
-                    args,
-                    kwargs,
-                    4,
-                    "caption_entities",
-                    new_entities or None,
-                )
+                if (
+                    new_text != text
+                    or list(new_entities or [])
+                    != list(entities or [])
+                ):
+                    args, kwargs = set_argument(
+                        args,
+                        kwargs,
+                        2,
+                        "text",
+                        new_text,
+                    )
 
-                if new_entities:
+                    args, kwargs = set_argument(
+                        args,
+                        kwargs,
+                        4,
+                        "entities",
+                        new_entities or None,
+                    )
+
                     args, kwargs = set_argument(
                         args,
                         kwargs,
@@ -1860,102 +1691,164 @@ def install_text_change_interceptor(
                         None,
                     )
 
-            return await __original(
-                *args,
-                **kwargs,
-            )
-
-        setattr(
-            bot,
-            method_name,
-            wrapper,
-        )
-
-    # ==================================================
-    # edit_message_caption
-    # ==================================================
-
-    original_edit_caption = (
-        bot.edit_message_caption
-    )
-
-    async def wrapped_edit_caption(
-        *args,
-        **kwargs,
-    ):
-        if _text_change_internal.get():
-            return await original_edit_caption(
-                *args,
-                **kwargs,
-            )
-
-        args = list(args)
-
-        caption = kwargs.get(
-            "caption"
-        )
-
-        if caption is None and len(args) > 2:
-            caption = args[2]
-
-        if not isinstance(
-            caption,
-            str,
-        ):
-            return await original_edit_caption(
-                *args,
-                **kwargs,
-            )
-
-        entities = kwargs.get(
-            "caption_entities"
-        )
-
-        if entities is None and len(args) > 4:
-            entities = args[4]
-
-        new_caption, new_entities = (
-            await transform_text(
-                caption,
-                entities,
-            )
-        )
-
-        if (
-            new_caption != caption
-            or list(new_entities or [])
-            != list(entities or [])
-        ):
-            args, kwargs = set_argument(
-                args,
-                kwargs,
-                2,
-                "caption",
-                new_caption,
-            )
-
-            args, kwargs = set_argument(
-                args,
-                kwargs,
-                4,
-                "caption_entities",
-                new_entities or None,
-            )
-
-            if new_entities:
-                args, kwargs = set_argument(
-                    args,
-                    kwargs,
-                    3,
-                    "parse_mode",
-                    None,
-                )
-
-        return await original_edit_caption(
+        return await super().edit_message_text(
             *args,
             **kwargs,
         )
 
-    bot.edit_message_caption = (
-        wrapped_edit_caption
+    async def edit_message_caption(self, *args, **kwargs):
+        if not _text_change_internal.get():
+
+            args = list(args)
+
+            caption = kwargs.get("caption")
+
+            if caption is None and len(args) > 2:
+                caption = args[2]
+
+            if isinstance(caption, str):
+
+                entities = kwargs.get(
+                    "caption_entities"
+                )
+
+                if (
+                    entities is None
+                    and len(args) > 4
+                ):
+                    entities = args[4]
+
+                new_caption, new_entities = (
+                    await transform_text(
+                        caption,
+                        entities,
+                    )
+                )
+
+                if (
+                    new_caption != caption
+                    or list(new_entities or [])
+                    != list(entities or [])
+                ):
+                    args, kwargs = set_argument(
+                        args,
+                        kwargs,
+                        2,
+                        "caption",
+                        new_caption,
+                    )
+
+                    args, kwargs = set_argument(
+                        args,
+                        kwargs,
+                        4,
+                        "caption_entities",
+                        new_entities or None,
+                    )
+
+                    args, kwargs = set_argument(
+                        args,
+                        kwargs,
+                        3,
+                        "parse_mode",
+                        None,
+                    )
+
+        return await super().edit_message_caption(
+            *args,
+            **kwargs,
+        )
+
+
+def _wrap_media_method(method_name):
+    original = getattr(
+        TextChangeBot,
+        method_name,
+    )
+
+    async def wrapped(
+        self,
+        *args,
+        **kwargs,
+    ):
+        if not _text_change_internal.get():
+
+            args = list(args)
+
+            caption = kwargs.get("caption")
+
+            if caption is None and len(args) > 2:
+                caption = args[2]
+
+            if isinstance(caption, str):
+
+                entities = kwargs.get(
+                    "caption_entities"
+                )
+
+                if (
+                    entities is None
+                    and len(args) > 4
+                ):
+                    entities = args[4]
+
+                new_caption, new_entities = (
+                    await transform_text(
+                        caption,
+                        entities,
+                    )
+                )
+
+                if (
+                    new_caption != caption
+                    or list(new_entities or [])
+                    != list(entities or [])
+                ):
+                    args, kwargs = set_argument(
+                        args,
+                        kwargs,
+                        2,
+                        "caption",
+                        new_caption,
+                    )
+
+                    args, kwargs = set_argument(
+                        args,
+                        kwargs,
+                        4,
+                        "caption_entities",
+                        new_entities or None,
+                    )
+
+                    args, kwargs = set_argument(
+                        args,
+                        kwargs,
+                        3,
+                        "parse_mode",
+                        None,
+                    )
+
+        return await original(
+            self,
+            *args,
+            **kwargs,
+        )
+
+    return wrapped
+
+
+for _method_name in (
+    "send_photo",
+    "send_video",
+    "send_animation",
+    "send_audio",
+    "send_document",
+    "send_voice",
+):
+    setattr(
+        TextChangeBot,
+        _method_name,
+        _wrap_media_method(
+            _method_name
+        ),
     )
