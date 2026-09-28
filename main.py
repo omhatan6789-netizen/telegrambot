@@ -7,7 +7,6 @@ from telegram.ext import (
     ContextTypes,
     ChatMemberHandler,
     CallbackQueryHandler,
-    TypeHandler,
     filters,
     ConversationHandler
 )
@@ -300,14 +299,6 @@ from handlers.blocked_words import (
     blocked_words_callback,
     blocked_words_expiry_loop,
 )
-
-from handlers.text_changes import (
-    create_text_changes_table,
-    register_text_change_actor,
-    text_change_command,
-    text_change_session,
-    TextChangeBot,
-)
 # ==================================================
 # الهمسات
 # ==================================================
@@ -526,7 +517,6 @@ def main():
     create_profile_reply_tables()
     patch_inline_keyboard_buttons()
     register_existing_panel_buttons()
-    create_text_changes_table()
     # ==================================================
     # مهام الخلفية
     # ==================================================
@@ -623,44 +613,10 @@ def main():
     app = (
         Application
         .builder()
-        .bot(
-            TextChangeBot(
-                token=BOT_TOKEN
-            )
-        )
+        .token(BOT_TOKEN)
         .post_init(post_init)
         .post_shutdown(post_shutdown)
         .build()
-    )
-
-    # ==================================================
-    # تغيير كلمات ورسائل البوت
-    # ==================================================
-
-    app.add_handler(
-        TypeHandler(
-            Update,
-            register_text_change_actor,
-        ),
-        group=-100,
-    )
-
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(
-                r"^(تغيير كلمة|تعديل كلمة)$"
-            ),
-            text_change_command,
-        ),
-        group=-90,
-    )
-
-    app.add_handler(
-        MessageHandler(
-            filters.ALL,
-            text_change_session,
-        ),
-        group=-89,
     )
     # ==================================================
     # /send
