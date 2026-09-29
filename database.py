@@ -39,27 +39,10 @@ def get_pool():
 # PostgreSQL Schema Advisory Lock
 # ==================================================
 
-# مهم:
-# جميع ملفات إنشاء/تعديل الجداول في المشروع يجب أن تستخدم
-# نفس هذا الرقم.
-#
-# القفل Transaction-scoped:
-# يتم تحريره تلقائيًا عند COMMIT أو ROLLBACK.
-#
-# لا تستخدم أرقام Locks مختلفة في ملفات أخرى.
-# ==================================================
-
 SCHEMA_LOCK_ID = 739184621
 
 
 def acquire_schema_lock(conn):
-    """
-    الحصول على قفل موحد لعمليات إنشاء وتعديل الـ Schema.
-
-    يجب استدعاء هذه الدالة على نفس الاتصال الذي سيتم
-    تنفيذ CREATE / ALTER / INDEX عليه.
-    """
-
     cur = conn.cursor()
 
     try:
@@ -230,20 +213,6 @@ def create_tables():
     cur = conn.cursor()
 
     try:
-
-        # ==================================================
-        # PostgreSQL Advisory Lock
-        #
-        # يمنع أكثر من نسخة من البوت من تنفيذ
-        # CREATE TABLE / ALTER TABLE / CREATE INDEX
-        # في نفس الوقت.
-        #
-        # مهم جدًا مع Render + Supabase.
-        #
-        # القفل Transaction-scoped ويتم تحريره تلقائيًا
-        # عند COMMIT أو ROLLBACK.
-        #
-        # ==================================================
 
         acquire_schema_lock(conn)
 
@@ -611,9 +580,9 @@ def create_tables():
         )
         """)
 
-        # =========================================================
+        # ==================================================
         # إعدادات التكرار الإضافية
-        # =========================================================
+        # ==================================================
 
         cur.execute("""
             ALTER TABLE protection_settings
@@ -633,9 +602,9 @@ def create_tables():
             TEXT DEFAULT 'عضو'
         """)
 
-        # =========================================================
+        # ==================================================
         # إنذارات التكرار القديمة
-        # =========================================================
+        # ==================================================
 
         cur.execute("""
             CREATE TABLE IF NOT EXISTS repetition_warnings
@@ -649,13 +618,13 @@ def create_tables():
         """)
 
         cur.execute("""
-            CREATE INDEX IF NOT EXISTS idx_repetition_warnings_user
-            ON repetition_warnings(chat_id, user_id)
+        CREATE INDEX IF NOT EXISTS idx_repetition_warnings_user
+        ON repetition_warnings(chat_id, user_id)
         """)
 
         cur.execute("""
-            CREATE INDEX IF NOT EXISTS idx_repetition_warnings_expiry
-            ON repetition_warnings(expires_at)
+        CREATE INDEX IF NOT EXISTS idx_repetition_warnings_expiry
+        ON repetition_warnings(expires_at)
         """)
 
         # ==================================================
@@ -1019,6 +988,81 @@ def create_tables():
         cur.execute("""
         CREATE INDEX IF NOT EXISTS idx_moderation_logs_user
         ON moderation_logs (user_id)
+        """)
+
+        # ==================================================
+        # 💰 التسليات - الحسابات البنكية
+        # ==================================================
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS bank_accounts
+        (
+            user_id BIGINT PRIMARY KEY,
+            account_number VARCHAR(17) UNIQUE NOT NULL,
+            bank TEXT NOT NULL,
+            card_type TEXT NOT NULL,
+            robbery_balance INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+
+        cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_bank_accounts_number
+        ON bank_accounts(account_number)
+        """)
+
+        # ==================================================
+        # 💰 التسليات - الكولداون
+        # ==================================================
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS tasliyat_cooldowns
+        (
+            user_id BIGINT PRIMARY KEY,
+            salary_until BIGINT DEFAULT 0,
+            tip_until BIGINT DEFAULT 0,
+            robber_until BIGINT DEFAULT 0,
+            victim_rob_until BIGINT DEFAULT 0,
+            investment_until BIGINT DEFAULT 0,
+            luck_until BIGINT DEFAULT 0
+        )
+        """)
+
+        # ==================================================
+        # 💰 التسليات - الممتلكات
+        # ==================================================
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS possessions
+        (
+            user_id BIGINT NOT NULL,
+            item_key TEXT NOT NULL,
+            quantity INTEGER DEFAULT 0,
+
+            PRIMARY KEY
+            (
+                user_id,
+                item_key
+            )
+        )
+        """)
+
+        cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_possessions_user
+        ON possessions(user_id)
+        """)
+
+        # ==================================================
+        # 💰 التسليات - أسعار المتجر
+        # ==================================================
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS store_prices
+        (
+            item_key TEXT PRIMARY KEY,
+            price INTEGER NOT NULL,
+            hour_key BIGINT NOT NULL
+        )
         """)
 
         # ==================================================
