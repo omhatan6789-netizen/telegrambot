@@ -592,7 +592,7 @@ async def create_bank_account(
         "• عشان تسوي حساب لازم تختار نوع البطاقة\n"
         "↤︎ الاهلي\n"
         "↤︎ الانماء\n"
-        ,"↤︎ الراجحي\n"
+        "↤︎ الراجحي\n",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
