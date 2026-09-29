@@ -311,6 +311,26 @@ from handlers.whisper import (
     disable_whispers_command,
     whispers_list_command,
 )
+
+from handlers.tasliyat import (
+    create_bank_account,
+    bank_callback,
+    my_bank_account,
+    delete_bank_account,
+    salary,
+    tip,
+    store,
+    my_possessions,
+    other_possessions,
+    buy_sell,
+    gift,
+    rob,
+    transfer,
+    transfer_account_number,
+    invest,
+    luck,
+)
+
 import os
 import asyncio
 import threading
@@ -1619,6 +1639,203 @@ def main():
             whispers_list_command,
         ),
         group=-1,
+    )
+
+
+    # ==================================================
+    # 💰 التسليات
+    # ==================================================
+
+    # --------------------------------------------------
+    # إنشاء حساب بنكي
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^انشاء حساب بنكي$"),
+            create_bank_account
+        ),
+        group=-4
+    )
+
+    # --------------------------------------------------
+    # حسابي
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^حسابي$"),
+            my_bank_account
+        ),
+        group=-4
+    )
+
+    # --------------------------------------------------
+    # مسح حسابي
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^مسح حسابي$"),
+            delete_bank_account
+        ), 
+        group=-4
+    )
+
+    # --------------------------------------------------
+    # الراتب
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^(راتب|راتبي)$"),
+            salary
+        ),
+        group=-4
+    )
+
+    # --------------------------------------------------
+    # بخشيش
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^بخشيش$"),
+            tip
+        ),
+        group=-4 
+    )
+
+    # --------------------------------------------------
+    # المتجر
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^المتجر$"),
+            store
+        ),
+        group=-4
+    )
+
+    # --------------------------------------------------
+    # ممتلكاتي
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^ممتلكاتي$"),
+            my_possessions
+        ),
+        group=-4
+    )
+
+    # --------------------------------------------------
+    # ممتلكاته
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^ممتلكاته$"), 
+            other_possessions
+        ),
+        group=-4
+    )
+
+    # --------------------------------------------------
+    # شراء / بيع
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^(شراء|بيع) \d+ \S+$"),
+            buy_sell
+        ),
+        group=-4
+    )
+
+    # --------------------------------------------------
+    # اهداء
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^اهداء \d+ \S+$"),
+            gift
+        ),
+        group=-4
+    )
+
+    # --------------------------------------------------
+    # زرف
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^زرف$"),
+            rob
+        ),
+        group=-4
+    )
+
+    # --------------------------------------------------
+    # تحويل
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^تحويل \d+$"),
+            transfer
+        ),
+        group=-4
+    )
+
+    # --------------------------------------------------
+    # رقم الحساب البنكي للتحويل
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^\d{17}$"),
+            transfer_account_number
+        ),
+        group=-4
+    )
+
+    # --------------------------------------------------
+    # استثمار
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^استثمار(?: نقاطي|\s+\d+)?$"),
+            invest
+        ),
+        group=-4
+    )
+
+    # --------------------------------------------------
+    # حظ
+    # --------------------------------------------------
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^حظ(?: نقاطي|\s+\d+)?$"),
+            luck
+        ),
+        group=-4
+    )
+
+    # --------------------------------------------------
+    # Callback الحساب البنكي
+    # --------------------------------------------------
+
+    app.add_handler(
+        CallbackQueryHandler(
+            bank_callback,
+            pattern=r"^tasliyat:bank:"
+        ),
+        group=-4
     )
     # ==================================================
     # الألعاب - القائمة
