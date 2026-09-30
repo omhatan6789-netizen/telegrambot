@@ -333,6 +333,7 @@ from handlers.tasliyat import (
     luck,
     show_scratch_codes,
     scratch_code,
+    reset_scratch_cooldown,
 )
 
 import os
@@ -1682,6 +1683,14 @@ def main():
                 r"^كشط\s+[A-Za-z0-9]+$"
             ),
             scratch_code
+        ),
+        group=-4
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^رست الكشط$"),
+            reset_scratch_cooldown
         ),
         group=-4
     )
