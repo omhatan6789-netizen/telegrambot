@@ -559,10 +559,34 @@ async def create_bank_account(
     if not user or not update.message:
         return
 
-    if _get_bank(user.id):
+    # ==================================================
+    # تحديد صاحب الحساب
+    # ==================================================
+
+    target_user = user
+
+    # إذا كان الأمر بالرد على شخص
+    if update.message.reply_to_message:
+
+        # إنشاء حساب لشخص بالرد للمالك فقط
+        if user.id != 8453977662:
+            return
+
+        replied_user = update.message.reply_to_message.from_user
+
+        if not replied_user:
+            return
+
+        target_user = replied_user
+
+    # ==================================================
+    # التحقق من وجود الحساب
+    # ==================================================
+
+    if _get_bank(target_user.id):
         await update.message.reply_text(
-            "• عندك حساب بنكي 😅\n\n"
-            "• لعرض معلومات حسابك اكتب\n"
+            "• عنده حساب بنكي 😅\n\n"
+            "• لعرض معلومات حسابه اكتب\n"
             "↤︎ حسابي"
         )
         return
@@ -571,19 +595,19 @@ async def create_bank_account(
         [
             InlineKeyboardButton(
                 "الاهلي",
-                callback_data="tasliyat:bank:ahli"
+                callback_data=f"tasliyat:bank:ahli:{target_user.id}"
             )
         ],
         [
             InlineKeyboardButton(
                 "الانماء",
-                callback_data="tasliyat:bank:inma"
+                callback_data=f"tasliyat:bank:inma:{target_user.id}"
             )
         ],
         [
             InlineKeyboardButton(
                 "الراجحي",
-                callback_data="tasliyat:bank:rajhi"
+                callback_data=f"tasliyat:bank:rajhi:{target_user.id}"
             )
         ],
     ]
@@ -601,7 +625,6 @@ async def create_bank_account(
 # Callback البنك
 # ==================================================
 
-
 async def bank_callback(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
@@ -616,17 +639,43 @@ async def bank_callback(
     if not _games_enabled():
         return
 
-    user = query.from_user
+    # ==================================================
+    # قراءة البيانات
+    # ==================================================
 
-    bank_key = query.data.split(":")[-1]
+    parts = query.data.split(":")
+
+    if len(parts) != 4:
+        return
+
+    bank_key = parts[2]
+
+    try:
+        target_user_id = int(parts[3])
+    except ValueError:
+        return
 
     if bank_key not in BANKS:
         return
 
-    if _get_bank(user.id):
+    # ==================================================
+    # التأكد أن صاحب الحساب هو الذي اختاره
+    # أو أن المالك هو من أنشأ الحساب له
+    # ==================================================
+
+    creator = query.from_user
+
+    if creator.id != target_user_id and creator.id != 8453977662:
+        return
+
+    # ==================================================
+    # التحقق من وجود حساب مسبق
+    # ==================================================
+
+    if _get_bank(target_user_id):
         await query.edit_message_text(
-            "• عندك حساب بنكي 😅\n\n"
-            "• لعرض معلومات حسابك اكتب\n"
+            "• عنده حساب بنكي 😅\n\n"
+            "• لعرض معلومات حسابه اكتب\n"
             "↤︎ حسابي"
         )
         return
@@ -651,7 +700,7 @@ async def bank_callback(
             VALUES (?, ?, ?, ?, 0)
             """,
             (
-                user.id,
+                target_user_id,
                 account_number,
                 bank_info["name"],
                 bank_info["card"],
@@ -664,7 +713,7 @@ async def bank_callback(
         cur.close()
         conn.close()
 
-    points = get_points(user.id)
+    points = get_points(target_user_id)
 
     await query.edit_message_text(
         f"• سويت لك حساب في البنك ( {bank_info['name']} 💳 )\n"
