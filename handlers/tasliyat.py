@@ -1,5 +1,6 @@
 import random
 import secrets
+import string
 import time
 from datetime import datetime, timezone, timedelta
 from html import escape
@@ -171,6 +172,12 @@ _transfer_message_sessions = {}
 # ==================================================
 
 SAUDI_TZ = timezone(timedelta(hours=3))
+
+
+SCRATCH_CODE_COUNT = 10
+SCRATCH_MIN_AMOUNT = 70
+SCRATCH_MAX_AMOUNT = 10_000_000
+SCRATCH_COOLDOWN_SECONDS = 2 * 60 * 60
 
 
 # ==================================================
@@ -619,6 +626,365 @@ async def _require_bank(update):
     return bank
 
 
+
+# ==================================================
+# أكواد الكشط
+# ==================================================
+
+def _scratch_hour_data():
+    now = datetime.now(SAUDI_TZ)
+
+    hour_start = now.replace(
+        minute=0,
+        second=0,
+        microsecond=0
+    )
+
+    next_hour = hour_start + timedelta(hours=1)
+
+    hour_key = int(
+        hour_start.timestamp() // 3600
+    )
+
+    return (
+        hour_key,
+        hour_start,
+        next_hour
+    )
+
+
+def _generate_scratch_code():
+    chars = string.ascii_uppercase + string.digits
+
+    return "".join(
+        secrets.choice(chars)
+        for _ in range(12)
+    )
+
+
+def _ensure_scratch_codes():
+    (
+        hour_key,
+        hour_start,
+        next_hour
+    ) = _scratch_hour_data()
+
+    conn = connect()
+
+    try:
+        cur = conn.cursor()
+
+        # منع إنشاء مجموعة ثانية لنفس الساعة
+        cur.execute(
+            """
+            SELECT pg_advisory_xact_lock(?)
+            """,
+            (918273645,)
+        )
+
+        cur.execute(
+            """
+            SELECT COUNT(*)
+            FROM scratch_codes
+            WHERE hour_key = ?
+            """,
+            (hour_key,)
+        )
+
+        count = int(cur.fetchone()[0] or 0)
+
+        while count < SCRATCH_CODE_COUNT:
+
+            code = _generate_scratch_code()
+
+            amount = random.randint(
+                SCRATCH_MIN_AMOUNT,
+                SCRATCH_MAX_AMOUNT
+            )
+
+            cur.execute(
+                """
+                INSERT INTO scratch_codes
+                (
+                    code,
+                    amount,
+                    hour_key,
+                    expires_at
+                )
+                VALUES
+                (
+                    ?,
+                    ?,
+                    ?,
+                    ?
+                )
+                ON CONFLICT (code)
+                DO NOTHING
+                """,
+                (
+                    code,
+                    amount,
+                    hour_key,
+                    next_hour
+                )
+            )
+
+            if cur.rowcount:
+                count += 1
+
+        conn.commit()
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        try:
+            cur.close()
+        except Exception:
+            pass
+
+        conn.close()
+
+
+def _format_scratch_remaining(seconds):
+    seconds = max(0, int(seconds))
+
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60
+    seconds = seconds % 60
+
+    return (
+        f"{hours:02d}:"
+        f"{minutes:02d}:"
+        f"{seconds:02d}"
+    )
+
+
+async def show_scratch_codes(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+    if not update.message:
+        return
+
+    if (update.message.text or "").strip() != "عرض الاكواد":
+        return
+
+    if not _games_enabled():
+        return
+
+    _ensure_scratch_codes()
+
+    now = datetime.now(timezone.utc)
+
+    conn = connect()
+
+    try:
+        cur = conn.cursor()
+
+        cur.execute(
+            """
+            SELECT code
+            FROM scratch_codes
+            WHERE used = FALSE
+              AND expires_at > ?
+            ORDER BY id ASC
+            """,
+            (now,)
+        )
+
+        rows = cur.fetchall()
+
+    finally:
+        try:
+            cur.close()
+        except Exception:
+            pass
+
+        conn.close()
+
+    text = (
+        "• اكواد الكشط الموجوده بالبوت :\n\n"
+    )
+
+    for index, row in enumerate(rows, 1):
+        text += (
+            f"{index}- <code>{row[0]}</code>\n\n"
+        )
+
+    await update.message.reply_text(
+        text,
+        parse_mode="HTML"
+    )
+
+
+async def scratch_code(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+    if not update.message:
+        return
+
+    user = update.effective_user
+
+    if not user:
+        return
+
+    text = (
+        update.message.text or ""
+    ).strip()
+
+    if not text.startswith("كشط "):
+        return
+
+    code = text[5:].strip().upper()
+
+    if not code:
+        return
+
+    if not _games_enabled():
+        return
+
+    # إنشاء أكواد الساعة الحالية إن لم تكن موجودة
+    _ensure_scratch_codes()
+
+    now = datetime.now(timezone.utc)
+
+    conn = connect()
+
+    try:
+        cur = conn.cursor()
+
+        # ==================================================
+        # التحقق من وقت الكشط للمستخدم
+        # ==================================================
+
+        cur.execute(
+            """
+            SELECT last_scratched_at
+            FROM scratch_limits
+            WHERE user_id = ?
+            """,
+            (user.id,)
+        )
+
+        limit_row = cur.fetchone()
+
+        if limit_row:
+            last_scratched_at = limit_row[0]
+
+            next_allowed = (
+                last_scratched_at
+                + timedelta(
+                    seconds=SCRATCH_COOLDOWN_SECONDS
+                )
+            )
+
+            if now < next_allowed:
+                remaining = int(
+                    (
+                        next_allowed - now
+                    ).total_seconds()
+                )
+
+                await update.message.reply_text(
+                    "• مب حلى هو مايمديك تكشط اي كود الحين .\n"
+                    f"• الوقت المتبقي: "
+                    f"{_format_scratch_remaining(remaining)} ⏰"
+                )
+
+                return
+
+        # ==================================================
+        # استهلاك الكود بشكل ذري
+        # ==================================================
+
+        cur.execute(
+            """
+            UPDATE scratch_codes
+            SET
+                used = TRUE,
+                used_by = ?
+            WHERE code = ?
+              AND used = FALSE
+              AND expires_at > ?
+            RETURNING amount
+            """,
+            (
+                user.id,
+                code,
+                now
+            )
+        )
+
+        result = cur.fetchone()
+
+        if not result:
+            conn.rollback()
+
+            await update.message.reply_text(
+                "• للأسف الكود انتهى وقته او فيه شخص استعمله قبلك"
+            )
+
+            return
+
+        amount = int(result[0])
+
+        # ==================================================
+        # تسجيل وقت آخر كشط
+        # ==================================================
+
+        cur.execute(
+            """
+            INSERT INTO scratch_limits
+            (
+                user_id,
+                last_scratched_at
+            )
+            VALUES
+            (
+                ?,
+                ?
+            )
+            ON CONFLICT (user_id)
+            DO UPDATE SET
+                last_scratched_at =
+                    EXCLUDED.last_scratched_at
+            """,
+            (
+                user.id,
+                now
+            )
+        )
+
+        conn.commit()
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        try:
+            cur.close()
+        except Exception:
+            pass
+
+        conn.close()
+
+    # إضافة النقاط باستخدام نظام النقاط الموجود عندك
+    add_points(
+        user.id,
+        amount
+    )
+
+    await update.message.reply_text(
+        "• تم كشط الكود بنجاح 🎉 .\n\n"
+        f"- الاسم ↤︎ {_mention(user)}\n"
+        f"- المبلغ ↤︎ {amount} نقطة 💸 \n"
+        "-",
+        parse_mode="HTML"
+    )
 # ==================================================
 # إنشاء حساب بنكي
 # ==================================================
