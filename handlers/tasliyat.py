@@ -1,6 +1,7 @@
 import random
 import secrets
 import time
+from datetime import datetime, timezone, timedelta
 from html import escape
 
 from telegram import (
@@ -8,8 +9,12 @@ from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
 )
+from telegram.error import TelegramError
 from telegram.helpers import mention_html
-from telegram.ext import ContextTypes
+from telegram.ext import (
+    ContextTypes,
+    ApplicationHandlerStop,
+)
 
 from database import connect
 from handlers.points import (
@@ -158,6 +163,66 @@ BANKS = {
 
 _transfer_sessions = {}
 
+_transfer_message_sessions = {}
+
+
+# ==================================================
+# المنطقة الزمنية للسعودية
+# ==================================================
+
+SAUDI_TZ = timezone(timedelta(hours=3))
+
+
+# ==================================================
+# إرسال خاص إذا كان المستخدم قد بدأ البوت
+# ==================================================
+
+async def _send_private_if_possible(
+    bot,
+    user_id,
+    text,
+    reply_markup=None,
+    parse_mode=None,
+):
+    try:
+        return await bot.send_message(
+            chat_id=user_id,
+            text=text,
+            reply_markup=reply_markup,
+            parse_mode=parse_mode,
+        )
+    except TelegramError:
+        return None
+
+
+# ==================================================
+# رابط الرسالة
+# ==================================================
+
+def _message_link(message):
+    if not message or not message.chat:
+        return None
+
+    chat = message.chat
+
+    if chat.username:
+        return (
+            f"https://t.me/"
+            f"{chat.username}/"
+            f"{message.message_id}"
+        )
+
+    chat_id = str(chat.id)
+
+    if chat_id.startswith("-100"):
+        return (
+            f"https://t.me/c/"
+            f"{chat_id[4:]}/"
+            f"{message.message_id}"
+        )
+
+    return None
+
 
 # ==================================================
 # التحقق من تفعيل الألعاب
@@ -209,8 +274,10 @@ def _format_arabic_duration(seconds):
     if secs == 0:
         if minutes == 1:
             return "دقيقة"
+
         if minutes == 2:
             return "دقيقتين"
+
         if 3 <= minutes <= 10:
             names = {
                 3: "ثلاث",
@@ -222,13 +289,17 @@ def _format_arabic_duration(seconds):
                 9: "تسع",
                 10: "عشر",
             }
+
             return f"{names.get(minutes, minutes)} دقائق"
+
         return f"{minutes} دقيقة"
 
     if minutes == 1:
         minute_text = "دقيقة"
+
     elif minutes == 2:
         minute_text = "دقيقتين"
+
     elif 3 <= minutes <= 10:
         names = {
             3: "ثلاث",
@@ -240,7 +311,9 @@ def _format_arabic_duration(seconds):
             9: "تسع",
             10: "عشر",
         }
+
         minute_text = f"{names.get(minutes, minutes)} دقائق"
+
     else:
         minute_text = f"{minutes} دقيقة"
 
@@ -255,6 +328,7 @@ def _format_arabic_duration(seconds):
 def _format_clock(seconds):
     seconds = max(0, int(seconds))
     minutes, secs = divmod(seconds, 60)
+
     return f"{minutes:02d}:{secs:02d}"
 
 
@@ -301,6 +375,7 @@ def _get_cooldowns(user_id):
                 """,
                 (user_id,)
             )
+
             conn.commit()
 
             return {
@@ -538,6 +613,7 @@ async def _require_bank(update):
             await update.message.reply_text(
                 "• ماعندك حساب بنكي ."
             )
+
         return None
 
     return bank
@@ -559,16 +635,10 @@ async def create_bank_account(
     if not user or not update.message:
         return
 
-    # ==================================================
-    # تحديد صاحب الحساب
-    # ==================================================
-
     target_user = user
 
-    # إذا كان الأمر بالرد على شخص
     if update.message.reply_to_message:
 
-        # إنشاء حساب لشخص بالرد للمالك فقط
         if user.id != 8453977662:
             return
 
@@ -579,16 +649,13 @@ async def create_bank_account(
 
         target_user = replied_user
 
-    # ==================================================
-    # التحقق من وجود الحساب
-    # ==================================================
-
     if _get_bank(target_user.id):
         await update.message.reply_text(
             "• عنده حساب بنكي 😅\n\n"
             "• لعرض معلومات حسابه اكتب\n"
             "↤︎ حسابي"
         )
+
         return
 
     keyboard = [
@@ -639,10 +706,6 @@ async def bank_callback(
     if not _games_enabled():
         return
 
-    # ==================================================
-    # قراءة البيانات
-    # ==================================================
-
     parts = query.data.split(":")
 
     if len(parts) != 4:
@@ -658,19 +721,10 @@ async def bank_callback(
     if bank_key not in BANKS:
         return
 
-    # ==================================================
-    # التأكد أن صاحب الحساب هو الذي اختاره
-    # أو أن المالك هو من أنشأ الحساب له
-    # ==================================================
-
     creator = query.from_user
 
     if creator.id != target_user_id and creator.id != 8453977662:
         return
-
-    # ==================================================
-    # التحقق من وجود حساب مسبق
-    # ==================================================
 
     if _get_bank(target_user_id):
         await query.edit_message_text(
@@ -678,6 +732,7 @@ async def bank_callback(
             "• لعرض معلومات حسابه اكتب\n"
             "↤︎ حسابي"
         )
+
         return
 
     bank_info = BANKS[bank_key]
@@ -746,6 +801,7 @@ async def my_bank_account(
         await update.message.reply_text(
             "• ماعندك حساب بنكي ارسل ↢ ( انشاء حساب بنكي )"
         )
+
         return
 
     points = get_points(user.id)
@@ -783,6 +839,7 @@ async def delete_bank_account(
         await update.message.reply_text(
             "• ماعندك حساب بنكي ."
         )
+
         return
 
     conn = connect()
@@ -836,6 +893,7 @@ async def salary(
         await update.message.reply_text(
             f"• راتبك بينزل بعد {_format_arabic_duration(remaining)} ."
         )
+
         return
 
     job, emoji, amount = random.choice(JOBS)
@@ -890,6 +948,7 @@ async def tip(
             "• بس بس مب حلاو هو !!\n"
             f"↤︎ تعال بعد {_format_arabic_duration(remaining)}"
         )
+
         return
 
     amount = random.randint(100, 2000)
@@ -1090,6 +1149,7 @@ def _change_possession(user_id, item_key, amount):
                 """,
                 (user_id, item_key)
             )
+
         elif row:
             cur.execute(
                 """
@@ -1104,6 +1164,7 @@ def _change_possession(user_id, item_key, amount):
                     item_key
                 )
             )
+
         else:
             cur.execute(
                 """
@@ -1147,6 +1208,7 @@ async def my_possessions(
         await update.message.reply_text(
             "• مسكين ماعندك شي رح اشتغل على نفسك بعدين تعال 😂 ."
         )
+
         return
 
     lines = [
@@ -1186,6 +1248,7 @@ async def other_possessions(
         await message.reply_text(
             "• الرجال ماعنده شي رح تبرع له ."
         )
+
         return
 
     lines = [
@@ -1257,6 +1320,7 @@ async def buy_sell(
                 "• نقاطك ماتكفي يا مطفر\n"
                 "–"
             )
+
             return
 
         add_points(
@@ -1277,6 +1341,7 @@ async def buy_sell(
             f"• أصبحت نقاطك : ({get_points(user.id)} 💸)\n"
             f"• اكتب ( ممتلكاتي ) لمعرفة مملكاتك"
         )
+
         return
 
     current_quantity = _get_possession_quantity(
@@ -1288,12 +1353,14 @@ async def buy_sell(
         await message.reply_text(
             f"• انت اصلًا ماعندك {item_key} تاكد من ممتلكاتك ."
         )
+
         return
 
     if current_quantity < quantity:
         await message.reply_text(
             f"• عندك {current_quantity} من ({item_key}) فقط ."
         )
+
         return
 
     sell_value = (total * 50) // 100
@@ -1373,12 +1440,14 @@ async def gift(
         await message.reply_text(
             f"• انت اصلًا ماعندك {item_key} تاكد من ممتلكاتك ."
         )
+
         return
 
     if owned < quantity:
         await message.reply_text(
             f"• عندك {owned} من ({item_key}) فقط ."
         )
+
         return
 
     _change_possession(
@@ -1399,6 +1468,21 @@ async def gift(
         f"• نوع الهدية : ({item_key})\n"
         f"• العدد : {quantity}\n"
         f"المستلم : {_mention(recipient)}",
+        parse_mode="HTML"
+    )
+
+    # ==================================================
+    # إشعار خاص للمستلم
+    # ==================================================
+
+    await _send_private_if_possible(
+        context.bot,
+        recipient.id,
+        "• وصلتك هدية :\n\n"
+        f"• الاهداء من : {_mention(sender)}\n"
+        f"• نوع الهدية : ({item_key})\n"
+        f"• العدد : {quantity}\n"
+        "-",
         parse_mode="HTML"
     )
 
@@ -1429,6 +1513,7 @@ async def rob(
         await message.reply_text(
             "• شوفو الغبي يبي يزرف نفسه 😭😭 ."
         )
+
         return
 
     robber_bank = _get_bank(robber.id)
@@ -1437,6 +1522,7 @@ async def rob(
         await message.reply_text(
             "• ماعندك حساب بنكي:"
         )
+
         return
 
     victim_bank = _get_bank(victim.id)
@@ -1445,6 +1531,7 @@ async def rob(
         await message.reply_text(
             "• ماعنده حساب بنكي"
         )
+
         return
 
     now = _now()
@@ -1457,6 +1544,7 @@ async def rob(
             "• انحش يارجال الشرطة تدور عليك 🚓\n"
             f"• يمديك تزرف بعد {_format_clock(remaining)} دقيقة ⏰"
         )
+
         return
 
     victim_cooldowns = _get_cooldowns(victim.id)
@@ -1468,6 +1556,7 @@ async def rob(
             "• المسكين توه مزروف ارحمه شوي 😭 .\n"
             f"• يمديك تزرفه بعد {_format_clock(remaining)} دقيقة"
         )
+
         return
 
     victim_points = get_points(victim.id)
@@ -1522,8 +1611,53 @@ async def rob(
         now + 600
     )
 
-    await message.reply_text(
+    # ==================================================
+    # رسالة الزرف في القروب
+    # ==================================================
+
+    sent_message = await message.reply_text(
         f"• خذ يالحرامي زرفته {amount} نقطة 💵 ."
+    )
+
+    # ==================================================
+    # إشعار خاص للمزروف
+    # ==================================================
+
+    now_dt = datetime.fromtimestamp(
+        now,
+        SAUDI_TZ
+    )
+
+    date_text = now_dt.strftime("%Y/%m/%d")
+    time_text = now_dt.strftime("%I:%M%p").lstrip("0")
+
+    group_name = message.chat.title or "القروب"
+
+    message_url = _message_link(sent_message)
+
+    keyboard = None
+
+    if message_url:
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(
+                    group_name,
+                    url=message_url
+                )
+            ]
+        ])
+
+    await _send_private_if_possible(
+        context.bot,
+        victim.id,
+        "• الحق على حلالك هههههه\n"
+        f"• الشخص ذا : {_mention(robber)}\n"
+        f"• زرفك {amount} نقطة 💸\n"
+        f"• التاريخ ↤︎ {date_text}\n"
+        f"• الساعة ↤︎ {time_text}\n"
+        "-",
+        reply_markup=keyboard,
+        parse_mode="HTML"
     )
 
 
@@ -1569,6 +1703,7 @@ async def transfer(
             "• نقاطك ماتكفي يا مطفر\n"
             "–"
         )
+
         return
 
     _transfer_sessions[user.id] = {
@@ -1624,6 +1759,7 @@ async def transfer_account_number(
             "• مالقيت رقم الحساب البنكي\n"
             "–"
         )
+
         return
 
     sender_bank = _get_bank(user.id)
@@ -1633,6 +1769,7 @@ async def transfer_account_number(
             user.id,
             None
         )
+
         return
 
     if recipient_bank["user_id"] == user.id:
@@ -1640,6 +1777,7 @@ async def transfer_account_number(
             user.id,
             None
         )
+
         return
 
     if get_points(user.id) < amount:
@@ -1652,17 +1790,21 @@ async def transfer_account_number(
             "• نقاطك ماتكفي يا مطفر\n"
             "–"
         )
+
         return
 
     if sender_bank["bank"] == recipient_bank["bank"]:
         fee_percent = 5
         received = (amount * 95) // 100
+
         fee_text = (
             f"خصمت 5% لبنك {recipient_bank['bank']}"
         )
+
     else:
         fee_percent = 10
         received = (amount * 90) // 100
+
         fee_text = "خصمت 10% من بنك لبنك"
 
     add_points(
@@ -1697,6 +1839,178 @@ async def transfer_account_number(
         f"المبلغ : {received} نقطة 💵",
         parse_mode="HTML"
     )
+
+    # ==================================================
+    # إشعار خاص للمستلم
+    # ==================================================
+
+    recipient_id = recipient_bank["user_id"]
+
+    _transfer_message_sessions.pop(
+        recipient_id,
+        None
+    )
+
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(
+                "ارسل رسالة للمُرسل 🌹",
+                callback_data=(
+                    f"tasliyat:transfer_message:"
+                    f"{recipient_id}:{user.id}"
+                )
+            )
+        ]
+    ])
+
+    await _send_private_if_possible(
+        context.bot,
+        recipient_id,
+        f"حوالة واردة من البنك ↢ ( {sender_bank['bank']} )\n\n"
+        f"المرسل : {_mention(user)}\n"
+        f"الحساب رقم : <code>{sender_bank['account_number']}</code>\n"
+        f"نوع البطاقة : {sender_bank['card_type']}\n"
+        f"المبلغ : {received} نقطة 💸",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+
+
+# ==================================================
+# Callback إرسال رسالة للمرسل
+# ==================================================
+
+async def transfer_message_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+    query = update.callback_query
+
+    if not query or not query.data:
+        return
+
+    parts = query.data.split(":")
+
+    if len(parts) != 4:
+        return
+
+    try:
+        recipient_id = int(parts[2])
+        sender_id = int(parts[3])
+    except ValueError:
+        return
+
+    if query.from_user.id != recipient_id:
+        await query.answer()
+        return
+
+    _transfer_message_sessions[recipient_id] = sender_id
+
+    await query.answer()
+
+    if query.message:
+        await query.message.reply_text(
+            "• تمام، ارسل الرسالة وبرسلها للمرسل فورًا ."
+        )
+
+
+# ==================================================
+# استقبال رسالة المستلم وإرسالها للمرسل
+# يدعم النص والصوت والفيديو والصورة والملصق و GIF وغيرها
+# ==================================================
+
+async def transfer_message_receiver(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+    if not _games_enabled():
+        return
+
+    message = update.message
+    user = update.effective_user
+    chat = update.effective_chat
+
+    if not message or not user or not chat:
+        return
+
+    if chat.type != "private":
+        return
+
+    sender_id = _transfer_message_sessions.pop(
+        user.id,
+        None
+    )
+
+    if not sender_id:
+        return
+
+    # ==================================================
+    # الرسائل النصية
+    # ==================================================
+
+    if message.text:
+        notification = (
+            "• جتك رسالة من الشخص الي حولت له🌹\n"
+            f"• اسمه: {_mention(user)}\n"
+            f"• الرسالة: {escape(message.text)}"
+        )
+
+        try:
+            await context.bot.send_message(
+                chat_id=sender_id,
+                text=notification,
+                parse_mode="HTML"
+            )
+
+        except TelegramError:
+            raise ApplicationHandlerStop()
+
+        await message.reply_text(
+            "• تم ارسال الرسالة بنجاح ✅ ."
+        )
+
+        raise ApplicationHandlerStop()
+
+    # ==================================================
+    # الرسائل التي تحتوي على Caption
+    # ==================================================
+
+    caption = message.caption
+
+    notification = (
+        "• جتك رسالة من الشخص الي حولت له🌹\n"
+        f"• اسمه: {_mention(user)}\n"
+        "• الرسالة:"
+    )
+
+    if caption:
+        notification += f" {escape(caption)}"
+
+    # ==================================================
+    # إرسال الإشعار + نسخ الرسالة نفسها
+    # ==================================================
+
+    try:
+        await context.bot.send_message(
+            chat_id=sender_id,
+            text=notification,
+            parse_mode="HTML"
+        )
+
+        await context.bot.copy_message(
+            chat_id=sender_id,
+            from_chat_id=user.id,
+            message_id=message.message_id,
+        )
+
+    except TelegramError:
+        raise ApplicationHandlerStop()
+
+    await message.reply_text(
+        "• تم ارسال الرسالة بنجاح ✅ ."
+    )
+
+    raise ApplicationHandlerStop()
 
 
 # ==================================================
@@ -1741,12 +2055,14 @@ async def invest(
             "• مايمديك تستثمر الحين\n"
             f"• تعال بعد {_format_arabic_duration(remaining)}"
         )
+
         return
 
     parts = message.text.strip().split()
 
     if len(parts) == 1:
         amount = get_points(user.id)
+
     elif len(parts) == 2:
         if parts[1] == "نقاطي":
             amount = get_points(user.id)
@@ -1755,6 +2071,7 @@ async def invest(
                 amount = int(parts[1])
             except ValueError:
                 return
+
     else:
         return
 
@@ -1766,6 +2083,7 @@ async def invest(
             "• نقاطك ماتكفي يا مطفر\n"
             "–"
         )
+
         return
 
     _set_cooldown(
@@ -1785,6 +2103,7 @@ async def invest(
             "• مبلغ الربح ↢ ( 0 )\n"
             f"• نقاطك صارت ↢ ( {current} )"
         )
+
         return
 
     percent = _investment_percent()
@@ -1834,12 +2153,14 @@ async def luck(
             "• مايمديك تسوي حظ الحين\n"
             f"• تعال بعد {_format_arabic_duration(remaining)}"
         )
+
         return
 
     parts = message.text.strip().split()
 
     if len(parts) == 1:
         amount = get_points(user.id)
+
     elif len(parts) == 2:
         if parts[1] == "نقاطي":
             amount = get_points(user.id)
@@ -1848,6 +2169,7 @@ async def luck(
                 amount = int(parts[1])
             except ValueError:
                 return
+
     else:
         return
 
@@ -1861,6 +2183,7 @@ async def luck(
             "• نقاطك ماتكفي يا مطفر\n"
             "–"
         )
+
         return
 
     _set_cooldown(
@@ -1882,6 +2205,7 @@ async def luck(
             f"• نقاطك قبل ↢ ( {before} نقطة 💵 )\n"
             f"• نقاطك الحين ↢ ( {after} نقطة 💵 )"
         )
+
         return
 
     add_points(
