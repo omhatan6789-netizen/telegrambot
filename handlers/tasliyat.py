@@ -717,9 +717,10 @@ async def bank_callback(
 
     await query.edit_message_text(
         f"• سويت لك حساب في البنك ( {bank_info['name']} 💳 )\n"
-        f"• رقم حسابك ↢ ( {account_number} )\n"
+        f"• رقم حسابك ↢ ( <code>{account_number}</code> )\n"
         f"• نوع البطاقة ↢ ( {bank_info['card']} )\n"
-        f"• نقاطك ↢ ( {points} 💵 )"
+        f"• نقاطك ↢ ( {points} 💵 )",
+        parse_mode="HTML"
     )
 
 
@@ -751,7 +752,7 @@ async def my_bank_account(
 
     await update.message.reply_text(
         f"• الاسم ↢ {_mention(user)}\n"
-        f"• الحساب ↢ {bank['account_number']}\n"
+        f"• الحساب ↢ <code>{bank['account_number']}</code>\n"
         f"• بنك ↢ ( {bank['bank']} )\n"
         f"• نوع ↢ ( {bank['card_type']} )\n"
         f"• الرصيد ↢ ( {points} نقطة 💵 )\n"
@@ -1686,10 +1687,10 @@ async def transfer_account_number(
     await message.reply_text(
         f"حوالة صادرة من البنك ↢ ( {sender_bank['bank']} )\n"
         f"المرسل : {_mention(user)}\n"
-        f"الحساب رقم : {sender_bank['account_number']}\n"
+        f"الحساب رقم : <code>{sender_bank['account_number']}</code>\n"
         f"نوع البطاقة : {sender_bank['card_type']}\n"
         f"المستلم : {recipient_mention}\n"
-        f"الحساب رقم : {recipient_bank['account_number']}\n"
+        f"الحساب رقم : <code>{recipient_bank['account_number']}</code>\n"
         f"البنك : {recipient_bank['bank']}\n"
         f"نوع البطاقة : {recipient_bank['card_type']}\n"
         f"{fee_text}\n"
