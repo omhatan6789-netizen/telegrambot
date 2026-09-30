@@ -327,6 +327,8 @@ from handlers.tasliyat import (
     rob,
     transfer,
     transfer_account_number,
+    transfer_message_callback,
+    transfer_message_receiver,
     invest,
     luck,
 )
@@ -649,6 +651,15 @@ def main():
             send_command,
         ),
         group=-30,
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.PRIVATE
+            & ~filters.COMMAND,
+            transfer_message_receiver,
+        ),
+        group=-29,
     )
     app.add_handler(
         MessageHandler(
@@ -1834,6 +1845,15 @@ def main():
         CallbackQueryHandler(
             bank_callback,
             pattern=r"^tasliyat:bank:"
+        ),
+        group=-4
+    )
+
+
+    app.add_handler(
+        CallbackQueryHandler(
+            transfer_message_callback,
+            pattern=r"^tasliyat:transfer_message:"
         ),
         group=-4
     )
