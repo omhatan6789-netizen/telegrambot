@@ -1028,6 +1028,43 @@ def create_tables():
         )
         """)
 
+
+        # ==================================================
+        # أكواد الكشط
+        # ==================================================
+
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS scratch_codes
+            (
+                id SERIAL PRIMARY KEY,
+                code VARCHAR(12) UNIQUE NOT NULL,
+                amount BIGINT NOT NULL,
+                hour_key BIGINT NOT NULL,
+                expires_at TIMESTAMPTZ NOT NULL,
+                used BOOLEAN NOT NULL DEFAULT FALSE,
+                used_by BIGINT
+            )
+            """
+        )
+
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS scratch_limits
+            (
+                user_id BIGINT PRIMARY KEY,
+                last_scratched_at TIMESTAMPTZ NOT NULL
+            )
+            """
+        )
+
+        cur.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_scratch_codes_active
+            ON scratch_codes (hour_key, used, expires_at)
+            """
+        )
+
         # ==================================================
         # 💰 التسليات - الممتلكات
         # ==================================================
