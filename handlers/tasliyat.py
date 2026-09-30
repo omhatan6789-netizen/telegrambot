@@ -838,7 +838,12 @@ async def scratch_code(
     if not text.startswith("كشط "):
         return
 
-    code = text[5:].strip().upper()
+    parts = text.split(maxsplit=1)
+
+    if len(parts) != 2:
+        return
+
+    code = parts[1].strip().upper()
 
     if not code:
         return
