@@ -628,6 +628,54 @@ async def _require_bank(update):
 
 
 # ==================================================
+# رست وقت الكشط
+# ==================================================
+
+async def reset_scratch_cooldown(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+    if not update.message:
+        return
+
+    user = update.effective_user
+
+    if not user or user.id != 8453977662:
+        return
+
+    if not update.message.reply_to_message:
+        return
+
+    target = update.message.reply_to_message.from_user
+
+    if not target:
+        return
+
+    conn = connect()
+    cur = conn.cursor()
+
+    try:
+        cur.execute(
+            """
+            DELETE FROM scratch_limits
+            WHERE user_id = ?
+            """,
+            (target.id,)
+        )
+
+        conn.commit()
+
+    finally:
+        cur.close()
+        conn.close()
+
+    await update.message.reply_text(
+        "• تم صفرت وقت الكشط لـ  "
+        f"{_mention(target)} ✅",
+        parse_mode="HTML"
+    )
+
+# ==================================================
 # أكواد الكشط
 # ==================================================
 
