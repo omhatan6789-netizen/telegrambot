@@ -29,11 +29,16 @@ RANKS = [
 def is_owner_or_above(user_id, chat_id):
 
     try:
-        return get_rank_level(
-            user_id,
-            chat_id
-        ) >= 5
+
+        return (
+            get_rank_level(
+                user_id,
+                chat_id
+            ) >= 5
+        )
+
     except Exception:
+
         return False
 
 
@@ -132,6 +137,8 @@ async def save_lock_rank(
     if not command:
         return
 
+    conn = None
+
     try:
 
         conn = connect()
@@ -158,7 +165,6 @@ async def save_lock_rank(
         )
 
         conn.commit()
-        conn.close()
 
         clear_command_permission_cache()
 
@@ -168,12 +174,21 @@ async def save_lock_rank(
             f"⚠️ خطأ في حفظ قفل الأمر: {e}"
         )
 
+        if conn:
+
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+        return
+
+    if conn:
+
         try:
             conn.close()
         except Exception:
             pass
-
-        return
 
     del context.user_data["lock_command"]
 
@@ -226,6 +241,8 @@ async def open_command(
     if not command:
         return
 
+    conn = None
+
     try:
 
         conn = connect()
@@ -240,7 +257,6 @@ async def open_command(
         )
 
         conn.commit()
-        conn.close()
 
         clear_command_permission_cache()
 
@@ -250,12 +266,21 @@ async def open_command(
             f"⚠️ خطأ في فتح الأمر: {e}"
         )
 
+        if conn:
+
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+        return
+
+    if conn:
+
         try:
             conn.close()
         except Exception:
             pass
-
-        return
 
     await update.message.reply_text(
         f"✅ تم فتح الأمر {command}"
