@@ -382,7 +382,7 @@ async def command_guard(
     # الأمر مقفول
     # ==================================================
 
-    if not allowed:
+    if required is not None and not allowed:
 
         await update.message.reply_text(
             command_lock_message(required)
