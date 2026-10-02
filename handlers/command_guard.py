@@ -7,9 +7,6 @@ from telegram.ext import (
 from handlers.roles import (
     check_command_permission
 )
-# ==================================================
-# الأوامر التي تحتاج أكثر من كلمة
-# ==================================================
 MULTI_WORD_COMMANDS = [
     "كشف المجموعة",
     "كشف القيود",
@@ -19,19 +16,16 @@ MULTI_WORD_COMMANDS = [
     "كتم عام",
     "قفل امر",
     "فتح امر",
-    # الردود المميزة
     "اضف رد مميز",
     "تعديل رد مميز",
     "مسح رد مميز",
     "الردود المميزة",
     "مسح الردود المميزة",
-    # الردود العادية
     "اضف رد",
     "تعديل رد",
     "مسح رد",
     "الردود",
     "مسح الردود",
-    # الألعاب
     "اضف لعبة",
     "الالعاب",
     "اضف سؤال",
@@ -41,7 +35,6 @@ MULTI_WORD_COMMANDS = [
     "تعطيل لعبة",
     "تفعيل الالعاب",
     "تعطيل الالعاب",
-    # الرتب
     "رفع Dev",
     "تنزيل Dev",
     "رفع المالك",
@@ -54,21 +47,13 @@ MULTI_WORD_COMMANDS = [
     "تنزيل ادمن",
     "رفع مميز",
     "تنزيل مميز",
-    # أوامر الإدارة
     "اوامر الادمن",
     "اوامر المطور",
-    # النقاط
     "نقاطي",
     "سباق الكلمات",
     "انهاء سباق الكلمات",
 ]
-# ==================================================
-# الجلسات التي تنتظر إدخال المستخدم
-# ==================================================
-def is_waiting_for_input(
-    context,
-    user_id
-):
+def is_waiting_for_input(context, user_id):
     waiting_keys = (
         "add_reply",
         "edit_reply",
@@ -127,30 +112,20 @@ def is_waiting_for_input(
             color_sessions
         )
         for session in color_sessions.values():
-            if (
-                session.get("user_id")
-                == user_id
-            ):
+            if session.get("user_id") == user_id:
                 return True
     except Exception:
         pass
     return False
-# ==================================================
-# استخراج اسم الأمر
-# ==================================================
 def get_command_name(text):
-    text = (
-        text or ""
-    ).strip()
+    text = (text or "").strip()
     if not text:
         return ""
     matches = []
     for command in MULTI_WORD_COMMANDS:
         if (
             text == command
-            or text.startswith(
-                command + " "
-            )
+            or text.startswith(command + " ")
         ):
             matches.append(command)
     if matches:
@@ -159,9 +134,6 @@ def get_command_name(text):
             key=len
         )
     return text.split()[0]
-# ==================================================
-# رسالة منع قفل الأمر
-# ==================================================
 def command_lock_message(required):
     if required == "Dev":
         return "• اعذرني هذا الامر للـ Dev فقط ."
@@ -176,12 +148,9 @@ def command_lock_message(required):
     if required == "مميز":
         return "• اعذرني بس هذا الامر للمميز وفوق فقط ."
     return "• اعذرني بس ما عندك الصلاحية لهذا الامر ."
-# ==================================================
-# حارس الأوامر
-# ==================================================
 async def command_guard(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
+    update,
+    context
 ):
     if not update.message:
         return
@@ -197,7 +166,7 @@ async def command_guard(
     user_id = user.id
     chat_id = chat.id
     # ==================================================
-    # جلسة متعددة الخطوات
+    # المستخدم داخل خطوة إدخال
     # ==================================================
     if is_waiting_for_input(
         context,
@@ -215,31 +184,25 @@ async def command_guard(
     ):
         return
     # ==================================================
-    # استخراج الأمر
+    # قفل / فتح الأمر
     # ==================================================
+    if (
+        text.startswith("قفل امر ")
+        or text.startswith("فتح امر ")
+    ):
+        return
     command = get_command_name(text)
     if not command:
         return
     # ==================================================
-    # قفل وفتح الأوامر
-    # يتم التعامل معها داخل command_lock.py
-    # ==================================================
-    if command in (
-        "قفل امر",
-        "فتح امر",
-    ):
-        return
-    # ==================================================
-    # فحص قفل الأمر
+    # فحص قفل الأمر فقط
     # ==================================================
     try:
-        allowed, required = (
-            await asyncio.to_thread(
-                check_command_permission,
-                user_id,
-                command,
-                chat_id
-            )
+        allowed, required = await asyncio.to_thread(
+            check_command_permission,
+            user_id,
+            command,
+            chat_id
         )
     except Exception as e:
         print(
@@ -247,7 +210,7 @@ async def command_guard(
         )
         return
     # ==================================================
-    # الأمر مقفول والمستخدم لا يملك الرتبة
+    # الأمر مقفول والرتبة غير كافية
     # ==================================================
     if (
         required is not None
@@ -259,4 +222,10 @@ async def command_guard(
             )
         )
         raise ApplicationHandlerStop()
+    # ==================================================
+    # إذا كان الأمر غير مقفول
+    # أو الرتبة مسموحة
+    #
+    # نرجع بدون إيقاف المعالجات
+    # ==================================================
     return
