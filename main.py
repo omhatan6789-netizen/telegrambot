@@ -844,7 +844,7 @@ def main():
             filters.TEXT & ~filters.COMMAND,
             command_guard
         ),
-        group=-19
+        group=-22
     )
     # ==================================================
     # الكتم
