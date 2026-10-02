@@ -34,7 +34,15 @@ from games.penalties import (
     end_penalty_game,
 )
 from handlers.delete_messages import delete_messages
-from games.big_game_join import join_big_game_router
+
+from games.big_game_join import (
+    join_big_game_router,
+    leave_big_game_router,
+    begin_big_game_router,
+    continue_big_game_router,
+    end_big_game_router,
+)
+
 from games.word_race import (
     start_word_race,
     join_word_race,
@@ -1903,6 +1911,55 @@ def main():
         ),
         group=-4,
     )
+
+    # ==================================================
+    # 🎮 أوامر الألعاب الموحدة
+    # ==================================================
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(r"^دخول$"),
+            join_big_game_router
+        ),
+        group=-4
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(r"^\.خروج$"),
+            leave_big_game_router
+        ),
+        group=-4
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(r"^\.ابدا$"),
+            begin_big_game_router
+        ),
+        group=-4
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(r"^\.كمل$"),
+            continue_big_game_router
+        ),
+        group=-4
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(r"^\.انهاء$"),
+            end_big_game_router
+        ),
+        group=-4
+    )
     # ==================================================
     # 🐎 سباق الكلمات
     # ==================================================
@@ -1914,14 +1971,7 @@ def main():
         ),
         group=-4
     )
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & WordRaceActiveFilter([r"^خروج$"]),
-            leave_word_race
-        ),
-        group=-4
-    )
+    
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -1948,32 +1998,8 @@ def main():
         ),
         group=-4
     )
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & WordRaceActiveFilter([r"^\.ابدا$"]),
-            begin_word_race
-        ),
-        group=-4
-    )
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & WordRaceActiveFilter([r"^\.كمل$"]),
-            continue_word_race
-        ),
-        group=-4
-    )
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & WordRaceActiveFilter(
-                [r"^انهاء سباق الكلمات$"]
-            ),
-            end_word_race
-        ),
-        group=-4
-    )
+    
+    
     app.add_handler(
         CallbackQueryHandler(
             word_race_callback,
@@ -2212,14 +2238,6 @@ def main():
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
-            & filters.Regex(r"^خروج$"),
-            leave_image_quiz
-        ),
-        group=-6
-    )
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS
             & filters.Regex(r"^\.اضافة$"),
             add_image_quiz_player
         ),
@@ -2233,30 +2251,7 @@ def main():
         ),
         group=-6
     )
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.Regex(r"^\.ابدا$"),
-            begin_image_quiz
-        ),
-        group=-6
-    )
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.Regex(r"^\.كمل$"),
-            continue_image_quiz
-        ),
-        group=-6
-    )
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.Regex(r"^\.انهاء$"),
-            end_image_quiz
-        ),
-        group=-6
-    )
+    
     app.add_handler(
         CallbackQueryHandler(
             image_quiz_callback,
@@ -2284,38 +2279,7 @@ def main():
         ),
         group=-4
     )
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.Regex(r"^دخول$"),
-            join_big_game_router
-        ),
-        group=-4
-    )
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.Regex(r"^\.خروج$"),
-            leave_liars_table
-        ),
-        group=-4
-    )
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.Regex(r"^\.ابدا$"),
-            begin_liars_table
-        ),
-        group=-4
-    )
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.Regex(r"^انهاء طاولة الكذب$"),
-            end_liars_table
-        ),
-        group=-4
-    )
+    
     app.add_handler(
         CallbackQueryHandler(
             liars_table_callback,
@@ -2340,20 +2304,7 @@ def main():
         ),
         group=0
     )
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(r"^\.خروج$"),
-            leave_liar_game
-        ),
-        group=-3
-    )
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(r"^\.ابدا$"),
-            begin_liar_game
-        ),
-        group=-3
-    )
+    
     app.add_handler(
         MessageHandler(
             filters.Regex(r"^\.التصويت$"),
@@ -2361,13 +2312,7 @@ def main():
         ),
         group=-3
     )
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(r"^انهاء الكذاب$"),
-            end_liar_game
-        ),
-        group=0
-    )
+   
     app.add_handler(
         CallbackQueryHandler(
             liar_lobby_callback,
@@ -2422,27 +2367,7 @@ def main():
         ),
         group=0
     )
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(r"^\.ابدا$"),
-            begin_penalties
-        ),
-        group=0
-    )
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(r"^\.كمل$"),
-            continue_penalties
-        ),
-        group=0
-    )
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(r"^انهاء بلنتيات$"),
-            end_penalty_game
-        ),
-        group=0
-    )
+    
     app.add_handler(
         CallbackQueryHandler(
             distribution_callback,
@@ -2467,20 +2392,7 @@ def main():
         ),
         group=0
     )
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(r"^ابدا$"),
-            begin_hide_game
-        ),
-        group=0
-    )
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(r"^انهاء غميضة$"),
-            end_hide_game
-        ),
-        group=0
-    )
+    
     app.add_handler(
         CallbackQueryHandler(
             hide_number_callback,
