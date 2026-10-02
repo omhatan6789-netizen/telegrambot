@@ -10,10 +10,6 @@ from handlers.roles import (
     check_command_permission
 )
 
-from permissions import (
-    check_user_permission
-)
-
 
 # ==================================================
 # الأوامر التي تحتاج أكثر من كلمة
@@ -391,45 +387,15 @@ async def command_guard(
         raise ApplicationHandlerStop()
 
     # ==================================================
-    # فحص الصلاحية الأصلية للأمر
+    # الأمر مقفول والمستخدم لا يملك الرتبة
     # ==================================================
 
-    try:
-
-        special_permission = (
-            await asyncio.to_thread(
-                check_user_permission,
-                chat_id,
-                user_id,
-                command
-            )
-        )
-
-    except Exception as e:
-
-        print(
-            f"⚠️ خطأ في فحص صلاحية المستخدم: {e}"
-        )
-
-        special_permission = None
-
-    # ==================================================
-    # ممنوع
-    # ==================================================
-
-    if special_permission is False:
+    if required is not None and not allowed:
 
         await update.message.reply_text(
-            "🚫 ليس لديك صلاحية استخدام هذا الأمر."
+            command_lock_message(required)
         )
 
         raise ApplicationHandlerStop()
-
-    # ==================================================
-    # سماح خاص
-    # ==================================================
-
-    if special_permission is True:
-        return
 
     return
