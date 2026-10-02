@@ -2,7 +2,10 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from database import connect
-from handlers.roles import clear_command_permission_cache
+from handlers.roles import (
+    clear_command_permission_cache,
+    get_rank_level,
+)
 
 
 # ==================================================
@@ -20,6 +23,21 @@ RANKS = [
 
 
 # ==================================================
+# التحقق من صلاحية المالك
+# ==================================================
+
+def is_owner_or_above(user_id, chat_id):
+
+    try:
+        return get_rank_level(
+            user_id,
+            chat_id
+        ) >= 5
+    except Exception:
+        return False
+
+
+# ==================================================
 # قفل أمر
 # ==================================================
 
@@ -29,6 +47,27 @@ async def lock_command(
 ):
 
     if not update.message:
+        return
+
+    user = update.effective_user
+    chat = update.effective_chat
+
+    if not user or not chat:
+        return
+
+    # ==================================================
+    # المالك وفوق فقط
+    # ==================================================
+
+    if not is_owner_or_above(
+        user.id,
+        chat.id
+    ):
+
+        await update.message.reply_text(
+            "• اعذرني بس هذا الامر للمالك وفوق فقط ."
+        )
+
         return
 
     text = update.message.text or ""
@@ -51,17 +90,15 @@ async def lock_command(
 
     context.user_data["lock_command"] = command
 
-    ranks_text = "\n".join(
-        f"{i}- {rank}"
-        if i == 1
-        else f"{i} - {rank}"
-        for i, rank in enumerate(RANKS, 1)
-    )
-
     await update.message.reply_text(
-        "• حسنًا اختر الرتبة التي تريدها :\n\n"
-        f"```\n{ranks_text}\n```\n\n"
-        f"- سيتم وضع امر ↤︎ `{command}` له فقط",
+        "• حسنًا اختر الرتبة التي تريدها :\n"
+        f"1 - `{RANKS[0]}`\n"
+        f"2 - `{RANKS[1]}`\n"
+        f"3 - `{RANKS[2]}`\n"
+        f"4 - `{RANKS[3]}`\n"
+        f"5 - `{RANKS[4]}`\n"
+        f"6 - `{RANKS[5]}`\n\n\n"
+        f"- سيتم وضع امر ↤︎ {command} له فقط",
         parse_mode="Markdown"
     )
 
@@ -78,41 +115,70 @@ async def save_lock_rank(
     if "lock_command" not in context.user_data:
         return
 
-    if not update.message or not update.message.text:
+    if not update.message:
         return
 
-    rank = update.message.text.strip()
+    rank = (
+        update.message.text or ""
+    ).strip()
 
     if rank not in RANKS:
         return
 
-    command = context.user_data["lock_command"]
-
-    conn = connect()
-    cur = conn.cursor()
-
-    cur.execute(
-        """
-        INSERT OR REPLACE INTO command_locks
-        (command, rank)
-        VALUES (?, ?)
-        """,
-        (
-            command,
-            rank
-        )
+    command = context.user_data.get(
+        "lock_command"
     )
 
-    conn.commit()
-    conn.close()
+    if not command:
+        return
+
+    try:
+
+        conn = connect()
+        cur = conn.cursor()
+
+        cur.execute(
+            """
+            DELETE FROM command_locks
+            WHERE command=?
+            """,
+            (command,)
+        )
+
+        cur.execute(
+            """
+            INSERT INTO command_locks
+            (command, rank)
+            VALUES (?, ?)
+            """,
+            (
+                command,
+                rank
+            )
+        )
+
+        conn.commit()
+        conn.close()
+
+        clear_command_permission_cache()
+
+    except Exception as e:
+
+        print(
+            f"⚠️ خطأ في حفظ قفل الأمر: {e}"
+        )
+
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+        return
 
     del context.user_data["lock_command"]
 
-    clear_command_permission_cache()
-
     await update.message.reply_text(
-        f"✅ تم قفل الأمر `{command}` على رتبة `{rank}` وفوق",
-        parse_mode="Markdown"
+        f"✅ تم قفل الأمر {command} على رتبة {rank} وفوق"
     )
 
 
@@ -128,6 +194,27 @@ async def open_command(
     if not update.message:
         return
 
+    user = update.effective_user
+    chat = update.effective_chat
+
+    if not user or not chat:
+        return
+
+    # ==================================================
+    # المالك وفوق فقط
+    # ==================================================
+
+    if not is_owner_or_above(
+        user.id,
+        chat.id
+    ):
+
+        await update.message.reply_text(
+            "• اعذرني بس هذا الامر للمالك وفوق فقط ."
+        )
+
+        return
+
     text = update.message.text or ""
 
     command = text.replace(
@@ -139,23 +226,37 @@ async def open_command(
     if not command:
         return
 
-    conn = connect()
-    cur = conn.cursor()
+    try:
 
-    cur.execute(
-        """
-        DELETE FROM command_locks
-        WHERE command=?
-        """,
-        (command,)
-    )
+        conn = connect()
+        cur = conn.cursor()
 
-    conn.commit()
-    conn.close()
+        cur.execute(
+            """
+            DELETE FROM command_locks
+            WHERE command=?
+            """,
+            (command,)
+        )
 
-    clear_command_permission_cache()
+        conn.commit()
+        conn.close()
+
+        clear_command_permission_cache()
+
+    except Exception as e:
+
+        print(
+            f"⚠️ خطأ في فتح الأمر: {e}"
+        )
+
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+        return
 
     await update.message.reply_text(
-        f"✅ تم فتح الأمر `{command}`",
-        parse_mode="Markdown"
+        f"✅ تم فتح الأمر {command}"
     )
