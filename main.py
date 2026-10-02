@@ -1215,7 +1215,7 @@ def main():
             filters.TEXT & ~filters.COMMAND,
             save_lock_rank
         ),
-        group=-4
+        group=-13
     )
     # ==================================================
     # الهمسات - /start
