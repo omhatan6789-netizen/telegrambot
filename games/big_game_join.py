@@ -23,6 +23,12 @@ from games.word_race import (
     join_word_race,
 )
 
+from games.image_quiz.image_quiz import (
+    IMAGE_QUIZZES,
+    join_image_quiz,
+)
+
+
 async def join_big_game_router(update, context):
 
     chat = update.effective_chat
@@ -31,6 +37,19 @@ async def join_big_game_router(update, context):
         return
 
     chat_id = chat.id
+
+    # ==================================================
+    # توقع الصورة 🖼️
+    # ==================================================
+
+    if chat_id in IMAGE_QUIZZES:
+
+        await join_image_quiz(
+            update,
+            context
+        )
+
+        return
 
     # ==================================================
     # طاولة الكذب 🍻
@@ -84,10 +103,17 @@ async def join_big_game_router(update, context):
 
         return
 
-
+    # ==================================================
     # سباق الكلمات
+    # ==================================================
+
     if chat_id in RACES:
-        await join_word_race(update, context)
+
+        await join_word_race(
+            update,
+            context
+        )
+
         return
 
     return
