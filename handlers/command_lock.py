@@ -2,56 +2,78 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from database import connect
-from handlers.roles import get_rank
+from handlers.roles import clear_command_permission_cache
 
+
+# ==================================================
+# الرتب المتاحة لقفل الأوامر
+# ==================================================
 
 RANKS = [
+    "Dev",
     "المالك",
     "نائب المالك",
     "ادمن اساسي",
     "ادمن",
-    "مميز"
+    "مميز",
 ]
 
 
-async def lock_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ==================================================
+# قفل أمر
+# ==================================================
+
+async def lock_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     if not update.message:
         return
 
-    text = update.message.text
+    text = update.message.text or ""
 
-    command = text.replace("قفل امر ", "").strip()
+    command = text.replace(
+        "قفل امر ",
+        "",
+        1
+    ).strip()
 
     if not command:
-        await update.message.reply_text(
-            "❌ اكتب اسم الأمر\nمثال:\nقفل امر اضف رد"
-        )
-        return
 
+        await update.message.reply_text(
+            "❌ اكتب اسم الأمر\n"
+            "مثال:\n"
+            "قفل امر اضف رد"
+        )
+
+        return
 
     context.user_data["lock_command"] = command
 
+    ranks_text = "\n".join(
+        f"{i}- {rank}"
+        if i == 1
+        else f"{i} - {rank}"
+        for i, rank in enumerate(RANKS, 1)
+    )
 
     await update.message.reply_text(
-        f"""
-• حسنًا اختر الرتبة التي تريدها :
-
-1- `{RANKS[0]}`
-2 - `{RANKS[1]}`
-3 - `{RANKS[2]}`
-4 - `{RANKS[3]}`
-5 - `{RANKS[4]}`
-
-
-- سيتم وضع امر ↤︎ `{command}` له فقط
-""",
+        "• حسنًا اختر الرتبة التي تريدها :\n\n"
+        f"```\n{ranks_text}\n```\n\n"
+        f"- سيتم وضع امر ↤︎ `{command}` له فقط",
         parse_mode="Markdown"
     )
 
 
+# ==================================================
+# حفظ رتبة القفل
+# ==================================================
 
-async def save_lock_rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def save_lock_rank(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     if "lock_command" not in context.user_data:
         return
@@ -64,9 +86,7 @@ async def save_lock_rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if rank not in RANKS:
         return
 
-
     command = context.user_data["lock_command"]
-
 
     conn = connect()
     cur = conn.cursor()
@@ -83,13 +103,12 @@ async def save_lock_rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     )
 
-
     conn.commit()
     conn.close()
 
-
     del context.user_data["lock_command"]
 
+    clear_command_permission_cache()
 
     await update.message.reply_text(
         f"✅ تم قفل الأمر `{command}` على رتبة `{rank}` وفوق",
@@ -97,17 +116,28 @@ async def save_lock_rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+# ==================================================
+# فتح أمر
+# ==================================================
 
-async def open_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def open_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
-    text = update.message.text
+    if not update.message:
+        return
 
-    command = text.replace("فتح امر ", "").strip()
+    text = update.message.text or ""
 
+    command = text.replace(
+        "فتح امر ",
+        "",
+        1
+    ).strip()
 
     if not command:
         return
-
 
     conn = connect()
     cur = conn.cursor()
@@ -120,10 +150,10 @@ async def open_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         (command,)
     )
 
-
     conn.commit()
     conn.close()
 
+    clear_command_permission_cache()
 
     await update.message.reply_text(
         f"✅ تم فتح الأمر `{command}`",
