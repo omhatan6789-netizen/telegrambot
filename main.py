@@ -55,7 +55,6 @@ from games.word_race import (
 # ==================================================
 from games.image_quiz.image_quiz import (
     start_image_quiz,
-    join_image_quiz,
     leave_image_quiz,
     add_image_quiz_player,
     image_quiz_settings,
@@ -2209,14 +2208,7 @@ def main():
         ),
         group=-6
     )
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.Regex(r"^دخول$"),
-            join_image_quiz
-        ),
-        group=-6
-    )
+    
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
