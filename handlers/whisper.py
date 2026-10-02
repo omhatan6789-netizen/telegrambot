@@ -115,10 +115,24 @@ def _private_keyboard(token: str, temporary: bool) -> InlineKeyboardMarkup:
     ])
 
 
-def _view_keyboard(whisper_id: str, sender_name: str) -> InlineKeyboardMarkup:
+def _view_keyboard(
+    whisper_id: str,
+    sender_name: str,
+    reply_url: str
+) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("فتح الهمسة", callback_data=f"wh_open:{whisper_id}")],
-        [InlineKeyboardButton(f"اهمس لـ {sender_name}", callback_data=f"wh_reply:{whisper_id}")],
+        [
+            InlineKeyboardButton(
+                "فتح الهمسة",
+                callback_data=f"wh_open:{whisper_id}"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                f"اهمس لـ {sender_name}",
+                url=reply_url
+            )
+        ],
     ])
 
 
@@ -377,7 +391,7 @@ async def whisper_temp_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def whisper_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """��ستقبل أول رسالة بعد تعليمات الهمسة في الخاص."""
+    """يستقبل أول رسالة بعد تعليمات الهمسة في الخاص."""
     if not update.message or update.effective_chat.type != ChatType.PRIVATE:
         return
 
@@ -455,12 +469,43 @@ async def whisper_private_message(update: Update, context: ContextTypes.DEFAULT_
 
     _drafts.pop(draft.token, None)
 
+    # ==================================================
+    # تجهيز رابط الهمس للشخص المستلم
+    # ==================================================
+
+    reply_token = secrets.token_urlsafe(10)
+
+    reply_draft = WhisperDraft(
+        token=reply_token,
+        chat_id=whisper.chat_id,
+        creator_id=whisper.receiver_id,
+        target_id=whisper.sender_id,
+        target_name=whisper.sender_name,
+        creator_name=whisper.receiver_name,
+        kind="pending",
+        creator_username="",
+    )
+
+    _drafts[reply_token] = reply_draft
+
+    me = await context.bot.get_me()
+
+    reply_url = (
+        f"https://t.me/{me.username}"
+        f"?start=whisper_text_{reply_token}"
+    )
+
     sent = await context.bot.send_message(
         chat_id=whisper.chat_id,
         text=_group_whisper_text(whisper),
         parse_mode="HTML",
-        reply_markup=_view_keyboard(whisper.whisper_id, whisper.sender_name),
+        reply_markup=_view_keyboard(
+            whisper.whisper_id,
+            whisper.sender_name,
+            reply_url
+        ),
     )
+
     whisper.message_id = sent.message_id
     _whispers[whisper.whisper_id] = whisper
 
@@ -552,50 +597,6 @@ async def whisper_open_callback(update: Update, context: ContextTypes.DEFAULT_TY
     await query.answer("تم فتح الهمسة.")
 
 
-async def whisper_reply_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    whisper_id = query.data.split(":", 1)[1]
-    whisper = _whispers.get(whisper_id)
-
-    if not whisper:
-        await query.answer("❌ الهمسة غير موجودة.", show_alert=True)
-        return
-
-    # ممنوع إنشاء همسة لنفس الشخص أو للبوت.
-    if whisper.sender_id == whisper.receiver_id:
-        await query.answer("❌ لا يمكنك الهمس لنفسك.", show_alert=True)
-        return
-
-    if query.from_user.id != whisper.receiver_id:
-        await query.answer("• انت لم تكتب اهمس بالقروب", show_alert=True)
-        return
-
-    token = secrets.token_urlsafe(10)
-    new_draft = WhisperDraft(
-        token=token,
-        chat_id=whisper.chat_id,
-        creator_id=whisper.receiver_id,
-        target_id=whisper.sender_id,
-        target_name=whisper.sender_name,
-        creator_name=whisper.receiver_name,
-        kind="pending",
-        creator_username="",
-    )
-    _drafts[token] = new_draft
-
-    me = await context.bot.get_me()
-    start_url = f"https://t.me/{me.username}?start=whisper_{token}"
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("فتح الخاص وكتابة الهمسة", url=start_url)]
-    ])
-
-    await query.answer()
-    await query.message.reply_text(
-        "تمام، افتح الخاص مع البوت لكتابة الهمسة .",
-        reply_markup=keyboard,
-    )
-
-
 async def whisper_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """هاندلر واحد للـ CallbackQuery الخاص بالهمسات."""
     data = update.callback_query.data or ""
@@ -603,8 +604,6 @@ async def whisper_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await whisper_temp_callback(update, context)
     if data.startswith("wh_open:"):
         return await whisper_open_callback(update, context)
-    if data.startswith("wh_reply:"):
-        return await whisper_reply_callback(update, context)
 
 
 def whisper_callback_filter(update: Update) -> bool:
