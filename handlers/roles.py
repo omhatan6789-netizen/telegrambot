@@ -720,10 +720,6 @@ def get_rank_level(
     )
 
 
-# ==================================================
-# صلاحية الأمر
-# ==================================================
-
 def check_command_permission(
     user_id,
     command,
@@ -748,6 +744,10 @@ def check_command_permission(
         command
     )
 
+    # ==================================================
+    # الأمر غير مقفول
+    # ==================================================
+
     if not required_rank:
 
         result = (
@@ -761,6 +761,10 @@ def check_command_permission(
 
         return result
 
+    # ==================================================
+    # الأمر مقفول
+    # ==================================================
+
     user_level = get_rank_level(
         user_id,
         chat_id
@@ -771,11 +775,15 @@ def check_command_permission(
         0
     )
 
+    # ==================================================
+    # Dev يسمح له بالأمر المقفول
+    # ==================================================
+
     if is_developer(user_id):
 
         result = (
             True,
-            None
+            required_rank
         )
 
         _command_permission_cache[
@@ -783,12 +791,16 @@ def check_command_permission(
         ] = result
 
         return result
+
+    # ==================================================
+    # الرتبة كافية
+    # ==================================================
 
     if user_level >= required_level:
 
         result = (
             True,
-            None
+            required_rank
         )
 
         _command_permission_cache[
@@ -796,6 +808,10 @@ def check_command_permission(
         ] = result
 
         return result
+
+    # ==================================================
+    # الرتبة غير كافية
+    # ==================================================
 
     result = (
         False,
