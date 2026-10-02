@@ -22,6 +22,7 @@ from permissions import (
 MULTI_WORD_COMMANDS = [
 
     "كشف المجموعة",
+    "كشف القيود",
 
     "رفع الحظر",
     "رفع الكتم",
@@ -112,25 +113,16 @@ def is_waiting_for_input(
         "button_color",
     )
 
-    # ==================================================
-    # user_data
-    # ==================================================
-
     try:
 
         for key in waiting_keys:
 
             if key in context.user_data:
-
                 return True
 
     except Exception:
 
         pass
-
-    # ==================================================
-    # جلسات الردود
-    # ==================================================
 
     try:
 
@@ -159,16 +151,11 @@ def is_waiting_for_input(
         for session in sessions:
 
             if user_id in session:
-
                 return True
 
     except Exception:
 
         pass
-
-    # ==================================================
-    # جلسات الألعاب والأسئلة
-    # ==================================================
 
     try:
 
@@ -187,10 +174,6 @@ def is_waiting_for_input(
     except Exception:
 
         pass
-
-    # ==================================================
-    # جلسة تعديل لون الزر
-    # ==================================================
 
     try:
 
@@ -257,44 +240,24 @@ def get_command_name(text):
 def command_lock_message(required):
 
     if required == "Dev":
-
-        return (
-            "• اعذرني هذا الامر للـ Dev فقط ."
-        )
+        return "• اعذرني هذا الامر للـ Dev فقط ."
 
     if required == "المالك":
-
-        return (
-            "• اعذرني بس هذا الامر للمالك وفوق فقط ."
-        )
+        return "• اعذرني بس هذا الامر للمالك وفوق فقط ."
 
     if required == "نائب المالك":
-
-        return (
-            "• اعذرني بس هذا الامر لنائب المالك وفوق فقط ."
-        )
+        return "• اعذرني بس هذا الامر لنائب المالك وفوق فقط ."
 
     if required == "ادمن اساسي":
-
-        return (
-            "• اعذرني بس هذا الامر للادمن الاساسي وفوق فقط ."
-        )
+        return "• اعذرني بس هذا الامر للادمن الاساسي وفوق فقط ."
 
     if required == "ادمن":
-
-        return (
-            "• اعذرني بس هذا الامر للادمن وفوق فقط ."
-        )
+        return "• اعذرني بس هذا الامر للادمن وفوق فقط ."
 
     if required == "مميز":
+        return "• اعذرني بس هذا الامر للمميز وفوق فقط ."
 
-        return (
-            "• اعذرني بس هذا الامر للمميز وفوق فقط ."
-        )
-
-    return (
-        "• اعذرني بس ما عندك الصلاحية لهذا الامر ."
-    )
+    return "• اعذرني بس ما عندك الصلاحية لهذا الامر ."
 
 
 # ==================================================
@@ -309,10 +272,6 @@ async def command_guard(
     if not update.message:
         return
 
-    # ==================================================
-    # النص
-    # ==================================================
-
     text = (
         update.message.text or ""
     ).strip()
@@ -320,18 +279,10 @@ async def command_guard(
     if not text:
         return
 
-    # ==================================================
-    # المستخدم
-    # ==================================================
-
     user = update.effective_user
-
-    if not user:
-        return
-
     chat = update.effective_chat
 
-    if not chat:
+    if not user or not chat:
         return
 
     user_id = user.id
@@ -365,16 +316,14 @@ async def command_guard(
     # استخراج الأمر
     # ==================================================
 
-    command = get_command_name(
-        text
-    )
+    command = get_command_name(text)
 
     if not command:
         return
 
     # ==================================================
     # قفل وفتح الأوامر
-    # يتم فحص صلاحيتها داخل command_lock.py
+    # يتم التعامل معها داخل command_lock.py
     # ==================================================
 
     if command in (
@@ -386,7 +335,6 @@ async def command_guard(
 
     # ==================================================
     # أوامر سباق الكلمات
-    # يتم التعامل معها داخل لعبة سباق الكلمات
     # ==================================================
 
     word_race_commands = (
@@ -404,10 +352,46 @@ async def command_guard(
         command in word_race_commands
         or text.startswith(".اضافة ")
     ):
+
         return
 
     # ==================================================
-    # فحص السماح الخاص
+    # فحص قفل الأمر أولًا
+    # ==================================================
+
+    try:
+
+        allowed, required = (
+            await asyncio.to_thread(
+                check_command_permission,
+                user_id,
+                command,
+                chat_id
+            )
+        )
+
+    except Exception as e:
+
+        print(
+            f"⚠️ خطأ في فحص قفل الأمر: {e}"
+        )
+
+        return
+
+    # ==================================================
+    # الأمر مقفول
+    # ==================================================
+
+    if not allowed:
+
+        await update.message.reply_text(
+            command_lock_message(required)
+        )
+
+        raise ApplicationHandlerStop()
+
+    # ==================================================
+    # فحص الصلاحية الأصلية للأمر
     # ==================================================
 
     try:
@@ -446,46 +430,6 @@ async def command_guard(
     # ==================================================
 
     if special_permission is True:
-
         return
-
-    # ==================================================
-    # فحص قفل الأمر
-    # ==================================================
-
-    try:
-
-        allowed, required = (
-            await asyncio.to_thread(
-                check_command_permission,
-                user_id,
-                command,
-                chat_id
-            )
-        )
-
-    except Exception as e:
-
-        print(
-            f"⚠️ خطأ في فحص قفل الأمر: {e}"
-        )
-
-        return
-
-    # ==================================================
-    # الأمر مقفول
-    # ==================================================
-
-    if not allowed:
-
-        await update.message.reply_text(
-            command_lock_message(required)
-        )
-
-        raise ApplicationHandlerStop()
-
-    # ==================================================
-    # مسموح
-    # ==================================================
 
     return
