@@ -343,6 +343,11 @@ from handlers.tasliyat import (
     reset_scratch_cooldown,
 )
 
+from games.xo import (
+    start_xo_game,
+    xo_callback,
+)
+
 import os
 import asyncio
 import threading
@@ -1959,6 +1964,30 @@ def main():
             end_big_game_router
         ),
         group=-4
+    )
+    
+
+    # ==================================================
+    # ❌⭕️ XO
+    # ==================================================
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(
+                r"^اكس او(?:\s+\d+)?$"
+            ),
+            start_xo_game,
+        ),
+        group=-4,
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            xo_callback,
+            pattern=r"^xo:",
+        ),
+        group=-4,
     )
     # ==================================================
     # 🐎 سباق الكلمات
