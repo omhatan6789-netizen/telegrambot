@@ -341,6 +341,7 @@ from handlers.tasliyat import (
     show_scratch_codes,
     scratch_code,
     reset_scratch_cooldown,
+    flush_pending_tasliyat_cooldowns,
 )
 
 from games.xo import (
@@ -643,6 +644,19 @@ def main():
         except Exception as e:
             print(
                 f"⚠️ تعذر حفظ النقاط عند الإيقاف: {e}"
+            )
+
+        # ==================================================
+        # حفظ أوقات التسليات المعلقة
+        # ==================================================
+        try:
+            await flush_pending_tasliyat_cooldowns()
+            print(
+                "⏱️ تم حفظ أوقات التسليات المعلقة قبل إيقاف البوت"
+            )
+        except Exception as e:
+            print(
+                f"⚠️ تعذر حفظ أوقات التسليات عند الإيقاف: {e}"
             )
     # ==================================================
     # إنشاء التطبيق
