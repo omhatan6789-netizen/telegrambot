@@ -1,9 +1,11 @@
+import asyncio
 import random
 import secrets
 import string
 import time
 from datetime import datetime, timezone, timedelta
 from html import escape
+from threading import RLock
 
 from telegram import (
     Update,
@@ -163,7 +165,6 @@ BANKS = {
 # ==================================================
 
 _transfer_sessions = {}
-
 _transfer_message_sessions = {}
 
 
@@ -178,6 +179,81 @@ SCRATCH_CODE_COUNT = 10
 SCRATCH_MIN_AMOUNT = 70
 SCRATCH_MAX_AMOUNT = 10_000_000
 SCRATCH_COOLDOWN_SECONDS = 2 * 60 * 60
+
+
+# ==================================================
+# CACHE
+# ==================================================
+
+# مدة كاش تفعيل التسليات
+GAMES_CACHE_TTL = 60
+
+# مدة كاش الحساب البنكي
+BANK_CACHE_TTL = 300
+
+# مدة كاش الممتلكات
+POSSESSIONS_CACHE_TTL = 60
+
+# مدة كاش معلومات المستخدم للمنشن
+USER_MENTION_CACHE_TTL = 300
+
+
+_cache_lock = RLock()
+
+_games_cache = {
+    "value": True,
+    "expires": 0,
+}
+
+_cooldowns_cache = {}
+
+_bank_cache = {}
+
+_possessions_cache = {}
+
+_user_mention_cache = {}
+
+_store_prices_cache = {
+    "hour": None,
+    "prices": {},
+}
+
+
+# ==================================================
+# أدوات Cache
+# ==================================================
+
+def _cache_now():
+    return time.monotonic()
+
+
+def _cache_get(cache, key):
+    with _cache_lock:
+        value = cache.get(key)
+
+        if not value:
+            return None
+
+        expires_at, data = value
+
+        if expires_at <= _cache_now():
+            cache.pop(key, None)
+            return None
+
+        return data
+
+
+def _cache_set(cache, key, data, ttl):
+    with _cache_lock:
+        cache[key] = (
+            _cache_now() + ttl,
+            data,
+        )
+
+
+def _cache_delete(cache, key):
+    with _cache_lock:
+        cache.pop(key, None)
 
 
 # ==================================================
@@ -235,7 +311,13 @@ def _message_link(message):
 # التحقق من تفعيل الألعاب
 # ==================================================
 
-def _games_enabled():
+def _games_enabled_sync():
+    now = _cache_now()
+
+    with _cache_lock:
+        if _games_cache["expires"] > now:
+            return _games_cache["value"]
+
     conn = connect()
     cur = conn.cursor()
 
@@ -250,14 +332,27 @@ def _games_enabled():
 
         row = cur.fetchone()
 
-        if not row:
-            return True
+        value = True if not row else row[0] != "off"
 
-        return row[0] != "off"
+        with _cache_lock:
+            _games_cache["value"] = value
+            _games_cache["expires"] = (
+                now + GAMES_CACHE_TTL
+            )
+
+        return value
 
     finally:
         cur.close()
         conn.close()
+
+
+def _games_enabled():
+    """
+    دالة متوافقة مع الاستخدام القديم.
+    القراءة الأولى فقط تضرب قاعدة البيانات.
+    """
+    return _games_enabled_sync()
 
 
 # ==================================================
@@ -340,10 +435,28 @@ def _format_clock(seconds):
 
 
 # ==================================================
-# قاعدة بيانات التسليات
+# قاعدة بيانات التسليات - Cooldowns
 # ==================================================
 
-def _get_cooldowns(user_id):
+DEFAULT_COOLDOWNS = {
+    "salary_until": 0,
+    "tip_until": 0,
+    "robber_until": 0,
+    "victim_rob_until": 0,
+    "investment_until": 0,
+    "luck_until": 0,
+}
+
+
+def _get_cooldowns_sync(user_id):
+    cached = _cache_get(
+        _cooldowns_cache,
+        user_id
+    )
+
+    if cached is not None:
+        return cached
+
     conn = connect()
     cur = conn.cursor()
 
@@ -385,30 +498,37 @@ def _get_cooldowns(user_id):
 
             conn.commit()
 
-            return {
-                "salary_until": 0,
-                "tip_until": 0,
-                "robber_until": 0,
-                "victim_rob_until": 0,
-                "investment_until": 0,
-                "luck_until": 0,
+            data = DEFAULT_COOLDOWNS.copy()
+
+        else:
+            data = {
+                "salary_until": row[0] or 0,
+                "tip_until": row[1] or 0,
+                "robber_until": row[2] or 0,
+                "victim_rob_until": row[3] or 0,
+                "investment_until": row[4] or 0,
+                "luck_until": row[5] or 0,
             }
 
-        return {
-            "salary_until": row[0] or 0,
-            "tip_until": row[1] or 0,
-            "robber_until": row[2] or 0,
-            "victim_rob_until": row[3] or 0,
-            "investment_until": row[4] or 0,
-            "luck_until": row[5] or 0,
-        }
+        _cache_set(
+            _cooldowns_cache,
+            user_id,
+            data,
+            24 * 60 * 60
+        )
+
+        return data
 
     finally:
         cur.close()
         conn.close()
 
 
-def _set_cooldown(user_id, column, until_time):
+def _get_cooldowns(user_id):
+    return _get_cooldowns_sync(user_id)
+
+
+def _set_cooldown_sync(user_id, column, until_time):
     allowed = {
         "salary_until",
         "tip_until",
@@ -420,6 +540,25 @@ def _set_cooldown(user_id, column, until_time):
 
     if column not in allowed:
         return
+
+    # تحديث الكاش أولاً
+    cached = _cache_get(
+        _cooldowns_cache,
+        user_id
+    )
+
+    if cached is None:
+        cached = _get_cooldowns_sync(user_id)
+
+    cached = dict(cached)
+    cached[column] = until_time
+
+    _cache_set(
+        _cooldowns_cache,
+        user_id,
+        cached,
+        24 * 60 * 60
+    )
 
     conn = connect()
     cur = conn.cursor()
@@ -451,11 +590,79 @@ def _set_cooldown(user_id, column, until_time):
         conn.close()
 
 
+def _set_cooldown(user_id, column, until_time):
+    """
+    حافظنا على الاسم القديم للتوافق.
+    """
+    _set_cooldown_sync(
+        user_id,
+        column,
+        until_time
+    )
+
+
+async def _set_cooldown_fast(
+    user_id,
+    column,
+    until_time,
+):
+    """
+    تحديث الكاش فوراً ثم حفظه خارج Event Loop.
+    """
+    allowed = {
+        "salary_until",
+        "tip_until",
+        "robber_until",
+        "victim_rob_until",
+        "investment_until",
+        "luck_until",
+    }
+
+    if column not in allowed:
+        return
+
+    cached = _cache_get(
+        _cooldowns_cache,
+        user_id
+    )
+
+    if cached is None:
+        cached = await asyncio.to_thread(
+            _get_cooldowns_sync,
+            user_id
+        )
+
+    cached = dict(cached)
+    cached[column] = until_time
+
+    _cache_set(
+        _cooldowns_cache,
+        user_id,
+        cached,
+        24 * 60 * 60
+    )
+
+    await asyncio.to_thread(
+        _set_cooldown_sync,
+        user_id,
+        column,
+        until_time
+    )
+
+
 # ==================================================
 # البنك
 # ==================================================
 
-def _get_bank(user_id):
+def _get_bank_sync(user_id):
+    cached = _cache_get(
+        _bank_cache,
+        user_id
+    )
+
+    if cached is not None:
+        return cached
+
     conn = connect()
     cur = conn.cursor()
 
@@ -477,9 +684,15 @@ def _get_bank(user_id):
         row = cur.fetchone()
 
         if not row:
+            _cache_set(
+                _bank_cache,
+                user_id,
+                None,
+                BANK_CACHE_TTL
+            )
             return None
 
-        return {
+        data = {
             "user_id": row[0],
             "account_number": row[1],
             "bank": row[2],
@@ -487,12 +700,40 @@ def _get_bank(user_id):
             "robbery_balance": row[4] or 0,
         }
 
+        _cache_set(
+            _bank_cache,
+            user_id,
+            data,
+            BANK_CACHE_TTL
+        )
+
+        return data
+
     finally:
         cur.close()
         conn.close()
 
 
-def _get_bank_by_number(account_number):
+def _get_bank(user_id):
+    return _get_bank_sync(user_id)
+
+
+async def _get_bank_fast(user_id):
+    cached = _cache_get(
+        _bank_cache,
+        user_id
+    )
+
+    if cached is not None:
+        return cached
+
+    return await asyncio.to_thread(
+        _get_bank_sync,
+        user_id
+    )
+
+
+def _get_bank_by_number_sync(account_number):
     conn = connect()
     cur = conn.cursor()
 
@@ -516,7 +757,7 @@ def _get_bank_by_number(account_number):
         if not row:
             return None
 
-        return {
+        data = {
             "user_id": row[0],
             "account_number": row[1],
             "bank": row[2],
@@ -524,9 +765,22 @@ def _get_bank_by_number(account_number):
             "robbery_balance": row[4] or 0,
         }
 
+        _cache_set(
+            _bank_cache,
+            data["user_id"],
+            data,
+            BANK_CACHE_TTL
+        )
+
+        return data
+
     finally:
         cur.close()
         conn.close()
+
+
+def _get_bank_by_number(account_number):
+    return _get_bank_by_number_sync(account_number)
 
 
 def _generate_account_number():
@@ -572,7 +826,15 @@ def _mention(user):
     )
 
 
-def _get_user_mention(user_id):
+def _get_user_mention_sync(user_id):
+    cached = _cache_get(
+        _user_mention_cache,
+        user_id
+    )
+
+    if cached is not None:
+        return cached
+
     conn = connect()
     cur = conn.cursor()
 
@@ -593,14 +855,27 @@ def _get_user_mention(user_id):
         else:
             name = str(user_id)
 
-        return mention_html(
+        result = mention_html(
             user_id,
             name
         )
 
+        _cache_set(
+            _user_mention_cache,
+            user_id,
+            result,
+            USER_MENTION_CACHE_TTL
+        )
+
+        return result
+
     finally:
         cur.close()
         conn.close()
+
+
+def _get_user_mention(user_id):
+    return _get_user_mention_sync(user_id)
 
 
 # ==================================================
@@ -613,7 +888,7 @@ async def _require_bank(update):
     if not user:
         return None
 
-    bank = _get_bank(user.id)
+    bank = await _get_bank_fast(user.id)
 
     if not bank:
         if update.message:
@@ -624,7 +899,6 @@ async def _require_bank(update):
         return None
 
     return bank
-
 
 
 # ==================================================
@@ -651,29 +925,33 @@ async def reset_scratch_cooldown(
     if not target:
         return
 
-    conn = connect()
-    cur = conn.cursor()
+    def _reset():
+        conn = connect()
+        cur = conn.cursor()
 
-    try:
-        cur.execute(
-            """
-            DELETE FROM scratch_limits
-            WHERE user_id = ?
-            """,
-            (target.id,)
-        )
+        try:
+            cur.execute(
+                """
+                DELETE FROM scratch_limits
+                WHERE user_id = ?
+                """,
+                (target.id,)
+            )
 
-        conn.commit()
+            conn.commit()
 
-    finally:
-        cur.close()
-        conn.close()
+        finally:
+            cur.close()
+            conn.close()
+
+    await asyncio.to_thread(_reset)
 
     await update.message.reply_text(
         "• تم صفرت وقت الكشط لـ  "
         f"{_mention(target)} ✅",
         parse_mode="HTML"
     )
+
 
 # ==================================================
 # أكواد الكشط
@@ -722,7 +1000,6 @@ def _ensure_scratch_codes():
     try:
         cur = conn.cursor()
 
-        # منع إنشاء مجموعة ثانية لنفس الساعة
         cur.execute(
             """
             SELECT pg_advisory_xact_lock(?)
@@ -819,38 +1096,40 @@ async def show_scratch_codes(
     if (update.message.text or "").strip() != "عرض الاكواد":
         return
 
-    if not _games_enabled():
+    if not await asyncio.to_thread(_games_enabled):
         return
 
-    _ensure_scratch_codes()
+    await asyncio.to_thread(
+        _ensure_scratch_codes
+    )
 
     now = datetime.now(timezone.utc)
 
-    conn = connect()
-
-    try:
+    def _load_codes():
+        conn = connect()
         cur = conn.cursor()
 
-        cur.execute(
-            """
-            SELECT code
-            FROM scratch_codes
-            WHERE used = FALSE
-              AND expires_at > ?
-            ORDER BY id ASC
-            """,
-            (now,)
-        )
-
-        rows = cur.fetchall()
-
-    finally:
         try:
-            cur.close()
-        except Exception:
-            pass
+            cur.execute(
+                """
+                SELECT code
+                FROM scratch_codes
+                WHERE used = FALSE
+                  AND expires_at > ?
+                ORDER BY id ASC
+                """,
+                (now,)
+            )
 
-        conn.close()
+            return cur.fetchall()
+
+        finally:
+            cur.close()
+            conn.close()
+
+    rows = await asyncio.to_thread(
+        _load_codes
+    )
 
     text = (
         "• اكواد الكشط الموجوده بالبوت :\n\n"
@@ -896,136 +1175,142 @@ async def scratch_code(
     if not code:
         return
 
-    if not _games_enabled():
+    if not await asyncio.to_thread(_games_enabled):
         return
 
-    # إنشاء أكواد الساعة الحالية إن لم تكن موجودة
-    _ensure_scratch_codes()
+    await asyncio.to_thread(
+        _ensure_scratch_codes
+    )
 
     now = datetime.now(timezone.utc)
 
-    conn = connect()
-
-    try:
+    def _scratch_transaction():
+        conn = connect()
         cur = conn.cursor()
 
-        # ==================================================
-        # التحقق من وقت الكشط للمستخدم
-        # ==================================================
-
-        cur.execute(
-            """
-            SELECT last_scratched_at
-            FROM scratch_limits
-            WHERE user_id = ?
-            """,
-            (user.id,)
-        )
-
-        limit_row = cur.fetchone()
-
-        if limit_row:
-            last_scratched_at = limit_row[0]
-
-            next_allowed = (
-                last_scratched_at
-                + timedelta(
-                    seconds=SCRATCH_COOLDOWN_SECONDS
-                )
-            )
-
-            if now < next_allowed:
-                remaining = int(
-                    (
-                        next_allowed - now
-                    ).total_seconds()
-                )
-
-                await update.message.reply_text(
-                    "• مب حلى هو مايمديك تكشط اي كود الحين .\n"
-                    f"• الوقت المتبقي: "
-                    f"{_format_scratch_remaining(remaining)} ⏰"
-                )
-
-                return
-
-        # ==================================================
-        # استهلاك الكود بشكل ذري
-        # ==================================================
-
-        cur.execute(
-            """
-            UPDATE scratch_codes
-            SET
-                used = TRUE,
-                used_by = ?
-            WHERE code = ?
-              AND used = FALSE
-              AND expires_at > ?
-            RETURNING amount
-            """,
-            (
-                user.id,
-                code,
-                now
-            )
-        )
-
-        result = cur.fetchone()
-
-        if not result:
-            conn.rollback()
-
-            await update.message.reply_text(
-                "• للأسف الكود انتهى وقته او فيه شخص استعمله قبلك"
-            )
-
-            return
-
-        amount = int(result[0])
-
-        # ==================================================
-        # تسجيل وقت آخر كشط
-        # ==================================================
-
-        cur.execute(
-            """
-            INSERT INTO scratch_limits
-            (
-                user_id,
-                last_scratched_at
-            )
-            VALUES
-            (
-                ?,
-                ?
-            )
-            ON CONFLICT (user_id)
-            DO UPDATE SET
-                last_scratched_at =
-                    EXCLUDED.last_scratched_at
-            """,
-            (
-                user.id,
-                now
-            )
-        )
-
-        conn.commit()
-
-    except Exception:
-        conn.rollback()
-        raise
-
-    finally:
         try:
-            cur.close()
+            cur.execute(
+                """
+                SELECT last_scratched_at
+                FROM scratch_limits
+                WHERE user_id = ?
+                """,
+                (user.id,)
+            )
+
+            limit_row = cur.fetchone()
+
+            if limit_row:
+                last_scratched_at = limit_row[0]
+
+                next_allowed = (
+                    last_scratched_at
+                    + timedelta(
+                        seconds=SCRATCH_COOLDOWN_SECONDS
+                    )
+                )
+
+                if now < next_allowed:
+                    remaining = int(
+                        (
+                            next_allowed - now
+                        ).total_seconds()
+                    )
+
+                    conn.rollback()
+
+                    return {
+                        "status": "cooldown",
+                        "remaining": remaining,
+                    }
+
+            cur.execute(
+                """
+                UPDATE scratch_codes
+                SET
+                    used = TRUE,
+                    used_by = ?
+                WHERE code = ?
+                  AND used = FALSE
+                  AND expires_at > ?
+                RETURNING amount
+                """,
+                (
+                    user.id,
+                    code,
+                    now
+                )
+            )
+
+            result = cur.fetchone()
+
+            if not result:
+                conn.rollback()
+
+                return {
+                    "status": "invalid",
+                }
+
+            amount = int(result[0])
+
+            cur.execute(
+                """
+                INSERT INTO scratch_limits
+                (
+                    user_id,
+                    last_scratched_at
+                )
+                VALUES
+                (
+                    ?,
+                    ?
+                )
+                ON CONFLICT (user_id)
+                DO UPDATE SET
+                    last_scratched_at =
+                        EXCLUDED.last_scratched_at
+                """,
+                (
+                    user.id,
+                    now
+                )
+            )
+
+            conn.commit()
+
+            return {
+                "status": "success",
+                "amount": amount,
+            }
+
         except Exception:
-            pass
+            conn.rollback()
+            raise
 
-        conn.close()
+        finally:
+            cur.close()
+            conn.close()
 
-    # إضافة النقاط باستخدام نظام النقاط الموجود عندك
+    result = await asyncio.to_thread(
+        _scratch_transaction
+    )
+
+    if result["status"] == "cooldown":
+        await update.message.reply_text(
+            "• مب حلى هو مايمديك تكشط اي كود الحين .\n"
+            f"• الوقت المتبقي: "
+            f"{_format_scratch_remaining(result['remaining'])} ⏰"
+        )
+        return
+
+    if result["status"] == "invalid":
+        await update.message.reply_text(
+            "• للأسف الكود انتهى وقته او فيه شخص استعمله قبلك"
+        )
+        return
+
+    amount = result["amount"]
+
     add_points(
         user.id,
         amount
@@ -1038,6 +1323,8 @@ async def scratch_code(
         "-",
         parse_mode="HTML"
     )
+
+
 # ==================================================
 # إنشاء حساب بنكي
 # ==================================================
@@ -1046,7 +1333,7 @@ async def create_bank_account(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
-    if not _games_enabled():
+    if not await asyncio.to_thread(_games_enabled):
         return
 
     user = update.effective_user
@@ -1068,7 +1355,7 @@ async def create_bank_account(
 
         target_user = replied_user
 
-    if _get_bank(target_user.id):
+    if await _get_bank_fast(target_user.id):
         await update.message.reply_text(
             "• عنده حساب بنكي 😅\n\n"
             "• لعرض معلومات حسابه اكتب\n"
@@ -1122,7 +1409,7 @@ async def bank_callback(
 
     await query.answer()
 
-    if not _games_enabled():
+    if not await asyncio.to_thread(_games_enabled):
         return
 
     parts = query.data.split(":")
@@ -1145,7 +1432,7 @@ async def bank_callback(
     if creator.id != target_user_id and creator.id != 8453977662:
         return
 
-    if _get_bank(target_user_id):
+    if await _get_bank_fast(target_user_id):
         await query.edit_message_text(
             "• عنده حساب بنكي 😅\n\n"
             "• لعرض معلومات حسابه اكتب\n"
@@ -1155,37 +1442,58 @@ async def bank_callback(
         return
 
     bank_info = BANKS[bank_key]
-    account_number = _generate_account_number()
 
-    conn = connect()
-    cur = conn.cursor()
+    account_number = await asyncio.to_thread(
+        _generate_account_number
+    )
 
-    try:
-        cur.execute(
-            """
-            INSERT INTO bank_accounts
-            (
-                user_id,
-                account_number,
-                bank,
-                card_type,
-                robbery_balance
+    def _create():
+        conn = connect()
+        cur = conn.cursor()
+
+        try:
+            cur.execute(
+                """
+                INSERT INTO bank_accounts
+                (
+                    user_id,
+                    account_number,
+                    bank,
+                    card_type,
+                    robbery_balance
+                )
+                VALUES (?, ?, ?, ?, 0)
+                """,
+                (
+                    target_user_id,
+                    account_number,
+                    bank_info["name"],
+                    bank_info["card"],
+                )
             )
-            VALUES (?, ?, ?, ?, 0)
-            """,
-            (
-                target_user_id,
-                account_number,
-                bank_info["name"],
-                bank_info["card"],
-            )
-        )
 
-        conn.commit()
+            conn.commit()
 
-    finally:
-        cur.close()
-        conn.close()
+        finally:
+            cur.close()
+            conn.close()
+
+    await asyncio.to_thread(_create)
+
+    bank_data = {
+        "user_id": target_user_id,
+        "account_number": account_number,
+        "bank": bank_info["name"],
+        "card_type": bank_info["card"],
+        "robbery_balance": 0,
+    }
+
+    _cache_set(
+        _bank_cache,
+        target_user_id,
+        bank_data,
+        BANK_CACHE_TTL
+    )
 
     points = get_points(target_user_id)
 
@@ -1206,7 +1514,7 @@ async def my_bank_account(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
-    if not _games_enabled():
+    if not await asyncio.to_thread(_games_enabled):
         return
 
     user = update.effective_user
@@ -1214,7 +1522,7 @@ async def my_bank_account(
     if not user or not update.message:
         return
 
-    bank = _get_bank(user.id)
+    bank = await _get_bank_fast(user.id)
 
     if not bank:
         await update.message.reply_text(
@@ -1244,7 +1552,7 @@ async def delete_bank_account(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
-    if not _games_enabled():
+    if not await asyncio.to_thread(_games_enabled):
         return
 
     user = update.effective_user
@@ -1252,7 +1560,7 @@ async def delete_bank_account(
     if not user or not update.message:
         return
 
-    bank = _get_bank(user.id)
+    bank = await _get_bank_fast(user.id)
 
     if not bank:
         await update.message.reply_text(
@@ -1261,23 +1569,31 @@ async def delete_bank_account(
 
         return
 
-    conn = connect()
-    cur = conn.cursor()
+    def _delete():
+        conn = connect()
+        cur = conn.cursor()
 
-    try:
-        cur.execute(
-            """
-            DELETE FROM bank_accounts
-            WHERE user_id = ?
-            """,
-            (user.id,)
-        )
+        try:
+            cur.execute(
+                """
+                DELETE FROM bank_accounts
+                WHERE user_id = ?
+                """,
+                (user.id,)
+            )
 
-        conn.commit()
+            conn.commit()
 
-    finally:
-        cur.close()
-        conn.close()
+        finally:
+            cur.close()
+            conn.close()
+
+    await asyncio.to_thread(_delete)
+
+    _cache_delete(
+        _bank_cache,
+        user.id
+    )
 
     await update.message.reply_text(
         "• تم مسح حسابك البنكي ."
@@ -1292,7 +1608,7 @@ async def salary(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
-    if not _games_enabled():
+    if not await asyncio.to_thread(_games_enabled):
         return
 
     user = update.effective_user
@@ -1303,7 +1619,11 @@ async def salary(
     if not await _require_bank(update):
         return
 
-    cooldowns = _get_cooldowns(user.id)
+    cooldowns = await asyncio.to_thread(
+        _get_cooldowns,
+        user.id
+    )
+
     now = _now()
 
     if cooldowns["salary_until"] > now:
@@ -1322,7 +1642,8 @@ async def salary(
         amount
     )
 
-    _set_cooldown(
+    # الكاش يتحدث فوراً، والـ DB خارج Event Loop
+    await _set_cooldown_fast(
         user.id,
         "salary_until",
         now + 600
@@ -1346,7 +1667,7 @@ async def tip(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
-    if not _games_enabled():
+    if not await asyncio.to_thread(_games_enabled):
         return
 
     user = update.effective_user
@@ -1357,7 +1678,11 @@ async def tip(
     if not await _require_bank(update):
         return
 
-    cooldowns = _get_cooldowns(user.id)
+    cooldowns = await asyncio.to_thread(
+        _get_cooldowns,
+        user.id
+    )
+
     now = _now()
 
     if cooldowns["tip_until"] > now:
@@ -1372,12 +1697,12 @@ async def tip(
 
     amount = random.randint(100, 2000)
 
-    new_points = add_points(
+    add_points(
         user.id,
         amount
     )
 
-    _set_cooldown(
+    await _set_cooldown_fast(
         user.id,
         "tip_until",
         now + 600
@@ -1389,10 +1714,10 @@ async def tip(
 
 
 # ==================================================
-# أسعار المتجر
+# أسعار المتجر - استعلام واحد للـ12 منتج
 # ==================================================
 
-def _get_store_price(item_key):
+def _load_store_prices_from_db():
     current_hour = _now() // 3600
 
     conn = connect()
@@ -1401,53 +1726,141 @@ def _get_store_price(item_key):
     try:
         cur.execute(
             """
-            SELECT price, hour_key
+            SELECT item_key, price, hour_key
             FROM store_prices
-            WHERE item_key = ?
-            """,
-            (item_key,)
-        )
-
-        row = cur.fetchone()
-
-        if row and row[1] == current_hour:
-            return row[0]
-
-        item = STORE_ITEMS[item_key]
-
-        price = random.randint(
-            item["min"],
-            item["max"]
-        )
-
-        cur.execute(
+            WHERE item_key IN (
+                'برج',
+                'جزيرة',
+                'بيت',
+                'طيارة',
+                'سيارة',
+                'سفينة',
+                'قطار',
+                'قصر',
+                'ماسة',
+                'طعمية',
+                'شاورما',
+                'مزرعة'
+            )
             """
-            INSERT INTO store_prices
-            (
-                item_key,
-                price,
-                hour_key
-            )
-            VALUES (?, ?, ?)
-            ON CONFLICT (item_key)
-            DO UPDATE SET
-                price = EXCLUDED.price,
-                hour_key = EXCLUDED.hour_key
-            """,
-            (
-                item_key,
-                price,
-                current_hour
-            )
         )
 
-        conn.commit()
+        rows = cur.fetchall()
 
-        return price
+        prices = {}
+        missing = []
+
+        for item_key in STORE_ORDER:
+            found = None
+
+            for row in rows:
+                if row[0] == item_key:
+                    found = row
+                    break
+
+            if found and found[2] == current_hour:
+                prices[item_key] = found[1]
+            else:
+                missing.append(item_key)
+
+        # إنشاء الأسعار الناقصة في نفس الاتصال
+        if missing:
+            for item_key in missing:
+                item = STORE_ITEMS[item_key]
+
+                price = random.randint(
+                    item["min"],
+                    item["max"]
+                )
+
+                cur.execute(
+                    """
+                    INSERT INTO store_prices
+                    (
+                        item_key,
+                        price,
+                        hour_key
+                    )
+                    VALUES (?, ?, ?)
+                    ON CONFLICT (item_key)
+                    DO UPDATE SET
+                        price = EXCLUDED.price,
+                        hour_key = EXCLUDED.hour_key
+                    """,
+                    (
+                        item_key,
+                        price,
+                        current_hour
+                    )
+                )
+
+                prices[item_key] = price
+
+            conn.commit()
+
+        return current_hour, prices
 
     finally:
         cur.close()
         conn.close()
+
+
+def _get_all_store_prices_sync():
+    current_hour = _now() // 3600
+
+    with _cache_lock:
+        if (
+            _store_prices_cache["hour"] == current_hour
+            and len(_store_prices_cache["prices"]) == len(STORE_ORDER)
+        ):
+            return dict(
+                _store_prices_cache["prices"]
+            )
+
+    hour, prices = _load_store_prices_from_db()
+
+    with _cache_lock:
+        _store_prices_cache["hour"] = hour
+        _store_prices_cache["prices"] = dict(prices)
+
+    return prices
+
+
+def _get_store_price_sync(item_key):
+    current_hour = _now() // 3600
+
+    with _cache_lock:
+        if (
+            _store_prices_cache["hour"] == current_hour
+            and item_key in _store_prices_cache["prices"]
+        ):
+            return _store_prices_cache["prices"][item_key]
+
+    prices = _get_all_store_prices_sync()
+
+    return prices[item_key]
+
+
+def _get_store_price(item_key):
+    return _get_store_price_sync(item_key)
+
+
+async def _get_store_price_fast(item_key):
+    current_hour = _now() // 3600
+
+    with _cache_lock:
+        if (
+            _store_prices_cache["hour"] == current_hour
+            and item_key in _store_prices_cache["prices"]
+        ):
+            return _store_prices_cache["prices"][item_key]
+
+    return (
+        await asyncio.to_thread(
+            _get_store_price_sync,
+            item_key
+        )
+    )
 
 
 # ==================================================
@@ -1458,11 +1871,15 @@ async def store(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
-    if not _games_enabled():
+    if not await asyncio.to_thread(_games_enabled):
         return
 
     if not update.message:
         return
+
+    prices = await asyncio.to_thread(
+        _get_all_store_prices_sync
+    )
 
     lines = [
         "اهلًا يالتاجر هذا المتجر وأسعار المنتجات:"
@@ -1470,7 +1887,7 @@ async def store(
 
     for index, item_key in enumerate(STORE_ORDER, 1):
         item = STORE_ITEMS[item_key]
-        price = _get_store_price(item_key)
+        price = prices[item_key]
 
         lines.append(
             f"{index} - {item_key} {item['emoji']} ↤︎ {price} ."
@@ -1492,7 +1909,15 @@ async def store(
 # الممتلكات
 # ==================================================
 
-def _get_possessions(user_id):
+def _get_possessions_sync(user_id):
+    cached = _cache_get(
+        _possessions_cache,
+        user_id
+    )
+
+    if cached is not None:
+        return cached
+
     conn = connect()
     cur = conn.cursor()
 
@@ -1508,38 +1933,78 @@ def _get_possessions(user_id):
             (user_id,)
         )
 
-        return cur.fetchall()
+        result = cur.fetchall()
+
+        _cache_set(
+            _possessions_cache,
+            user_id,
+            result,
+            POSSESSIONS_CACHE_TTL
+        )
+
+        return result
 
     finally:
         cur.close()
         conn.close()
+
+
+def _get_possessions(user_id):
+    return _get_possessions_sync(user_id)
+
+
+async def _get_possessions_fast(user_id):
+    cached = _cache_get(
+        _possessions_cache,
+        user_id
+    )
+
+    if cached is not None:
+        return cached
+
+    return await asyncio.to_thread(
+        _get_possessions_sync,
+        user_id
+    )
+
+
+def _get_possession_quantity_sync(user_id, item_key):
+    possessions = _get_possessions_sync(user_id)
+
+    for key, quantity in possessions:
+        if key == item_key:
+            return quantity
+
+    return 0
 
 
 def _get_possession_quantity(user_id, item_key):
-    conn = connect()
-    cur = conn.cursor()
-
-    try:
-        cur.execute(
-            """
-            SELECT quantity
-            FROM possessions
-            WHERE user_id = ?
-              AND item_key = ?
-            """,
-            (user_id, item_key)
-        )
-
-        row = cur.fetchone()
-
-        return row[0] if row else 0
-
-    finally:
-        cur.close()
-        conn.close()
+    return _get_possession_quantity_sync(
+        user_id,
+        item_key
+    )
 
 
-def _change_possession(user_id, item_key, amount):
+async def _get_possession_quantity_fast(
+    user_id,
+    item_key
+):
+    possessions = await _get_possessions_fast(
+        user_id
+    )
+
+    for key, quantity in possessions:
+        if key == item_key:
+            return quantity
+
+    return 0
+
+
+def _change_possession_sync(
+    user_id,
+    item_key,
+    amount
+):
     conn = connect()
     cur = conn.cursor()
 
@@ -1608,12 +2073,46 @@ def _change_possession(user_id, item_key, amount):
         cur.close()
         conn.close()
 
+    # تحديث كاش الممتلكات مباشرة
+    _cache_delete(
+        _possessions_cache,
+        user_id
+    )
+
+    # إعادة تحميلها مرة واحدة حتى يكون الكاش صحيح
+    _get_possessions_sync(user_id)
+
+
+def _change_possession(
+    user_id,
+    item_key,
+    amount
+):
+    _change_possession_sync(
+        user_id,
+        item_key,
+        amount
+    )
+
+
+async def _change_possession_fast(
+    user_id,
+    item_key,
+    amount
+):
+    await asyncio.to_thread(
+        _change_possession_sync,
+        user_id,
+        item_key,
+        amount
+    )
+
 
 async def my_possessions(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
-    if not _games_enabled():
+    if not await asyncio.to_thread(_games_enabled):
         return
 
     user = update.effective_user
@@ -1621,7 +2120,9 @@ async def my_possessions(
     if not user or not update.message:
         return
 
-    possessions = _get_possessions(user.id)
+    possessions = await _get_possessions_fast(
+        user.id
+    )
 
     if not possessions:
         await update.message.reply_text(
@@ -1648,7 +2149,7 @@ async def other_possessions(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
-    if not _games_enabled():
+    if not await asyncio.to_thread(_games_enabled):
         return
 
     message = update.message
@@ -1661,7 +2162,9 @@ async def other_possessions(
     if not target:
         return
 
-    possessions = _get_possessions(target.id)
+    possessions = await _get_possessions_fast(
+        target.id
+    )
 
     if not possessions:
         await message.reply_text(
@@ -1692,7 +2195,7 @@ async def buy_sell(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
-    if not _games_enabled():
+    if not await asyncio.to_thread(_games_enabled):
         return
 
     message = update.message
@@ -1728,7 +2231,10 @@ async def buy_sell(
     if not user:
         return
 
-    price = _get_store_price(item_key)
+    price = await _get_store_price_fast(
+        item_key
+    )
+
     total = price * quantity
 
     if action == "شراء":
@@ -1747,7 +2253,7 @@ async def buy_sell(
             -total
         )
 
-        _change_possession(
+        await _change_possession_fast(
             user.id,
             item_key,
             quantity
@@ -1763,7 +2269,7 @@ async def buy_sell(
 
         return
 
-    current_quantity = _get_possession_quantity(
+    current_quantity = await _get_possession_quantity_fast(
         user.id,
         item_key
     )
@@ -1784,7 +2290,7 @@ async def buy_sell(
 
     sell_value = (total * 50) // 100
 
-    _change_possession(
+    await _change_possession_fast(
         user.id,
         item_key,
         -quantity
@@ -1812,7 +2318,7 @@ async def gift(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
-    if not _games_enabled():
+    if not await asyncio.to_thread(_games_enabled):
         return
 
     message = update.message
@@ -1850,7 +2356,7 @@ async def gift(
     if sender.id == recipient.id:
         return
 
-    owned = _get_possession_quantity(
+    owned = await _get_possession_quantity_fast(
         sender.id,
         item_key
     )
@@ -1869,13 +2375,13 @@ async def gift(
 
         return
 
-    _change_possession(
+    await _change_possession_fast(
         sender.id,
         item_key,
         -quantity
     )
 
-    _change_possession(
+    await _change_possession_fast(
         recipient.id,
         item_key,
         quantity
@@ -1889,10 +2395,6 @@ async def gift(
         f"المستلم : {_mention(recipient)}",
         parse_mode="HTML"
     )
-
-    # ==================================================
-    # إشعار خاص للمستلم
-    # ==================================================
 
     await _send_private_if_possible(
         context.bot,
@@ -1914,7 +2416,7 @@ async def rob(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
-    if not _games_enabled():
+    if not await asyncio.to_thread(_games_enabled):
         return
 
     message = update.message
@@ -1935,7 +2437,9 @@ async def rob(
 
         return
 
-    robber_bank = _get_bank(robber.id)
+    robber_bank = await _get_bank_fast(
+        robber.id
+    )
 
     if not robber_bank:
         await message.reply_text(
@@ -1944,7 +2448,9 @@ async def rob(
 
         return
 
-    victim_bank = _get_bank(victim.id)
+    victim_bank = await _get_bank_fast(
+        victim.id
+    )
 
     if not victim_bank:
         await message.reply_text(
@@ -1954,7 +2460,11 @@ async def rob(
         return
 
     now = _now()
-    cooldowns = _get_cooldowns(robber.id)
+
+    cooldowns = await asyncio.to_thread(
+        _get_cooldowns,
+        robber.id
+    )
 
     if cooldowns["robber_until"] > now:
         remaining = cooldowns["robber_until"] - now
@@ -1966,10 +2476,16 @@ async def rob(
 
         return
 
-    victim_cooldowns = _get_cooldowns(victim.id)
+    victim_cooldowns = await asyncio.to_thread(
+        _get_cooldowns,
+        victim.id
+    )
 
     if victim_cooldowns["victim_rob_until"] > now:
-        remaining = victim_cooldowns["victim_rob_until"] - now
+        remaining = (
+            victim_cooldowns["victim_rob_until"]
+            - now
+        )
 
         await message.reply_text(
             "• المسكين توه مزروف ارحمه شوي 😭 .\n"
@@ -1996,51 +2512,60 @@ async def rob(
         amount
     )
 
-    conn = connect()
-    cur = conn.cursor()
+    def _update_robbery_balance():
+        conn = connect()
+        cur = conn.cursor()
 
-    try:
-        cur.execute(
-            """
-            UPDATE bank_accounts
-            SET robbery_balance = robbery_balance + ?
-            WHERE user_id = ?
-            """,
-            (
-                amount,
-                robber.id
+        try:
+            cur.execute(
+                """
+                UPDATE bank_accounts
+                SET robbery_balance = robbery_balance + ?
+                WHERE user_id = ?
+                """,
+                (
+                    amount,
+                    robber.id
+                )
             )
-        )
 
-        conn.commit()
+            conn.commit()
 
-    finally:
-        cur.close()
-        conn.close()
+        finally:
+            cur.close()
+            conn.close()
 
-    _set_cooldown(
+    await asyncio.to_thread(
+        _update_robbery_balance
+    )
+
+    # تحديث كاش حساب السارق
+    robber_bank["robbery_balance"] = (
+        robber_bank["robbery_balance"] + amount
+    )
+
+    _cache_set(
+        _bank_cache,
+        robber.id,
+        robber_bank,
+        BANK_CACHE_TTL
+    )
+
+    await _set_cooldown_fast(
         robber.id,
         "robber_until",
         now + 300
     )
 
-    _set_cooldown(
+    await _set_cooldown_fast(
         victim.id,
         "victim_rob_until",
         now + 600
     )
 
-    # ==================================================
-    # رسالة الزرف في القروب
-    # ==================================================
-
     sent_message = await message.reply_text(
         f"• خذ يالحرامي زرفته {amount} نقطة 💵 ."
     )
-
-    # ==================================================
-    # إشعار خاص للمزروف
-    # ==================================================
 
     now_dt = datetime.fromtimestamp(
         now,
@@ -2088,7 +2613,7 @@ async def transfer(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
-    if not _games_enabled():
+    if not await asyncio.to_thread(_games_enabled):
         return
 
     message = update.message
@@ -2140,7 +2665,7 @@ async def transfer_account_number(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
-    if not _games_enabled():
+    if not await asyncio.to_thread(_games_enabled):
         return
 
     message = update.message
@@ -2164,7 +2689,8 @@ async def transfer_account_number(
 
     amount = session["amount"]
 
-    recipient_bank = _get_bank_by_number(
+    recipient_bank = await asyncio.to_thread(
+        _get_bank_by_number,
         account_number
     )
 
@@ -2181,7 +2707,9 @@ async def transfer_account_number(
 
         return
 
-    sender_bank = _get_bank(user.id)
+    sender_bank = await _get_bank_fast(
+        user.id
+    )
 
     if not sender_bank:
         _transfer_sessions.pop(
@@ -2213,7 +2741,6 @@ async def transfer_account_number(
         return
 
     if sender_bank["bank"] == recipient_bank["bank"]:
-        fee_percent = 5
         received = (amount * 95) // 100
 
         fee_text = (
@@ -2221,7 +2748,6 @@ async def transfer_account_number(
         )
 
     else:
-        fee_percent = 10
         received = (amount * 90) // 100
 
         fee_text = "خصمت 10% من بنك لبنك"
@@ -2241,7 +2767,8 @@ async def transfer_account_number(
         None
     )
 
-    recipient_mention = _get_user_mention(
+    recipient_mention = await asyncio.to_thread(
+        _get_user_mention,
         recipient_bank["user_id"]
     )
 
@@ -2258,10 +2785,6 @@ async def transfer_account_number(
         f"المبلغ : {received} نقطة 💵",
         parse_mode="HTML"
     )
-
-    # ==================================================
-    # إشعار خاص للمستلم
-    # ==================================================
 
     recipient_id = recipient_bank["user_id"]
 
@@ -2335,14 +2858,13 @@ async def transfer_message_callback(
 
 # ==================================================
 # استقبال رسالة المستلم وإرسالها للمرسل
-# يدعم النص والصوت والفيديو والصورة والملصق و GIF وغيرها
 # ==================================================
 
 async def transfer_message_receiver(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
-    if not _games_enabled():
+    if not await asyncio.to_thread(_games_enabled):
         return
 
     message = update.message
@@ -2362,10 +2884,6 @@ async def transfer_message_receiver(
 
     if not sender_id:
         return
-
-    # ==================================================
-    # الرسائل النصية
-    # ==================================================
 
     if message.text:
         notification = (
@@ -2390,10 +2908,6 @@ async def transfer_message_receiver(
 
         raise ApplicationHandlerStop()
 
-    # ==================================================
-    # الرسائل التي تحتوي على Caption
-    # ==================================================
-
     caption = message.caption
 
     notification = (
@@ -2404,10 +2918,6 @@ async def transfer_message_receiver(
 
     if caption:
         notification += f" {escape(caption)}"
-
-    # ==================================================
-    # إرسال الإشعار + نسخ الرسالة نفسها
-    # ==================================================
 
     try:
         await context.bot.send_message(
@@ -2452,7 +2962,7 @@ async def invest(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
-    if not _games_enabled():
+    if not await asyncio.to_thread(_games_enabled):
         return
 
     message = update.message
@@ -2464,11 +2974,18 @@ async def invest(
     if not await _require_bank(update):
         return
 
-    cooldowns = _get_cooldowns(user.id)
+    cooldowns = await asyncio.to_thread(
+        _get_cooldowns,
+        user.id
+    )
+
     now = _now()
 
     if cooldowns["investment_until"] > now:
-        remaining = cooldowns["investment_until"] - now
+        remaining = (
+            cooldowns["investment_until"]
+            - now
+        )
 
         await message.reply_text(
             "• مايمديك تستثمر الحين\n"
@@ -2505,7 +3022,7 @@ async def invest(
 
         return
 
-    _set_cooldown(
+    await _set_cooldown_fast(
         user.id,
         "investment_until",
         now + 1200
@@ -2550,7 +3067,7 @@ async def luck(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
-    if not _games_enabled():
+    if not await asyncio.to_thread(_games_enabled):
         return
 
     message = update.message
@@ -2562,11 +3079,18 @@ async def luck(
     if not await _require_bank(update):
         return
 
-    cooldowns = _get_cooldowns(user.id)
+    cooldowns = await asyncio.to_thread(
+        _get_cooldowns,
+        user.id
+    )
+
     now = _now()
 
     if cooldowns["luck_until"] > now:
-        remaining = cooldowns["luck_until"] - now
+        remaining = (
+            cooldowns["luck_until"]
+            - now
+        )
 
         await message.reply_text(
             "• مايمديك تسوي حظ الحين\n"
@@ -2605,7 +3129,7 @@ async def luck(
 
         return
 
-    _set_cooldown(
+    await _set_cooldown_fast(
         user.id,
         "luck_until",
         now + 1200
