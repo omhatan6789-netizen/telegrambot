@@ -42,12 +42,6 @@ FINAL_GUESS_SECONDS = 5
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 QUESTIONS_FILE = os.path.join(BASE_DIR, "questions.json")
 
-# ملف الصور المضافة يدويًا
-MANUAL_IMAGES_FILE = os.path.join(
-    BASE_DIR,
-    "manual_images.json"
-)
-
 
 # =========================================================
 # الاستيرادات الاختيارية
@@ -75,6 +69,16 @@ try:
     from handlers.points import add_points
 except Exception:
     add_points = None
+
+
+# =========================================================
+# قاعدة البيانات
+# =========================================================
+
+try:
+    from database import connect
+except Exception:
+    connect = None
 
 
 # =========================================================
@@ -364,36 +368,114 @@ def load_questions() -> List[dict]:
 
 
 # =========================================================
-# تحميل الصور المضافة يدويًا
+# تحميل الصور المضافة يدويًا من Supabase
 # =========================================================
 
 def load_manual_images() -> List[dict]:
-    if not os.path.exists(MANUAL_IMAGES_FILE):
+
+    if not connect:
+        print(
+            "[IMAGE QUIZ] database.connect غير متوفر."
+        )
         return []
 
+    conn = None
+    cur = None
+
     try:
-        with open(
-            MANUAL_IMAGES_FILE,
-            "r",
-            encoding="utf-8"
-        ) as file:
-            data = json.load(file)
+        conn = connect()
+        cur = conn.cursor()
 
-        if isinstance(data, list):
-            return data
+        cur.execute(
+            """
+            SELECT
+                id,
+                file_id,
+                answer,
+                alternative_answers
+            FROM image_quiz_images
+            ORDER BY id ASC
+            """
+        )
 
-        if isinstance(data, dict):
-            images = data.get("images", [])
+        rows = cur.fetchall()
 
-            if isinstance(images, list):
-                return images
+        images = []
+
+        for row in rows:
+
+            image_id = row[0]
+            file_id = row[1]
+            answer = row[2]
+            alternative_answers = row[3]
+
+            if not file_id:
+                continue
+
+            if not isinstance(answer, str):
+                continue
+
+            # العمود TEXT وقد يكون JSON أو نصًا عاديًا
+            parsed_alternatives = []
+
+            if isinstance(alternative_answers, list):
+                parsed_alternatives = alternative_answers
+
+            elif isinstance(alternative_answers, str):
+                value = alternative_answers.strip()
+
+                if value:
+                    try:
+                        decoded = json.loads(value)
+
+                        if isinstance(decoded, list):
+                            parsed_alternatives = decoded
+
+                        elif isinstance(decoded, str):
+                            parsed_alternatives = [
+                                decoded
+                            ]
+
+                    except Exception:
+                        # دعم البيانات القديمة إذا كانت نصًا
+                        parsed_alternatives = [
+                            line.strip()
+                            for line in value.splitlines()
+                            if line.strip()
+                        ]
+
+            images.append(
+                {
+                    "id": f"manual_{image_id}",
+                    "file_id": file_id,
+                    "answer": answer,
+                    "alternative_answers": parsed_alternatives
+                }
+            )
+
+        return images
 
     except Exception as e:
+
         print(
             f"[IMAGE QUIZ] Error loading manual images: {e}"
         )
 
-    return []
+        return []
+
+    finally:
+
+        try:
+            if cur:
+                cur.close()
+        except Exception:
+            pass
+
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
 
 
 # =========================================================
@@ -401,34 +483,147 @@ def load_manual_images() -> List[dict]:
 # =========================================================
 
 def save_manual_images(images: List[dict]) -> bool:
-    try:
-        temp_file = MANUAL_IMAGES_FILE + ".tmp"
+    """
+    يتم استخدام هذه الدالة للحفاظ على نفس واجهة التخزين القديمة،
+    لكن التخزين أصبح داخل جدول image_quiz_images في Supabase.
+    """
 
-        with open(
-            temp_file,
-            "w",
-            encoding="utf-8"
-        ) as file:
-            json.dump(
-                images,
-                file,
-                ensure_ascii=False,
-                indent=2
+    if not connect:
+        print(
+            "[IMAGE QUIZ] database.connect غير متوفر."
+        )
+        return False
+
+    conn = None
+    cur = None
+
+    try:
+
+        conn = connect()
+        cur = conn.cursor()
+
+        # الحصول على file_id الموجود حاليًا في Supabase
+        cur.execute(
+            """
+            SELECT file_id
+            FROM image_quiz_images
+            """
+        )
+
+        existing_rows = cur.fetchall()
+
+        existing_file_ids = {
+            row[0]
+            for row in existing_rows
+            if row and row[0]
+        }
+
+        requested_file_ids = {
+            image.get("file_id")
+            for image in images
+            if isinstance(image, dict)
+            and image.get("file_id")
+        }
+
+        # حذف الصور التي لم تعد موجودة في القائمة
+        for file_id in existing_file_ids:
+
+            if file_id not in requested_file_ids:
+
+                cur.execute(
+                    """
+                    DELETE FROM image_quiz_images
+                    WHERE file_id = ?
+                    """,
+                    (file_id,)
+                )
+
+        # إضافة / تحديث الصور
+        for image in images:
+
+            if not isinstance(image, dict):
+                continue
+
+            file_id = image.get("file_id")
+            answer = image.get("answer")
+
+            if not file_id or not isinstance(answer, str):
+                continue
+
+            alternative_answers = image.get(
+                "alternative_answers",
+                []
             )
 
-        os.replace(
-            temp_file,
-            MANUAL_IMAGES_FILE
-        )
+            if not isinstance(
+                alternative_answers,
+                list
+            ):
+                alternative_answers = []
+
+            alternatives_json = json.dumps(
+                alternative_answers,
+                ensure_ascii=False
+            )
+
+            cur.execute(
+                """
+                INSERT INTO image_quiz_images
+                (
+                    file_id,
+                    answer,
+                    alternative_answers
+                )
+                VALUES
+                (
+                    ?,
+                    ?,
+                    ?
+                )
+                ON CONFLICT (file_id)
+                DO UPDATE SET
+                    answer = EXCLUDED.answer,
+                    alternative_answers =
+                        EXCLUDED.alternative_answers
+                """,
+                (
+                    file_id,
+                    answer.strip(),
+                    alternatives_json
+                )
+            )
+
+        conn.commit()
 
         return True
 
     except Exception as e:
+
         print(
             f"[IMAGE QUIZ] Error saving manual images: {e}"
         )
 
+        try:
+            if conn:
+                conn.rollback()
+        except Exception:
+            pass
+
         return False
+
+    finally:
+
+        try:
+            if cur:
+                cur.close()
+        except Exception:
+            pass
+
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
 
 
 # =========================================================
@@ -443,25 +638,92 @@ def add_manual_image(
     if not file_id or not answer:
         return False
 
-    images = load_manual_images()
+    if not connect:
+        print(
+            "[IMAGE QUIZ] database.connect غير متوفر."
+        )
+        return False
 
-    normalized_answer = answer.strip()
+    conn = None
+    cur = None
 
-    # لا نكرر نفس file_id
-    for image in images:
-        if image.get("file_id") == file_id:
+    try:
+
+        conn = connect()
+        cur = conn.cursor()
+
+        # لا نكرر نفس file_id
+        cur.execute(
+            """
+            SELECT 1
+            FROM image_quiz_images
+            WHERE file_id = ?
+            LIMIT 1
+            """,
+            (file_id,)
+        )
+
+        existing = cur.fetchone()
+
+        if existing:
             return False
 
-    new_image = {
-        "id": f"manual_{random.randint(100000000, 999999999)}",
-        "file_id": file_id,
-        "answer": normalized_answer,
-        "alternative_answers": []
-    }
+        cur.execute(
+            """
+            INSERT INTO image_quiz_images
+            (
+                file_id,
+                answer,
+                alternative_answers
+            )
+            VALUES
+            (
+                ?,
+                ?,
+                ?
+            )
+            """,
+            (
+                file_id,
+                answer.strip(),
+                json.dumps(
+                    [],
+                    ensure_ascii=False
+                )
+            )
+        )
 
-    images.append(new_image)
+        conn.commit()
 
-    return save_manual_images(images)
+        return True
+
+    except Exception as e:
+
+        print(
+            f"[IMAGE QUIZ] Error adding manual image: {e}"
+        )
+
+        try:
+            if conn:
+                conn.rollback()
+        except Exception:
+            pass
+
+        return False
+
+    finally:
+
+        try:
+            if cur:
+                cur.close()
+        except Exception:
+            pass
+
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
 
 
 # =========================================================
@@ -469,23 +731,65 @@ def add_manual_image(
 # =========================================================
 
 def delete_manual_image(file_id: str) -> bool:
+
     if not file_id:
         return False
 
-    images = load_manual_images()
-
-    old_length = len(images)
-
-    images = [
-        image
-        for image in images
-        if image.get("file_id") != file_id
-    ]
-
-    if len(images) == old_length:
+    if not connect:
+        print(
+            "[IMAGE QUIZ] database.connect غير متوفر."
+        )
         return False
 
-    return save_manual_images(images)
+    conn = None
+    cur = None
+
+    try:
+
+        conn = connect()
+        cur = conn.cursor()
+
+        cur.execute(
+            """
+            DELETE FROM image_quiz_images
+            WHERE file_id = ?
+            """,
+            (file_id,)
+        )
+
+        deleted = cur.rowcount > 0
+
+        conn.commit()
+
+        return deleted
+
+    except Exception as e:
+
+        print(
+            f"[IMAGE QUIZ] Error deleting manual image: {e}"
+        )
+
+        try:
+            if conn:
+                conn.rollback()
+        except Exception:
+            pass
+
+        return False
+
+    finally:
+
+        try:
+            if cur:
+                cur.close()
+        except Exception:
+            pass
+
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
 
 
 # =========================================================
@@ -493,7 +797,53 @@ def delete_manual_image(file_id: str) -> bool:
 # =========================================================
 
 def get_manual_images_count() -> int:
-    return len(load_manual_images())
+
+    if not connect:
+        return 0
+
+    conn = None
+    cur = None
+
+    try:
+
+        conn = connect()
+        cur = conn.cursor()
+
+        cur.execute(
+            """
+            SELECT COUNT(*)
+            FROM image_quiz_images
+            """
+        )
+
+        row = cur.fetchone()
+
+        if not row:
+            return 0
+
+        return int(row[0] or 0)
+
+    except Exception as e:
+
+        print(
+            f"[IMAGE QUIZ] Error counting manual images: {e}"
+        )
+
+        return 0
+
+    finally:
+
+        try:
+            if cur:
+                cur.close()
+        except Exception:
+            pass
+
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
 
 
 # =========================================================
@@ -850,7 +1200,6 @@ async def _download_telegram_image(
 # تجهيز صورة السؤال
 # =========================================================
 
-
 async def _get_question_image(
     context: ContextTypes.DEFAULT_TYPE,
     question: dict,
@@ -956,6 +1305,7 @@ async def _get_question_image(
         image_path,
         stage
     )
+
 
 # =========================================================
 # نص مرحلة الصورة
