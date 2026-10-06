@@ -293,26 +293,37 @@ def _normalize_text(text: str) -> str:
 def _question_answers(question: dict) -> List[str]:
     answers = []
 
-    answer = question.get("answer")
+    def add_answers(value):
+        if isinstance(value, str):
+            # كل سطر = إجابة مستقلة
+            for line in value.splitlines():
+                line = line.strip()
 
-    if isinstance(answer, str) and answer.strip():
-        answers.append(answer)
+                if line:
+                    answers.append(line)
 
-    alternatives = question.get("alternative_answers", [])
+        elif isinstance(value, list):
+            for item in value:
+                add_answers(item)
 
-    if isinstance(alternatives, str):
-        alternatives = [alternatives]
+    # الإجابة الأساسية
+    add_answers(question.get("answer"))
 
-    if isinstance(alternatives, list):
-        for item in alternatives:
-            if isinstance(item, str) and item.strip():
-                answers.append(item)
+    # الإجابات البديلة
+    add_answers(
+        question.get(
+            "alternative_answers",
+            []
+        )
+    )
 
     result = []
     seen = set()
 
     for answer_text in answers:
-        normalized = _normalize_text(answer_text)
+        normalized = _normalize_text(
+            answer_text
+        )
 
         if normalized and normalized not in seen:
             seen.add(normalized)
@@ -606,14 +617,64 @@ def _get_image_path(image_path: str) -> str:
     if not image_path:
         return ""
 
-    image_path = image_path.strip()
+    image_path = str(image_path).strip()
 
+    if not image_path:
+        return ""
+
+    # إذا كان المسار كاملًا
     if os.path.isabs(image_path):
-        return image_path
+        if os.path.exists(image_path):
+            return image_path
 
-    return os.path.join(
-        BASE_DIR,
-        image_path
+    # الأماكن المحتملة للصورة
+    possible_paths = [
+        image_path,
+
+        os.path.join(
+            BASE_DIR,
+            image_path
+        ),
+
+        os.path.join(
+            BASE_DIR,
+            "images",
+            image_path
+        ),
+
+        os.path.join(
+            BASE_DIR,
+            "animals",
+            image_path
+        ),
+
+        os.path.join(
+            BASE_DIR,
+            "..",
+            image_path
+        ),
+
+        os.path.join(
+            BASE_DIR,
+            "..",
+            "..",
+            image_path
+        ),
+    ]
+
+    for path in possible_paths:
+        path = os.path.abspath(path)
+
+        if os.path.isfile(path):
+            return path
+
+    # نرجع المسار الأساسي حتى تظهر رسالة الخطأ
+    # بدل ما يحصل خطأ غير واضح
+    return os.path.abspath(
+        os.path.join(
+            BASE_DIR,
+            image_path
+        )
     )
 
 
@@ -789,14 +850,18 @@ async def _download_telegram_image(
 # تجهيز صورة السؤال
 # =========================================================
 
+
 async def _get_question_image(
     context: ContextTypes.DEFAULT_TYPE,
     question: dict,
     stage: int
 ) -> Optional[io.BytesIO]:
 
+    if not question:
+        return None
+
     # -----------------------------------------------------
-    # صورة مضافة يدويًا
+    # صورة مضافة يدويًا من Telegram
     # -----------------------------------------------------
 
     file_id = question.get("file_id")
@@ -819,7 +884,10 @@ async def _get_question_image(
                 )
 
             except Exception:
-                pass
+                question.pop(
+                    "_cached_image_bytes",
+                    None
+                )
 
         image_bytes = await _download_telegram_image(
             context,
@@ -827,9 +895,12 @@ async def _get_question_image(
         )
 
         if not image_bytes:
+            print(
+                "[IMAGE QUIZ] تعذر تحميل الصورة اليدوية."
+            )
+
             return None
 
-        # نخزنها مؤقتًا طوال الجولة
         question["_cached_image_bytes"] = (
             image_bytes
         )
@@ -852,23 +923,39 @@ async def _get_question_image(
             return None
 
     # -----------------------------------------------------
-    # صورة موجودة في questions.json
+    # صورة أصلية من questions.json
     # -----------------------------------------------------
 
-    image_path = question.get("image")
+    image_path = (
+        question.get("image")
+        or question.get("image_path")
+        or question.get("path")
+    )
 
     if not image_path:
+        print(
+            "[IMAGE QUIZ] السؤال لا يحتوي على مسار صورة:"
+            f" {question.get('_quiz_id')}"
+        )
+
         return None
 
     image_path = _get_image_path(
         image_path
     )
 
+    if not os.path.isfile(image_path):
+        print(
+            "[IMAGE QUIZ] الصورة غير موجودة:"
+            f" {image_path}"
+        )
+
+        return None
+
     return _crop_zoom_image(
         image_path,
         stage
     )
-
 
 # =========================================================
 # نص مرحلة الصورة
@@ -1693,6 +1780,7 @@ async def add_manual_image_command(
             "مثال:\n"
             "ترسل صورة أسد وتكتب في الكابشن:\n"
             "`أسد`\n\n"
+            "`الاسد`\n"
             f"📸 الصور المضافة حاليًا: *{count}*\n\n"
             "يمكنك إلغاء العملية بكتابة:\n"
             "`الغاء اضافة صورة`"
