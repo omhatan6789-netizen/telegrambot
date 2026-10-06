@@ -71,6 +71,12 @@ from games.image_quiz.image_quiz import (
     end_image_quiz,
     check_image_quiz_message,
     image_quiz_callback,
+    add_manual_image_command,
+    receive_manual_image,
+    cancel_manual_image,
+    delete_manual_image_command,
+    receive_delete_manual_image,
+    cancel_delete_manual_image,
 )
 from games.liars_table import (
     start_liars_table,
@@ -2291,6 +2297,66 @@ def main():
             filters.ChatType.GROUPS
             & filters.Regex(r"^\.اعدادات$"),
             image_quiz_settings
+        ),
+        group=-6
+    )
+
+
+
+    # ==================================================
+    # 🖼️ إضافة وحذف صور توقع الصورة
+    # ==================================================
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS 
+            & filters.Regex(r"^اضف صور توقع$"),
+            add_manual_image_command
+        ),
+        group=-6
+    )
+
+    app.add_handler(
+        MessageHandler( 
+            filters.ChatType.GROUPS
+            & filters.PHOTO,
+            receive_manual_image
+        ), 
+        group=-6
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(r"^الغاء اضافة صورة$"),
+            cancel_manual_image
+        ),
+        group=-6
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(r"^حذف صور توقع$"),
+            delete_manual_image_command
+        ),
+        group=-6
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.PHOTO,
+            receive_delete_manual_image
+        ),
+        group=-6
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(r"^الغاء حذف صورة$"),
+            cancel_delete_manual_image
         ),
         group=-6
     )
