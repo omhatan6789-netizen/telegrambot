@@ -1355,7 +1355,7 @@ def main():
     app.add_handler(
         MessageHandler(
             filters.Regex(
-                r"^مسح الرتب|تنزيل الكل$"
+                r"^مسح الرتب$"
             ),
             clear_all_ranks_command
         ),
