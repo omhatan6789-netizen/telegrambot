@@ -355,6 +355,11 @@ from games.xo import (
     xo_callback,
 )
 
+from games.rock_paper_scissors import (
+    start_rock_paper_scissors,
+    rock_paper_scissors_callback,
+)
+
 import os
 import asyncio
 import threading
@@ -2009,6 +2014,30 @@ def main():
         ),
         group=-4,
     )
+
+    # ==================================================
+    # ✊🏻🖐🏻✌🏻 حجرة ورقة مقص
+    # ==================================================
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(
+                r"^(?:حجرة(?: ورقة مقص)?|ورقة|مقص)(?:\s+\d+)?$"
+            ),
+            start_rock_paper_scissors,
+        ),
+        group=-4,
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            rock_paper_scissors_callback,
+            pattern=r"^rps:",
+        ),
+        group=-4,
+    )
+
     # ==================================================
     # 🐎 سباق الكلمات
     # ==================================================
