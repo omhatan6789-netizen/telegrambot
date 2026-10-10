@@ -360,6 +360,14 @@ from games.rock_paper_scissors import (
     rock_paper_scissors_callback,
 )
 
+
+from handlers.mandatory_subscription import (
+    ensure_mandatory_subscription_tables,
+    mandatory_subscription_guard,
+    mandatory_subscription_commands,
+)
+
+
 import os
 import asyncio
 import threading
@@ -561,6 +569,7 @@ def main():
     create_tables()
     create_developer_panel_tables()
     ensure_blocked_words_tables()
+    ensure_mandatory_subscription_tables()
     create_group_ranks_table()
     create_repetition_tables()
     create_profile_reply_tables()
@@ -680,6 +689,31 @@ def main():
         .post_shutdown(post_shutdown)
         .build()
     )
+
+
+    
+    # الاشتراك الإجباري
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS,
+            mandatory_subscription_guard,
+        ),
+        group=-100,
+    )
+
+    # أوامر إدارة الاشتراك الإجباري
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.TEXT
+            & filters.Regex(
+            r"^(?:ضع اجباري\s+.+|حذف اجباري\s+.+|مسح الاجباري|عرض الاجباري|الاجباري|تفعيل الاجباري|تعطيل الاجباري)$"
+            ),
+            mandatory_subscription_commands,
+        ),
+        group=-90,
+    )
+
     # ==================================================
     # /send
     # ==================================================
