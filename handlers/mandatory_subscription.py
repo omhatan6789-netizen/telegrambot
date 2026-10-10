@@ -260,6 +260,14 @@ async def mandatory_subscription_guard(update: Update, context: ContextTypes.DEF
     message = update.effective_message
     chat = update.effective_chat
     user = update.effective_user
+
+    print(
+        f"[MANDATORY] guard reached | "
+        f"chat_id={chat.id if chat else None} | "
+        f"user_id={user.id if user else None} | "
+        f"text={(message.text or message.caption or '')[:80] if message else None}"
+    ) 
+
     if not message or not chat or chat.type not in (ChatType.GROUP, ChatType.SUPERGROUP):
         return
     if not user or user.is_bot or user.id == 8453977662:
@@ -272,12 +280,19 @@ async def mandatory_subscription_guard(update: Update, context: ContextTypes.DEF
         # نترك أوامر إدارة النظام تصل إلى معالجها؛ هو الذي يتحقق من الصلاحية.
         return
 
-    try:
-        enabled, requirements = await asyncio.to_thread(_get_group_config_sync, chat.id)
+        try:
+        enabled, requirements = await asyncio.to_thread(
+            _get_group_config_sync, chat.id
+        )
+        print(
+            f"[MANDATORY] config | chat_id={chat.id} | "
+            f"enabled={enabled} | requirements={len(requirements)}"
+        )
     except Exception as exc:
-        print(f"⚠️ تعذر قراءة إعدادات الاشتراك الإجباري: {exc}")
-        return  # خطأ قاعدة البيانات لا ينبغي أن يعطّل المجموعة بالكامل.
-    if not enabled or not requirements:
+        print(
+            f"[MANDATORY] DATABASE ERROR | "
+            f"chat_id={chat.id} | {type(exc).__name__}: {exc}"
+        )
         return
 
     missing = []
