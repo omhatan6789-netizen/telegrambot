@@ -280,7 +280,7 @@ async def mandatory_subscription_guard(update: Update, context: ContextTypes.DEF
         # نترك أوامر إدارة النظام تصل إلى معالجها؛ هو الذي يتحقق من الصلاحية.
         return
 
-        try:
+    try:
         enabled, requirements = await asyncio.to_thread(
             _get_group_config_sync, chat.id
         )
