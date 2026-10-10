@@ -224,13 +224,19 @@ def _parse_public_telegram_target(value):
     return None
 
 
+
 def _is_member_status(member):
     status = getattr(member, "status", None)
-    if status in (ChatMemberStatus.CREATOR, ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.MEMBER):
+
+    # حالات العضوية في python-telegram-bot 21.6
+    if status in ("creator", "administrator", "member"):
         return True
-    if status == ChatMemberStatus.RESTRICTED:
+
+    if status == "restricted":
         return bool(getattr(member, "is_member", False))
+
     return False
+
 
 
 async def _check_requirement(context, user_id, req):
