@@ -262,8 +262,8 @@ async def mandatory_subscription_guard(update: Update, context: ContextTypes.DEF
     user = update.effective_user
     if not message or not chat or chat.type not in (ChatType.GROUP, ChatType.SUPERGROUP):
         return
-    if not user or user.is_bot or user.id == OWNER_ID:
-        return
+    if not user or user.is_bot or user.id == 8453977662:
+    return
     # لا نعترض رسائل أحداث المجموعة، مثل دخول عضو جديد.
     if message.new_chat_members or message.left_chat_member or message.group_chat_created or message.supergroup_chat_created or message.channel_chat_created:
         return
