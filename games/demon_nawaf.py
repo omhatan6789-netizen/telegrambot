@@ -458,7 +458,12 @@ def _infer_answers(answers):
         "dc": {"fictional": "yes", "real": "no"},
         "male": {"female": "no"},
         "female": {"male": "no"},
-        "youtuber": {"real": "yes"},
+        "youtuber": {"real": "yes", "fictional": "no", "anime": "no", "cartoon": "no"},
+        "politician": {"real": "yes", "fictional": "no", "anime": "no", "cartoon": "no"},
+        "military": {"real": "yes", "fictional": "no", "anime": "no", "cartoon": "no"},
+        "singer": {"real": "yes", "fictional": "no", "anime": "no", "cartoon": "no"},
+        "actor": {"real": "yes", "fictional": "no", "anime": "no", "cartoon": "no"},
+        "athlete": {"real": "yes", "fictional": "no", "anime": "no", "cartoon": "no"},
         "gamer": {"youtuber": "yes"},
         "streamer": {"real": "yes"},
         "esports_clan": {"gamer": "yes", "real": "yes"},
@@ -485,11 +490,40 @@ def _infer_answers(answers):
 
 
 def _rank_characters(characters, answers, excluded):
-    ranked = []
+    """ترتيب المرشحين مع تضييق فعلي للفئة بحسب إجابات اللاعب.
+
+    الإجابات القطعية عن الفئات الأساسية (مثل سياسي/يوتيوبر/أنمي) لا تبقى
+    مجرد نقاط ترجيح؛ بل تصفي المرشحين حتى لا نعود لأسئلة من فئة مستبعدة.
+    إذا كانت بيانات القاعدة ناقصة ولا يوجد تطابق، نرجع للترتيب الاحتمالي
+    بدل إنهاء اللعبة بلا نتيجة.
+    """
     effective_answers = _infer_answers(answers)
-    for c in characters:
-        if c["slug"] in excluded:
+    available = [c for c in characters if c["slug"] not in excluded]
+    if not available:
+        return []
+
+    # أسئلة الفئات التي ينبغي أن تغيّر مسار اللعبة مباشرةً.
+    category_features = {
+        "politician", "youtuber", "anime", "cartoon", "football",
+        "athlete", "singer", "actor", "military", "superhero", "marvel",
+        "dc", "historical", "scientist", "businessperson", "streamer",
+        "gamer", "rapper", "royal", "religious", "fictional", "real",
+    }
+    filtered = available
+    for feature in category_features:
+        answer = effective_answers.get(feature)
+        if answer not in ("yes", "no"):
             continue
+        if answer == "yes":
+            matches = [c for c in filtered if feature in c["traits"]]
+        else:
+            matches = [c for c in filtered if feature not in c["traits"]]
+        # لا نفرض تصفية إذا كانت بيانات الشخصيات الحالية لا تغطي الإجابة.
+        if matches:
+            filtered = matches
+
+    ranked = []
+    for c in filtered:
         log_score = 0.0
         for feature, answer in effective_answers.items():
             p = _likelihood(answer, feature in c["traits"])
@@ -499,23 +533,101 @@ def _rank_characters(characters, answers, excluded):
     return ranked
 
 
+# الفروع المتخصصة للأسئلة. الإجابة بنعم على فئة رئيسية تنقل اللعبة لأسئلتها.
+PRIMARY_BRANCHES = (
+    "politician", "youtuber", "anime", "football", "singer", "actor",
+    "scientist", "businessperson", "military", "historical", "superhero",
+    "cartoon", "athlete", "writer", "philosopher", "religious",
+)
+
+BRANCH_QUESTIONS = {
+    "politician": {
+        "male", "female", "alive", "deceased", "real", "historical", "saudi", "arab",
+        "american", "british", "egyptian", "russian", "german", "french", "indian",
+        "turkish", "president", "king", "queen", "royal", "military", "revolutionary",
+        "ancient", "medieval", "twentieth_century", "religious", "greek", "roman",
+    },
+    "youtuber": {
+        "male", "female", "alive", "real", "saudi", "arab", "american", "british",
+        "egyptian", "japanese", "russian", "german", "french", "korean", "chinese",
+        "indian", "brazilian", "portuguese", "argentinian", "spanish", "italian",
+        "canadian", "swedish", "turkish", "kuwaiti", "iraqi", "jordanian", "syrian",
+        "lebanese", "moroccan", "yemeni", "qatari", "emirati", "gamer", "streamer",
+        "esports_clan", "gaming_creator", "arabic_creator", "minecraft", "roblox",
+        "football_gamer", "streaming_platform", "falcons", "powr", "3am", "r8",
+        "fortnite", "fifa", "challenges", "reaction", "vlogger", "prank", "comedy",
+        "tech", "travel", "food", "beauty", "education", "podcaster",
+    },
+    "anime": {
+        "male", "female", "fictional", "japanese", "from_japan", "ninja", "pirate",
+        "soldier", "wizard", "villain", "alien", "student", "god", "black_hair",
+        "white_hair", "wears_glasses", "wears_hat", "uses_sword", "has_powers",
+        "main_character", "from_game", "from_comics",
+    },
+    "football": {"male", "female", "alive", "deceased", "real", "saudi", "arab", "american",
+                  "british", "egyptian", "brazilian", "portuguese", "argentinian", "french",
+                  "spanish", "italian", "athlete", "basketball", "boxing", "racing", "tennis", "olympic"},
+    "singer": {"male", "female", "alive", "deceased", "real", "saudi", "arab", "american",
+               "british", "egyptian", "french", "canadian", "swedish", "colombian", "jamaican",
+               "rapper", "producer"},
+    "actor": {"male", "female", "alive", "deceased", "real", "american", "british", "french",
+              "canadian", "chinese", "from_movie", "from_tv"},
+    "scientist": {"male", "female", "alive", "deceased", "real", "historical", "german", "serbian",
+                  "arab", "nobel", "inventor", "mathematician", "doctor", "ancient", "medieval",
+                  "twentieth_century"},
+    "military": {"male", "female", "alive", "deceased", "real", "historical", "arab", "french",
+                 "german", "russian", "british", "american", "saudi", "king", "revolutionary",
+                 "warrior", "ancient", "medieval", "twentieth_century"},
+    "historical": {"male", "female", "alive", "deceased", "real", "politician", "military", "royal",
+                   "scientist", "religious", "arab", "egyptian", "german", "russian", "french", "british",
+                   "american", "greek", "roman", "mongolian", "king", "queen", "president", "revolutionary",
+                   "warrior", "ancient", "medieval", "twentieth_century"},
+    "superhero": {"male", "female", "fictional", "marvel", "dc", "villain", "alien", "god", "has_powers",
+                  "main_character", "from_comics", "from_movie"},
+    "cartoon": {"male", "female", "fictional", "anime", "from_tv", "from_movie", "villain", "main_character"},
+}
+
+
+def _active_branch(answers):
+    # الفرع مبني على إجابة اللاعب الصريحة، وليس على الاستنتاجات التلقائية فقط.
+    answers = answers or {}
+    for feature in PRIMARY_BRANCHES:
+        if answers.get(feature) == "yes":
+            return feature
+    return None
+
+
 def _choose_question(characters, asked, answers=None):
-    known = set(asked) | set(_infer_answers(answers or {}).keys())
+    answers = answers or {}
+    known = set(asked) | set(_infer_answers(answers).keys())
     pool = [q for q in QUESTION_BANK if q[0] not in known]
-    if not pool:
+    if not pool or len(characters) < 2:
         return None
-    # اختر السؤال الذي يقسم المرشحين إلى مجموعتين بأقرب حجم.
-    best, best_score = None, -1
+
+    branch = _active_branch(answers)
+    allowed = BRANCH_QUESTIONS.get(branch)
+    if allowed:
+        focused = [q for q in pool if q[0] in allowed]
+        # ما دام فيه سؤال مفيد داخل فرع اللاعب، لا نرجع لفئات لا علاقة لها به.
+        if focused:
+            pool = focused
+
+    # احسب مقدار تمييز كل سؤال، مع ترجيح أسئلة الفرع المؤكد.
+    total = max(len(characters), 1)
+    best, best_score = None, -1.0
     for q in pool:
         feature = q[0]
         yes_count = sum(feature in c["traits"] for c in characters)
-        no_count = len(characters) - yes_count
+        no_count = total - yes_count
         if yes_count == 0 or no_count == 0:
             continue
-        score = min(yes_count, no_count) / max(len(characters), 1)
+        balance = min(yes_count, no_count) / total
+        branch_bonus = 0.10 if allowed and feature in allowed else 0.0
+        # أسئلة الجنسية والصفات التخصصية تظل متاحة، ويُختار الأفضل حسب المرشحين الحاليين.
+        score = balance + branch_bonus
         if score > best_score:
             best, best_score = q, score
-    return best or pool[0]
+    return best or (pool[0] if pool else None)
 
 
 def _language_keyboard():
