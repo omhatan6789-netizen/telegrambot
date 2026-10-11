@@ -13,7 +13,7 @@ from telegram.ext import ApplicationHandlerStop, ContextTypes
 from database import connect
 
 GAME_NAME = "ديمون نواف"
-MAX_QUESTIONS = 25
+MAX_QUESTIONS = 30
 HTTP_TIMEOUT = 5
 
 # traits = صفات منطقية تستخدم لاختيار الأسئلة وترتيب الشخصيات.
@@ -149,6 +149,70 @@ SEED_CHARACTERS = [
     ("mandela", "نيلسون مانديلا", "Nelson Mandela", "شخصية تاريخية", "Historical figure", "Nelson Mandela", ["male", "deceased", "real", "historical", "politician", "south_african", "famous"]),
     ("margaret_thatcher", "مارغريت تاتشر", "Margaret Thatcher", "شخصية سياسية", "Politics", "Margaret Thatcher", ["female", "deceased", "real", "historical", "politician", "british", "famous"]),
     ("napoleon_iii", "نابليون الثالث", "Napoleon III", "شخصية تاريخية", "Historical figure", "Napoleon III", ["male", "deceased", "real", "historical", "politician", "french", "famous"]),
+    ("ksi", "كي إس آي", "KSI", "يوتيوبر", "YouTuber", "KSI", ["male", "alive", "real", "youtuber", "british", "rapper", "streamer", "gaming_creator", "famous"]),
+    ("sidemen", "سايدمن", "Sidemen", "مجموعة يوتيوبرز", "YouTube group", "Sidemen", ["real", "youtuber", "british", "gaming_creator", "challenges", "famous"]),
+    ("dream", "دريم", "Dream", "يوتيوبر", "YouTuber", "Dream Minecraft YouTuber", ["male", "alive", "real", "youtuber", "american", "gamer", "minecraft", "streamer", "famous"]),
+    ("technoblade", "تكنوبليد", "Technoblade", "يوتيوبر", "YouTuber", "Technoblade", ["male", "deceased", "real", "youtuber", "american", "gamer", "minecraft", "famous"]),
+    ("markiplier", "ماركيبلاير", "Markiplier", "يوتيوبر", "YouTuber", "Markiplier", ["male", "alive", "real", "youtuber", "american", "gamer", "horror_games", "famous"]),
+    ("jacksepticeye", "جاك سيبتيك آي", "Jacksepticeye", "يوتيوبر", "YouTuber", "Jacksepticeye", ["male", "alive", "real", "youtuber", "irish", "gamer", "famous"]),
+    ("ishowspeed", "آي شو سبيد", "IShowSpeed", "يوتيوبر", "YouTuber", "IShowSpeed", ["male", "alive", "real", "youtuber", "american", "streamer", "football", "famous"]),
+    ("ninja_gamer", "نينجا", "Ninja", "يوتيوبر", "YouTuber", "Ninja streamer", ["male", "alive", "real", "youtuber", "american", "streamer", "gamer", "fortnite", "famous"]),
+    ("l3b", "لعيب", "L3b", "يوتيوبر", "YouTuber", "L3b Saudi YouTuber", ["male", "alive", "real", "youtuber", "saudi", "arab", "gamer"]),
+    ("d7oomy", "دحومي 999", "D7oomy 999", "يوتيوبر", "YouTuber", "D7oomy 999", ["male", "alive", "real", "youtuber", "saudi", "arab", "gamer", "gaming_creator"]),
+    ("azoz", "عزيز الأحمد", "Aziz Al-Ahmad", "صانع محتوى", "Content creator", "Aziz Al-Ahmad", ["male", "deceased", "real", "arabic_creator", "saudi", "arab", "famous"]),
+    ("abualrub", "أبو الرب", "Abu Al-Rub", "يوتيوبر", "YouTuber", "Abu Al-Rub", ["male", "alive", "real", "youtuber", "jordanian", "arab", "comedy", "reaction"]),
+    ("noor_stars", "نور ستارز", "Noor Stars", "يوتيوبر", "YouTuber", "Noor Stars", ["female", "alive", "real", "youtuber", "iraqi", "arab", "beauty", "vlogger"]),
+    ("anasala", "أنس وأصالة", "Anasala Family", "صنّاع محتوى", "Content creators", "Anasala Family", ["real", "youtuber", "arab", "vlogger", "family_content"]),
+    ("lisa_blackpink", "ليسا", "Lisa", "مغنية", "Singer", "Lisa (rapper)", ["female", "alive", "real", "singer", "rapper", "thai", "korean", "famous"]),
+    ("jungkook", "جونغكوك", "Jungkook", "مغنٍ", "Singer", "Jungkook", ["male", "alive", "real", "singer", "korean", "famous"]),
+    ("bts_rm", "آر إم", "RM", "مغنٍ", "Singer", "RM (rapper)", ["male", "alive", "real", "singer", "rapper", "korean", "famous"]),
+    ("jackson_wang", "جاكسون وانغ", "Jackson Wang", "مغنٍ", "Singer", "Jackson Wang", ["male", "alive", "real", "singer", "chinese", "famous"]),
+    ("greta", "غريتا تونبرغ", "Greta Thunberg", "ناشطة", "Activist", "Greta Thunberg", ["female", "alive", "real", "activist", "swedish", "famous"]),
+    ("zelenskyy", "فولوديمير زيلينسكي", "Volodymyr Zelenskyy", "شخصية سياسية", "Politics", "Volodymyr Zelenskyy", ["male", "alive", "real", "politician", "ukrainian", "president", "famous"]),
+    ("macron", "إيمانويل ماكرون", "Emmanuel Macron", "شخصية سياسية", "Politics", "Emmanuel Macron", ["male", "alive", "real", "politician", "french", "president", "famous"]),
+    ("biden", "جو بايدن", "Joe Biden", "شخصية سياسية", "Politics", "Joe Biden", ["male", "alive", "real", "politician", "american", "president", "famous"]),
+    ("merkel", "أنغيلا ميركل", "Angela Merkel", "شخصية سياسية", "Politics", "Angela Merkel", ["female", "alive", "real", "politician", "german", "famous"]),
+    ("mao", "ماو تسي تونغ", "Mao Zedong", "شخصية تاريخية", "Historical figure", "Mao Zedong", ["male", "deceased", "real", "historical", "politician", "chinese", "military", "famous"]),
+    ("lenin", "فلاديمير لينين", "Vladimir Lenin", "شخصية تاريخية", "Historical figure", "Vladimir Lenin", ["male", "deceased", "real", "historical", "politician", "russian", "revolutionary", "famous"]),
+    ("ataturk", "مصطفى كمال أتاتورك", "Mustafa Kemal Atatürk", "شخصية تاريخية", "Historical figure", "Mustafa Kemal Atatürk", ["male", "deceased", "real", "historical", "politician", "turkish", "military", "famous"]),
+    ("frida_kahlo", "فريدا كاهلو", "Frida Kahlo", "فنانة", "Artist", "Frida Kahlo", ["female", "deceased", "real", "artist", "mexican", "famous"]),
+    ("vincent_van_gogh", "فنسنت فان غوخ", "Vincent van Gogh", "فنان", "Artist", "Vincent van Gogh", ["male", "deceased", "real", "historical", "artist", "dutch", "famous"]),
+    ("mozart", "موزارت", "Wolfgang Amadeus Mozart", "موسيقي", "Musician", "Wolfgang Amadeus Mozart", ["male", "deceased", "real", "historical", "musician", "austrian", "famous"]),
+    ("beethoven", "بيتهوفن", "Ludwig van Beethoven", "موسيقي", "Musician", "Ludwig van Beethoven", ["male", "deceased", "real", "historical", "musician", "german", "famous"]),
+    ("marie_curie", "ماري كوري", "Marie Curie", "عالمة", "Scientist", "Marie Curie", ["female", "deceased", "real", "historical", "scientist", "polish", "french", "nobel", "famous"]),
+    ("ada_lovelace", "آدا لوفلايس", "Ada Lovelace", "عالمة رياضيات", "Scientist", "Ada Lovelace", ["female", "deceased", "real", "historical", "scientist", "mathematician", "british", "famous"]),
+    ("alan_turing", "آلان تورنغ", "Alan Turing", "عالم رياضيات", "Scientist", "Alan Turing", ["male", "deceased", "real", "historical", "scientist", "mathematician", "british", "famous"]),
+    ("galileo", "غاليليو غاليلي", "Galileo Galilei", "عالم", "Scientist", "Galileo Galilei", ["male", "deceased", "real", "historical", "scientist", "italian", "astronomer", "famous"]),
+    ("darwin", "تشارلز داروين", "Charles Darwin", "عالم", "Scientist", "Charles Darwin", ["male", "deceased", "real", "historical", "scientist", "british", "famous"]),
+    ("suleiman", "سليمان القانوني", "Suleiman the Magnificent", "شخصية تاريخية", "Historical figure", "Suleiman the Magnificent", ["male", "deceased", "real", "historical", "royal", "turkish", "military", "famous"]),
+    ("ibn_battuta_extra", "ابن بطوطة", "Ibn Battuta", "رحالة", "Explorer", "Ibn Battuta", ["male", "deceased", "real", "historical", "arab", "explorer", "famous"]),
+    ("kakuzu", "كاكوزو", "Kakuzu", "أنمي", "Anime", "Kakuzu Naruto", ["male", "fictional", "anime", "ninja", "villain", "japanese", "famous"]),
+    ("madara", "مادارا أوتشيها", "Madara Uchiha", "أنمي", "Anime", "Madara Uchiha", ["male", "fictional", "anime", "ninja", "villain", "japanese", "has_powers", "famous"]),
+    ("obito", "أوبيتو أوتشيها", "Obito Uchiha", "أنمي", "Anime", "Obito Uchiha", ["male", "fictional", "anime", "ninja", "villain", "japanese", "has_powers", "famous"]),
+    ("minato", "ميناتو ناميكازي", "Minato Namikaze", "أنمي", "Anime", "Minato Namikaze", ["male", "fictional", "anime", "ninja", "japanese", "has_powers", "famous"]),
+    ("shanks", "شانكس", "Shanks One Piece", "أنمي", "Anime", "Shanks One Piece", ["male", "fictional", "anime", "pirate", "japanese", "uses_sword", "has_powers", "famous"]),
+    ("law_onepiece", "ترافالغار لاو", "Trafalgar Law", "أنمي", "Anime", "Trafalgar D. Water Law", ["male", "fictional", "anime", "pirate", "doctor", "japanese", "has_powers", "famous"]),
+    ("sanji", "سانجي", "Sanji", "أنمي", "Anime", "Sanji One Piece", ["male", "fictional", "anime", "pirate", "fighter", "japanese", "famous"]),
+    ("ace_onepiece", "بورتغاس دي إيس", "Portgas D. Ace", "أنمي", "Anime", "Portgas D. Ace", ["male", "fictional", "anime", "pirate", "japanese", "has_powers", "famous"]),
+    ("denji", "دينجي", "Denji", "أنمي", "Anime", "Denji Chainsaw Man", ["male", "fictional", "anime", "japanese", "has_powers", "main_character", "famous"]),
+    ("power_chainsaw", "باور", "Power", "أنمي", "Anime", "Power Chainsaw Man", ["female", "fictional", "anime", "japanese", "has_powers", "famous"]),
+    ("makima", "ماكيما", "Makima", "أنمي", "Anime", "Makima Chainsaw Man", ["female", "fictional", "anime", "japanese", "villain", "has_powers", "famous"]),
+    ("frieren", "فريرين", "Frieren", "أنمي", "Anime", "Frieren", ["female", "fictional", "anime", "wizard", "has_powers", "famous"]),
+    ("anya_forger", "أنيا فورجر", "Anya Forger", "أنمي", "Anime", "Anya Forger", ["female", "fictional", "anime", "student", "has_powers", "famous"]),
+    ("nezuko_extra", "نيزوكو كامادو", "Nezuko Kamado", "أنمي", "Anime", "Nezuko Kamado", ["female", "fictional", "anime", "japanese", "has_powers", "famous"]),
+    ("sung_jinwoo", "سونغ جين وو", "Sung Jinwoo", "أنمي", "Anime", "Sung Jinwoo", ["male", "fictional", "anime", "has_powers", "main_character", "famous"]),
+    ("rimuru", "ريمورو تيمبيست", "Rimuru Tempest", "أنمي", "Anime", "Rimuru Tempest", ["male", "fictional", "anime", "has_powers", "main_character", "famous"]),
+    ("loid_forger", "لويد فورجر", "Loid Forger", "أنمي", "Anime", "Loid Forger", ["male", "fictional", "anime", "spy", "japanese", "famous"]),
+    ("yor_forger", "يور فورجر", "Yor Forger", "أنمي", "Anime", "Yor Forger", ["female", "fictional", "anime", "spy", "japanese", "uses_sword", "famous"]),
+    ("sailor_moon", "سيلور مون", "Sailor Moon", "أنمي", "Anime", "Sailor Moon", ["female", "fictional", "anime", "japanese", "has_powers", "main_character", "famous"]),
+    ("ash_ketchum", "آش كيتشام", "Ash Ketchum", "أنمي", "Anime", "Ash Ketchum", ["male", "fictional", "anime", "pokemon", "japanese", "main_character", "famous"]),
+    ("lightning_mcqueen", "ماكوين", "Lightning McQueen", "شخصية كرتونية", "Animated character", "Lightning McQueen", ["male", "fictional", "cartoon", "from_movie", "famous"]),
+    ("po_kung_fu_panda", "بو", "Po Kung Fu Panda", "شخصية كرتونية", "Animated character", "Po Kung Fu Panda", ["male", "fictional", "cartoon", "fighter", "from_movie", "famous"]),
+    ("mulan", "مولان", "Mulan", "شخصية خيالية", "Fictional character", "Mulan Disney", ["female", "fictional", "cartoon", "soldier", "warrior", "from_movie", "famous"]),
+    ("moana", "موانا", "Moana", "شخصية خيالية", "Fictional character", "Moana Disney", ["female", "fictional", "cartoon", "main_character", "from_movie", "famous"]),
+    ("donald_duck", "بطوط", "Donald Duck", "شخصية كرتونية", "Animated character", "Donald Duck", ["male", "fictional", "cartoon", "famous"]),
+    ("bugs_bunny", "باغز باني", "Bugs Bunny", "شخصية كرتونية", "Animated character", "Bugs Bunny", ["male", "fictional", "cartoon", "famous"]),
+    ("scooby_doo", "سكوبي دو", "Scooby-Doo", "شخصية كرتونية", "Animated character", "Scooby-Doo", ["male", "fictional", "cartoon", "detective", "famous"]),
 ]
 
 QUESTION_BANK = [
@@ -284,6 +348,39 @@ QUESTION_BANK = [
     ("from_movie", "هل اشتهر من خلال الأفلام؟", "Is the character known mainly from movies?"),
     ("from_tv", "هل اشتهر من خلال مسلسل تلفزيوني؟", "Is the character known mainly from a TV series?"),
     ("from_comics", "هل الشخصية من القصص المصورة؟", "Is the character from comics?"),
+    ("family", "هل الشخصية من عائلتك؟", "Is the character in your family?"),
+    ("close_relation", "هل الشخصية من أقرب الناس لك؟", "Are they one of your closest relatives?"),
+    ("direct_contact", "هل تتواصل مع الشخصية مباشرة؟", "Do you communicate with this person directly?"),
+    ("maternal_side", "هل هي من جهة أمك؟", "Are they on your mother's side?"),
+    ("paternal_side", "هل هي من جهة أبوك؟", "Are they on your father's side?"),
+    ("same_household", "هل تعيشون في نفس البيت؟", "Do you live in the same household?"),
+    ("has_children", "هل الشخصية عندها عيال؟", "Does this person have children?"),
+    ("self", "هل الشخصية هي أنت؟", "Is the character you?"),
+    ("mother", "هل الشخصية أمك؟", "Is the person your mother?"),
+    ("father", "هل الشخصية أبوك؟", "Is the person your father?"),
+    ("sibling", "هل الشخصية أخ أو أخت لك؟", "Is the person your sibling?"),
+    ("parent", "هل الشخصية أحد والديك؟", "Is the person one of your parents?"),
+    ("grandparent", "هل الشخصية جد أو جدة لك؟", "Is the person your grandparent?"),
+    ("aunt_uncle", "هل الشخصية عم أو عمة أو خال أو خالة؟", "Is the person your aunt or uncle?"),
+    ("cousin", "هل الشخصية ابن أو بنت عم أو خال؟", "Is the person your cousin?"),
+    ("spouse", "هل الشخصية زوجك أو زوجتك؟", "Is the person your spouse?"),
+    ("son", "هل الشخصية ابنك؟", "Is the person your son?"),
+    ("daughter", "هل الشخصية بنتك؟", "Is the person your daughter?"),
+    ("irish", "هل هو أيرلندي؟", "Is the character Irish?"),
+    ("ukrainian", "هل هو أوكراني؟", "Is the character Ukrainian?"),
+    ("mexican", "هل هو مكسيكي؟", "Is the character Mexican?"),
+    ("dutch", "هل هو هولندي؟", "Is the character Dutch?"),
+    ("austrian", "هل هو نمساوي؟", "Is the character Austrian?"),
+    ("polish", "هل هو بولندي؟", "Is the character Polish?"),
+    ("thai", "هل هو تايلندي؟", "Is the character Thai?"),
+    ("activist", "هل هو ناشط أو ناشطة؟", "Is the character an activist?"),
+    ("artist", "هل هو فنان أو فنانة؟", "Is the character an artist?"),
+    ("musician", "هل هو موسيقي؟", "Is the character a musician?"),
+    ("astronomer", "هل هو عالم فلك؟", "Is the character an astronomer?"),
+    ("explorer", "هل هو رحالة أو مستكشف؟", "Is the character an explorer?"),
+    ("horror_games", "هل اشتهر بألعاب الرعب؟", "Are they known for horror games?"),
+    ("family_content", "هل محتواه عن العائلة واليوميات؟", "Is their content about family and daily life?"),
+
 ]
 
 ANSWERS = {
@@ -434,6 +531,40 @@ def _get_characters():
     return result
 
 
+def _family_candidates():
+    """مرشحون افتراضيون للأقارب؛ لا تُعرض إلا بعد إجابة اللاعب أن الشخصية من عائلته."""
+    rows = [
+        ("family_self", "أنت", "You", ["family", "real", "self", "close_relation", "direct_contact", "same_household"]),
+        ("family_mother", "أمك", "Your mother", ["family", "real", "female", "close_relation", "direct_contact", "maternal_side", "parent", "mother", "has_children", "same_household"]),
+        ("family_father", "أبوك", "Your father", ["family", "real", "male", "close_relation", "direct_contact", "paternal_side", "parent", "father", "has_children", "same_household"]),
+        ("family_sister", "أختك", "Your sister", ["family", "real", "female", "close_relation", "direct_contact", "sibling", "same_household"]),
+        ("family_brother", "أخوك", "Your brother", ["family", "real", "male", "close_relation", "direct_contact", "sibling", "same_household"]),
+        ("family_son", "ابنك", "Your son", ["family", "real", "male", "direct_contact", "son"]),
+        ("family_daughter", "بنتك", "Your daughter", ["family", "real", "female", "direct_contact", "daughter"]),
+        ("family_maternal_grandmother", "جدتك من جهة أمك", "Your maternal grandmother", ["family", "real", "female", "maternal_side", "grandparent"]),
+        ("family_maternal_grandfather", "جدك من جهة أمك", "Your maternal grandfather", ["family", "real", "male", "maternal_side", "grandparent"]),
+        ("family_paternal_grandmother", "جدتك من جهة أبوك", "Your paternal grandmother", ["family", "real", "female", "paternal_side", "grandparent"]),
+        ("family_paternal_grandfather", "جدك من جهة أبوك", "Your paternal grandfather", ["family", "real", "male", "paternal_side", "grandparent"]),
+        ("family_maternal_aunt", "خالتك", "Your maternal aunt", ["family", "real", "female", "maternal_side", "aunt_uncle"]),
+        ("family_maternal_uncle", "خالك", "Your maternal uncle", ["family", "real", "male", "maternal_side", "aunt_uncle"]),
+        ("family_paternal_aunt", "عمتك", "Your paternal aunt", ["family", "real", "female", "paternal_side", "aunt_uncle"]),
+        ("family_paternal_uncle", "عمك", "Your paternal uncle", ["family", "real", "male", "paternal_side", "aunt_uncle"]),
+        ("family_maternal_cousin", "قريبك من جهة أمك", "Your cousin on your mother's side", ["family", "real", "maternal_side", "cousin"]),
+        ("family_paternal_cousin", "قريبك من جهة أبوك", "Your cousin on your father's side", ["family", "real", "paternal_side", "cousin"]),
+        ("family_spouse", "زوجك أو زوجتك", "Your spouse", ["family", "real", "close_relation", "direct_contact", "spouse"]),
+    ]
+    return [{"slug": slug, "name_ar": ar, "name_en": en,
+             "category_ar": "من عائلتك", "category_en": "Your family",
+             "wiki_title": "", "traits": set(traits), "image_url": "",
+             "summary_ar": "", "summary_en": ""} for slug, ar, en, traits in rows]
+
+
+def _characters_for_answers(answers):
+    # نضيف خيارات الأقارب لحساب فائدة سؤال "هل هو من عائلتك؟"، لكن
+    # _rank_characters لا يسمح بتخمين قريب إلا إذا أجاب اللاعب بنعم على family.
+    return _get_characters() + _family_candidates()
+
+
 def _likelihood(answer, has_trait):
     # احتمالات بسيطة تسمح بإجابات غير قطعية من دون حذف الشخصية مباشرة.
     return {"yes": 0.94 if has_trait else 0.06,
@@ -450,9 +581,9 @@ def _infer_answers(answers):
         "alive": {"deceased": "no"},
         "deceased": {"alive": "no"},
         "real": {"fictional": "no", "anime": "no", "cartoon": "no"},
-        "fictional": {"real": "no"},
-        "anime": {"fictional": "yes", "real": "no"},
-        "cartoon": {"fictional": "yes", "real": "no"},
+        "fictional": {"real": "no", "family": "no"},
+        "anime": {"fictional": "yes", "real": "no", "family": "no"},
+        "cartoon": {"fictional": "yes", "real": "no", "family": "no"},
         "superhero": {"fictional": "yes", "real": "no"},
         "marvel": {"fictional": "yes", "real": "no"},
         "dc": {"fictional": "yes", "real": "no"},
@@ -468,6 +599,20 @@ def _infer_answers(answers):
         "streamer": {"real": "yes"},
         "esports_clan": {"gamer": "yes", "real": "yes"},
         "arabic_creator": {"youtuber": "yes", "real": "yes"},
+        "family": {"real": "yes", "fictional": "no", "anime": "no", "cartoon": "no"},
+        "close_relation": {"family": "yes", "real": "yes"},
+        "direct_contact": {"family": "yes", "real": "yes"},
+        "self": {"family": "yes", "real": "yes"},
+        "mother": {"family": "yes", "female": "yes", "parent": "yes", "has_children": "yes", "real": "yes"},
+        "father": {"family": "yes", "male": "yes", "parent": "yes", "has_children": "yes", "real": "yes"},
+        "sibling": {"family": "yes", "close_relation": "yes", "real": "yes"},
+        "parent": {"family": "yes", "close_relation": "yes", "real": "yes"},
+        "grandparent": {"family": "yes", "real": "yes"},
+        "aunt_uncle": {"family": "yes", "real": "yes"},
+        "cousin": {"family": "yes", "real": "yes"},
+        "spouse": {"family": "yes", "close_relation": "yes", "real": "yes"},
+        "son": {"family": "yes", "male": "yes", "real": "yes"},
+        "daughter": {"family": "yes", "female": "yes", "real": "yes"},
         "japanese": {"russian": "no", "german": "no", "french": "no", "korean": "no", "chinese": "no", "indian": "no", "brazilian": "no", "portuguese": "no", "argentinian": "no", "spanish": "no", "italian": "no", "canadian": "no", "swedish": "no", "turkish": "no", "pakistani": "no", "iraqi": "no", "kuwaiti": "no", "jordanian": "no", "syrian": "no", "lebanese": "no", "moroccan": "no", "tunisian": "no", "yemeni": "no", "qatari": "no", "emirati": "no", "colombian": "no", "serbian": "no", "american": "no", "british": "no", "saudi": "no", "egyptian": "no"},
         "russian": {"japanese": "no", "german": "no", "french": "no", "korean": "no", "chinese": "no", "indian": "no", "brazilian": "no", "portuguese": "no", "argentinian": "no", "spanish": "no", "italian": "no", "canadian": "no", "swedish": "no", "turkish": "no", "pakistani": "no", "iraqi": "no", "kuwaiti": "no", "jordanian": "no", "syrian": "no", "lebanese": "no", "moroccan": "no", "tunisian": "no", "yemeni": "no", "qatari": "no", "emirati": "no", "colombian": "no", "serbian": "no", "american": "no", "british": "no", "saudi": "no", "egyptian": "no"},
         "german": {"japanese": "no", "russian": "no", "french": "no", "korean": "no", "chinese": "no", "indian": "no", "brazilian": "no", "portuguese": "no", "argentinian": "no", "spanish": "no", "italian": "no", "canadian": "no", "swedish": "no", "turkish": "no", "pakistani": "no", "iraqi": "no", "kuwaiti": "no", "jordanian": "no", "syrian": "no", "lebanese": "no", "moroccan": "no", "tunisian": "no", "yemeni": "no", "qatari": "no", "emirati": "no", "colombian": "no", "serbian": "no", "american": "no", "british": "no", "saudi": "no", "egyptian": "no"},
@@ -476,7 +621,9 @@ def _infer_answers(answers):
     while changed:
         changed = False
         for feature, answer in list(effective.items()):
-            if answer not in ("yes", "no"):
+            # هذه خريطة استنتاجات باتجاه واحد: "نعم، يوتيوبر" تعني أنه حقيقي،
+            # لكن "لا، ليس يوتيوبر" لا تعني أنه غير حقيقي. لذلك لا نعكس كل دلالة آليًا.
+            if answer != "yes":
                 continue
             implied_items = dict(implications.get(feature, {}))
             nationality_features = {"saudi", "american", "british", "egyptian", "japanese", "russian", "german", "french", "korean", "chinese", "indian", "brazilian", "portuguese", "argentinian", "spanish", "italian", "canadian", "swedish", "turkish", "pakistani", "iraqi", "kuwaiti", "jordanian", "syrian", "lebanese", "moroccan", "tunisian", "yemeni", "qatari", "emirati", "colombian", "serbian", "south_african", "jamaican", "roman", "mongolian", "greek"}
@@ -484,7 +631,7 @@ def _infer_answers(answers):
                 implied_items.update({other: "no" for other in nationality_features if other != feature})
             for implied, value in implied_items.items():
                 if implied not in effective:
-                    effective[implied] = value if answer == "yes" else ("yes" if value == "no" else "no")
+                    effective[implied] = value
                     changed = True
     return effective
 
@@ -499,6 +646,8 @@ def _rank_characters(characters, answers, excluded):
     """
     effective_answers = _infer_answers(answers)
     available = [c for c in characters if c["slug"] not in excluded]
+    if effective_answers.get("family") != "yes":
+        available = [c for c in available if not c["slug"].startswith("family_")]
     if not available:
         return []
 
@@ -508,13 +657,17 @@ def _rank_characters(characters, answers, excluded):
         "athlete", "singer", "actor", "military", "superhero", "marvel",
         "dc", "historical", "scientist", "businessperson", "streamer",
         "gamer", "rapper", "royal", "religious", "fictional", "real",
+        "male", "female", "family",
     }
     filtered = available
     for feature in category_features:
         answer = effective_answers.get(feature)
         if answer not in ("yes", "no"):
             continue
-        if answer == "yes":
+        if feature in ("male", "female"):
+            # لا نستبعد المرشح الذي لم تُسجّل له صفة جنس، مثل خيار "أنت".
+            matches = [c for c in filtered if feature in c["traits"] or not ({"male", "female"} & c["traits"])] if answer == "yes" else [c for c in filtered if feature not in c["traits"]]
+        elif answer == "yes":
             matches = [c for c in filtered if feature in c["traits"]]
         else:
             matches = [c for c in filtered if feature not in c["traits"]]
@@ -535,12 +688,13 @@ def _rank_characters(characters, answers, excluded):
 
 # الفروع المتخصصة للأسئلة. الإجابة بنعم على فئة رئيسية تنقل اللعبة لأسئلتها.
 PRIMARY_BRANCHES = (
-    "politician", "youtuber", "anime", "football", "singer", "actor",
+    "family", "politician", "youtuber", "anime", "football", "singer", "actor",
     "scientist", "businessperson", "military", "historical", "superhero",
     "cartoon", "athlete", "writer", "philosopher", "religious",
 )
 
 BRANCH_QUESTIONS = {
+    "family": {"family", "male", "female", "close_relation", "direct_contact", "maternal_side", "paternal_side", "same_household", "has_children", "self", "mother", "father", "sibling", "parent", "grandparent", "aunt_uncle", "cousin", "spouse", "son", "daughter"},
     "politician": {
         "male", "female", "alive", "deceased", "real", "historical", "saudi", "arab",
         "american", "british", "egyptian", "russian", "german", "french", "indian",
@@ -606,6 +760,12 @@ def _choose_question(characters, asked, answers=None):
 
     branch = _active_branch(answers)
     allowed = BRANCH_QUESTIONS.get(branch)
+    inferred = _infer_answers(answers)
+    specific_positive = any(answers.get(feature) == "yes" for feature in PRIMARY_BRANCHES if feature != "family")
+    if not branch and inferred.get("real") == "yes" and "family" not in known and not specific_positive:
+        family_question = next((q for q in pool if q[0] == "family"), None)
+        if family_question:
+            return family_question
     if allowed:
         focused = [q for q in pool if q[0] in allowed]
         # ما دام فيه سؤال مفيد داخل فرع اللاعب، لا نرجع لفئات لا علاقة لها به.
@@ -657,7 +817,7 @@ def _guess_keyboard(lang):
 
 async def _send_next_question(update, context, user_id, chat_id, s, edit_query=None):
     lang = s["lang"]
-    characters = await asyncio.to_thread(_get_characters)
+    characters = await asyncio.to_thread(_characters_for_answers, s["answers"])
     ranked = _rank_characters(characters, s["answers"], set(s["excluded"]))
     if not ranked:
         s["state"] = "finished"
@@ -693,6 +853,9 @@ async def _send_next_question(update, context, user_id, chat_id, s, edit_query=N
             return
 
     remaining = [c for _, c in ranked[:max(8, min(60, len(ranked)))]]
+    inferred = _infer_answers(s["answers"])
+    if "family" not in inferred:
+        remaining.extend(_family_candidates())
     question = _choose_question(remaining, set(s["asked"]), s["answers"])
     if not question:
         s["question_count"] = MAX_QUESTIONS
@@ -782,7 +945,7 @@ async def demon_nawaf_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         if s.get("state") != "guess":
             await query.answer()
             return
-        characters = await asyncio.to_thread(_get_characters)
+        characters = await asyncio.to_thread(_characters_for_answers, s["answers"])
         ranked = _rank_characters(characters, s["answers"], set(s["excluded"]))
         if not ranked:
             await query.answer()
@@ -824,10 +987,15 @@ async def _wikipedia_info(title, lang):
                     r = requests.get(url, params=params, headers=headers, timeout=HTTP_TIMEOUT)
                     r.raise_for_status()
                     pages = r.json().get("query", {}).get("pages", {})
-                    ordered = sorted(pages.values(), key=lambda page: (not bool(page.get("thumbnail", {}).get("source")), not bool(page.get("extract"))))
+                    page_list = list(pages.values())
+                    # عند البحث لا نأخذ أول نتيجة عشوائية؛ نطلب تشابهًا واضحًا مع اسم الشخصية.
+                    target_words = {w.casefold() for w in re.findall(r"[A-Za-z0-9]+", title) if len(w) > 2}
+                    if "generator" in params:
+                        page_list = [page for page in page_list if len(target_words & {w.casefold() for w in re.findall(r"[A-Za-z0-9]+", page.get("title", "")) if len(w) > 2}) / max(len(target_words), 1) >= 0.5]
+                    ordered = sorted(page_list, key=lambda page: (not bool(page.get("thumbnail", {}).get("source")), not bool(page.get("extract"))))
                     for page in ordered:
                         if page.get("thumbnail", {}).get("source") or page.get("extract"):
-                            return {"image": page.get("thumbnail", {}).get("source", ""), "summary": page.get("extract", ""), "title": page.get("title", title)}
+                            return {"image": page.get("thumbnail", {}).get("source", ""), "summary": page.get("extract", ""), "title": page.get("title", title), "source": f"Wikipedia ({language})"}
                 except Exception:
                     continue
         # Last image fallback: search Wikimedia Commons for a usable file.
@@ -839,10 +1007,19 @@ async def _wikipedia_info(title, lang):
             }, headers=headers, timeout=HTTP_TIMEOUT)
             r.raise_for_status()
             pages = r.json().get("query", {}).get("pages", {})
+            target_words = {w.casefold() for w in re.findall(r"[A-Za-z0-9]+", title) if len(w) > 2}
+            candidates = []
             for page in pages.values():
-                image = (page.get("imageinfo") or [{}])[0].get("thumburl") or (page.get("imageinfo") or [{}])[0].get("url")
-                if image:
-                    return {"image": image, "summary": "", "title": title}
+                page_words = {w.casefold() for w in re.findall(r"[A-Za-z0-9]+", page.get("title", "")) if len(w) > 2}
+                overlap = len(target_words & page_words) / max(len(target_words), 1)
+                image_info = (page.get("imageinfo") or [{}])[0]
+                image = image_info.get("thumburl") or image_info.get("url")
+                mime = (image_info.get("mime") or "").lower()
+                if image and overlap >= 0.5 and (not mime or mime.startswith("image/")):
+                    candidates.append((overlap, image))
+            if candidates:
+                candidates.sort(reverse=True)
+                return {"image": candidates[0][1], "summary": "", "title": title, "source": "Wikimedia Commons"}
         except Exception:
             pass
         return {}
@@ -853,11 +1030,12 @@ async def _wikipedia_info(title, lang):
 async def _show_character_result(query, context, character, lang):
     name = character["name_ar"] if lang == "ar" else character["name_en"]
     category = character["category_ar"] if lang == "ar" else character["category_en"]
+    is_family_candidate = character["slug"].startswith("family_")
     wiki_title = character["wiki_title"] or character["name_en"]
-    info = await _wikipedia_info(wiki_title, lang)
+    info = {} if is_family_candidate else await _wikipedia_info(wiki_title, lang)
     image_url = info.get("image", "") or character["image_url"]
     summary = info.get("summary", "") or (character["summary_ar"] if lang == "ar" else character["summary_en"])
-    if info:
+    if info and not is_family_candidate:
         try:
             _db_execute("UPDATE demon_nawaf_characters SET image_url=CASE WHEN ?<>'' THEN ? ELSE image_url END, summary_ar=CASE WHEN ?='ar' AND summary_ar='' THEN ? ELSE summary_ar END, summary_en=CASE WHEN ?='en' AND summary_en='' THEN ? ELSE summary_en END, updated_at=NOW() WHERE slug=?", (info.get("image", ""), info.get("image", ""), lang, summary[:2500], lang, summary[:2500], character["slug"]))
         except Exception:
@@ -881,6 +1059,9 @@ async def _show_character_result(query, context, character, lang):
     caption = TEXT[lang]["correct"].format(name=name) + f"\n\n{'الفئة' if lang == 'ar' else 'Category'}: {category}"
     if summary:
         caption += "\n\n" + summary[:650]
+    if is_family_candidate:
+        await query.message.reply_text(caption, reply_markup=markup, parse_mode="Markdown")
+        return
     sent_photo = False
     if image_url:
         try:
