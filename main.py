@@ -367,6 +367,12 @@ from handlers.mandatory_subscription import (
     mandatory_subscription_commands,
 )
 
+from games.demon_nawaf import (
+    ensure_demon_tables,
+    start_demon_nawaf,
+    demon_nawaf_callback,
+    demon_nawaf_private_start,
+)
 
 import os
 import asyncio
@@ -568,6 +574,7 @@ def main():
     # ==================================================
     create_tables()
     create_developer_panel_tables()
+    ensure_demon_tables()
     ensure_blocked_words_tables()
     ensure_mandatory_subscription_tables()
     create_group_ranks_table()
@@ -1724,6 +1731,37 @@ def main():
             whispers_list_command,
         ),
         group=-1,
+    )
+
+
+    # ==================================================
+    # 👻 ديمون نواف
+    # ==================================================
+    app.add_handler(
+        MessageHandler(
+            (filters.ChatType.GROUPS | filters.ChatType.PRIVATE)
+            & filters.Regex(r"^(?:ديمون نواف|Demon Nawaf)$"),
+            start_demon_nawaf,
+        ),
+        group=-4,
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            demon_nawaf_callback,
+            pattern=r"^dn:",
+        ),
+        group=-4,
+    )
+
+    # رابط زر النتيجة يفتح البوت في الخاص على /start demon_nawaf
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.PRIVATE
+            & filters.Regex(r"^/start(?:@\w+)?\s+demon_nawaf$"),
+            demon_nawaf_private_start,
+        ),
+        group=-5,
     )
 
 
