@@ -422,42 +422,39 @@ async def ai_assistant_message(
     ):
         await message.reply_text("هلا والله، كيف أقدر أخدمك؟")
         raise ApplicationHandlerStop()
-
-
-        
-        code_request_patterns = (
-            r"\bpython\b",
-            r"\bjavascript\b",
-            r"\btypescript\b",
-            r"\bjava\b",
-            r"\bc\+\+\b",
-            r"\bc#\b",
-            r"\bhtml\b",
-            r"\bcss\b",
-            r"\bsql\b",
-            r"\bcode\b",
-            r"\bscript\b",
-            r"كود",
-            r"اكواد",
-            r"أكواد",
-            r"برمج(?:ة|ي|يات|لي|ه|ها)",
-            r"اكتب\s*(?:لي\s*)?(?:برنامج|سكربت)",
-            r"سو[ّ ]*(?:لي\s*)?(?:برنامج|سكربت)",
-            r"أنشئ\s*(?:لي\s*)?(?:برنامج|سكربت)",
-            r"اعطني\s*(?:كود|كودا|سكربت|برنامج)",
-            r"عطني\s*(?:كود|سكربت|برنامج)",
-            r"حلقة\s*(?:تكرار|for|while)",
-            r"دالة\s*(?:بايثون|برمجية)",
+  
+    code_request_patterns = (    
+        r"\bpython\b",
+        r"\bjavascript\b",
+        r"\btypescript\b",
+        r"\bjava\b",
+        r"\bc\+\+\b",
+        r"\bc#\b",
+        r"\bhtml\b",
+        r"\bcss\b",  
+        r"\bsql\b",
+        r"\bcode\b",
+        r"\bscript\b",
+        r"كود",
+        r"اكواد",
+        r"أكواد",
+        r"برمج(?:ة|ي|يات|لي|ه|ها)",
+        r"اكتب\s*(?:لي\s*)?(?:برنامج|سكربت)",
+        r"سو[ّ ]*(?:لي\s*)?(?:برنامج|سكربت)",
+        r"أنشئ\s*(?:لي\s*)?(?:برنامج|سكربت)",
+        r"اعطني\s*(?:كود|كودا|سكربت|برنامج)",
+        r"عطني\s*(?:كود|سكربت|برنامج)",
+        r"حلقة\s*(?:تكرار|for|while)",
+        r"دالة\s*(?:بايثون|برمجية)",
+    )
+    if any(
+        re.search(pattern, question, flags=re.IGNORECASE)
+        for pattern in code_request_patterns
+    ):
+        await message.reply_text(
+            "اعذرني، نواف مانعني أعطي أي أكواد برمجية أو تعليمات."
         )
-
-        if any(
-            re.search(pattern, question, flags=re.IGNORECASE)
-            for pattern in code_request_patterns
-        ):
-            await message.reply_text(
-                "اعذرني، نواف مانعني اعطي اي اكواد برمجية او تعليمات."
-            )
-             raise ApplicationHandlerStop()
+        raise ApplicationHandlerStop()
 
     if len(question) > _MAX_QUESTION_CHARS:
         await message.reply_text("سؤالك طويل جدًا؛ اختصره شوي وأرسله مرة ثانية.")
