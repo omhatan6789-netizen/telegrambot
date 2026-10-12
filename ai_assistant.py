@@ -15,6 +15,7 @@ from telegram.ext import ContextTypes, ApplicationHandlerStop
 
 from database import connect
 
+from urllib.parse import urlencode
 
 OWNER_ID = 8453977662
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "").strip()
@@ -202,6 +203,155 @@ def _get_time_answer(question):
 
     return None
 
+
+
+PRAYER_CITIES = {
+    "مكة المكرمة": "Mecca",
+    "مكة": "Mecca",
+    "الدمام": "Dammam",
+    "الرياض": "Riyadh",
+    "جدة": "Jeddah",
+    "المدينة المنورة": "Medina",
+    "المدينة": "Medina",
+    "الطائف": "Taif",
+    "تبوك": "Tabuk",
+    "أبها": "Abha",
+    "ابها": "Abha",
+    "الخبر": "Khobar",
+    "الجبيل": "Jubail",
+    "ينبع": "Yanbu",
+    "حائل": "Hail",
+    "بريدة": "Buraidah",
+    "جازان": "Jazan",
+    "نجران": "Najran",
+    "الأحساء": "Hofuf",
+    "الاحساء": "Hofuf",
+}
+
+PRAYER_NAMES = {
+    "Fajr": "الفجر",
+    "Dhuhr": "الظهر",
+    "Asr": "العصر",
+    "Maghrib": "المغرب",
+    "Isha": "العشاء",
+}
+
+
+def _format_prayer_time(value):
+    # تحويل 24 ساعة إلى 12 ساعة، مثل 13:05 إلى 1:05 مساءً
+    match = re.search(r"(\d{1,2}):(\d{2})", str(value))
+    if not match:
+        return str(value)
+
+    hour = int(match.group(1))
+    minute = int(match.group(2))
+    period = "صباحًا" if hour < 12 else "مساءً"
+    hour12 = hour % 12 or 12
+
+    return f"{hour12}:{minute:02d} {period}"
+
+
+def _fetch_prayer_times_sync(city):
+    today = datetime.now(
+        ZoneInfo("Asia/Riyadh")
+    ).strftime("%d-%m-%Y")
+
+    params = urlencode({
+        "city": city,
+        "country": "Saudi Arabia",
+        "method": 4,
+    })
+
+    url = (
+        f"https://api.aladhan.com/v1/timingsByCity/"
+        f"{today}?{params}"
+    )
+
+    request = urllib.request.Request(
+        url,
+        headers={"User-Agent": "NyoufTelegramBot/1.0"},
+    )
+
+    with urllib.request.urlopen(request, timeout=12) as response:
+        data = json.loads(response.read().decode("utf-8"))
+
+    if data.get("code") != 200 or not data.get("data"):
+        raise RuntimeError("لم تصل مواقيت الصلاة من الخدمة.")
+
+    timings = data["data"]["timings"]
+
+    return {
+        name: _format_prayer_time(timings[key])
+        for key, name in PRAYER_NAMES.items()
+    }
+
+
+def _find_prayer_cities(question):
+    q = question.strip().lower()
+
+    found = []
+    for arabic_name in sorted(PRAYER_CITIES, key=len, reverse=True):
+        if arabic_name in q and arabic_name not in found:
+            found.append(arabic_name)
+
+    return found
+
+
+def _is_prayer_question(question):
+    q = question.lower()
+
+    prayer_words = (
+        "يأذن", "اذان", "أذان", "الصلاة", "الصلاه",
+        "مواقيت", "مواعيد الصلاة", "وقت الفجر",
+        "وقت الظهر", "وقت العصر", "وقت المغرب",
+        "وقت العشاء", "الفجر", "الظهر", "العصر",
+        "المغرب", "العشاء",
+    )
+
+    return any(word in q for word in prayer_words)
+
+
+async def _answer_prayer_question(message, question):
+    cities = _find_prayer_cities(question)
+
+    if not cities:
+        await message.reply_text(
+            "حدد المدينة عشان أعطيك مواقيت الصلاة الصحيحة، "
+            "مثل: نيوف متى يأذن في مكة؟"
+        )
+        return
+
+    results = []
+
+    for arabic_city in cities[:5]:
+        english_city = PRAYER_CITIES[arabic_city]
+
+        try:
+            times = await asyncio.to_thread(
+                _fetch_prayer_times_sync,
+                english_city,
+            )
+
+            results.append(
+                f"مواقيت الصلاة في {arabic_city} اليوم:\n"
+                f"الفجر: {times['الفجر']}\n"
+                f"الظهر: {times['الظهر']}\n"
+                f"العصر: {times['العصر']}\n"
+                f"المغرب: {times['المغرب']}\n"
+                f"العشاء: {times['العشاء']}"
+            )
+
+        except Exception as exc:
+            print(f"[AI] Prayer times error for {english_city}: {exc}")
+            results.append(
+                f"تعذر جلب مواقيت الصلاة في {arabic_city} حاليًا."
+            )
+
+    await message.reply_text(
+        "\n\n".join(results)
+        + "\n\nالمواقيت محسوبة لليوم حسب خدمة مواقيت الصلاة، "
+          "وقد تختلف دقائق عن تقويم المسجد المحلي."
+    )
 
 def _needs_search(question):
     q = question.lower().strip()
@@ -460,10 +610,16 @@ async def ai_assistant_message(
         await message.reply_text("سؤالك طويل جدًا؛ اختصره شوي وأرسله مرة ثانية.")
         raise ApplicationHandlerStop()
 
+    
+    if _is_prayer_question(question):
+        await _answer_prayer_question(message, question)
+        raise ApplicationHandlerStop()
+
     time_answer = _get_time_answer(question)
     if time_answer:
         await message.reply_text(time_answer)
         raise ApplicationHandlerStop()
+
 
     if any(x in question.lower() for x in (
         "من مطورك", "مين مطورك", "من صنعك", "مين صنعك",
