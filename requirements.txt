@@ -2,3 +2,4 @@ python-telegram-bot==22.8
 Pillow
 psycopg2-binary
 requests
+ddgs>=9.0.0
