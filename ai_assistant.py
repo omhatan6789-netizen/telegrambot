@@ -788,20 +788,67 @@ def _download_image_url(image_url: str):
     return None
 
 
+def _image_url_candidates_from_pinterest(query: str):
+    """البحث عن الصور في Pinterest."""
+    search_url = (
+        "https://www.pinterest.com/search/pins/?"
+        + urlencode({"q": query})
+    )
+    request = urllib.request.Request(
+        search_url,
+        headers={
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/131.0.0.0 Safari/537.36"
+            ),
+            "Accept-Language": "ar,en-US;q=0.9,en;q=0.8",
+        },
+    )
+    with urllib.request.urlopen(request, timeout=12) as response:
+        page = response.read(5 * 1024 * 1024).decode(
+            "utf-8", errors="ignore"
+        )
+    page = (
+        page.replace(r"\/", "/")
+        .replace(r"\u002F", "/")
+        .replace("&amp;", "&")
+    )
+    candidates = []
+    pattern = (
+        r'https?://i\.pinimg\.com/'
+        r'(?:originals|[0-9]+x[0-9]+)/[^"\'\s<>\\]+'
+    )
+    for match in re.finditer(pattern, page, re.IGNORECASE):
+        url = match.group(0).rstrip("\\),;")
+        if url not in candidates:
+            candidates.append(url)
+    candidates.sort(
+        key=lambda url: (
+            0 if "/originals/" in url
+            else 1 if "/736x/" in url
+            else 2
+        )
+    )
+    return candidates[:30]
 def _search_and_download_image_sync(query: str):
-    """البحث عن صور حقيقية عبر Google Images ثم Bing ثم DDGS، وتجربة عدة روابط."""
+    """Pinterest أولًا، ثم Google وBing وDDGS."""
     search_queries = [query, f"{query} image"]
+    searchers = (
+        _image_url_candidates_from_pinterest,
+        _image_url_candidates_from_google,
+        _image_url_candidates_from_bing,
+    )
     seen_urls = set()
-
-    # Google Images first, with Bing as a fallback.
     for search_query in search_queries:
-        for searcher in (_image_url_candidates_from_google, _image_url_candidates_from_bing):
+        for searcher in searchers:
             try:
                 urls = searcher(search_query)
             except Exception as exc:
-                print(f"[AI Images] {searcher.__name__} search error: {exc}")
-                urls = []
-
+                print(
+                    f"[AI Images] {searcher.__name__}: {exc}"
+                )
+                continue
             for image_url in urls:
                 if image_url in seen_urls:
                     continue
@@ -809,12 +856,9 @@ def _search_and_download_image_sync(query: str):
                 try:
                     downloaded = _download_image_url(image_url)
                     if downloaded:
-                        image_bytes, extension = downloaded
-                        return image_bytes, extension
+                        return downloaded
                 except Exception as exc:
-                    print(f"[AI Images] Direct image download failed: {exc}")
-
-    # DDGS is retained as a third fallback.
+                    print(f"[AI Images] Download failed: {exc}")
     for search_query in search_queries:
         try:
             results = DDGS(timeout=12).images(
@@ -824,22 +868,22 @@ def _search_and_download_image_sync(query: str):
                 max_results=10,
             )
         except Exception as exc:
-            print(f"[AI Images] DDGS search error: {exc}")
+            print(f"[AI Images] DDGS error: {exc}")
             continue
-
         for item in results or []:
             image_url = str(item.get("image") or "").strip()
-            if not image_url.startswith(("https://", "http://")) or image_url in seen_urls:
+            if (
+                not image_url.startswith(("https://", "http://"))
+                or image_url in seen_urls
+            ):
                 continue
             seen_urls.add(image_url)
             try:
                 downloaded = _download_image_url(image_url)
                 if downloaded:
-                    image_bytes, extension = downloaded
-                    return image_bytes, extension
+                    return downloaded
             except Exception as exc:
-                print(f"[AI Images] DDGS image download failed: {exc}")
-
+                print(f"[AI Images] DDGS download failed: {exc}")
     raise RuntimeError("ما حصلت صورة قابلة للإرسال من نتائج البحث.")
 
 
