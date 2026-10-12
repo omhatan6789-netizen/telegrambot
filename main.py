@@ -374,6 +374,8 @@ from games.demon_nawaf import (
     demon_nawaf_private_start,
 )
 
+from ai_assistant import ensure_ai_tables, ai_assistant_message
+
 import os
 import asyncio
 import threading
@@ -575,6 +577,7 @@ def main():
     create_tables()
     create_developer_panel_tables()
     ensure_demon_tables()
+    ensure_ai_tables()
     ensure_blocked_words_tables()
     ensure_mandatory_subscription_tables()
     create_group_ranks_table()
@@ -697,6 +700,17 @@ def main():
         .build()
     )
 
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.TEXT
+            & ~filters.COMMAND,
+            ai_assistant_message,
+        ),
+        group=-1000,
+    )
 
     
     # الاشتراك الإجباري
