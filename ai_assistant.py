@@ -1,10 +1,12 @@
 
 import asyncio
+import base64
 import json
 import os
 import re
 import urllib.error
 import urllib.request
+from io import BytesIO
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -572,6 +574,26 @@ async def ai_assistant_message(
     ):
         await message.reply_text("هلا والله، كيف أقدر أخدمك؟")
         raise ApplicationHandlerStop()
+
+
+    
+    image_match = re.match(
+        r"^\s*(?:ارسل|أرسل|ورني|وريني)\s+"
+        r"(?:لي\s+)?صورة\s+(.+?)\s*$",
+        question,
+        flags=re.IGNORECASE,
+    )
+
+    if image_match:
+        image_prompt = image_match.group(1).strip()
+
+        if len(image_prompt) > 1800:
+            await message.reply_text("وصف الصورة طويل جدًا، اختصره شوي.")
+        else:
+            await _send_generated_image(message, image_prompt)
+
+        raise ApplicationHandlerStop()
+
   
     code_request_patterns = (    
         r"\bpython\b",
@@ -684,3 +706,100 @@ async def ai_assistant_message(
         )
 
     raise ApplicationHandlerStop()
+
+
+
+CLOUDFLARE_ACCOUNT_ID = os.getenv("CLOUDFLARE_ACCOUNT_ID", "").strip()
+CLOUDFLARE_API_TOKEN = os.getenv("CLOUDFLARE_API_TOKEN", "").strip()
+
+IMAGE_MODEL = "@cf/black-forest-labs/flux-1-schnell"
+
+
+def _generate_image_sync(prompt: str) -> bytes:
+    """توليد صورة عبر Cloudflare Workers AI."""
+
+    if not CLOUDFLARE_ACCOUNT_ID or not CLOUDFLARE_API_TOKEN:
+        raise RuntimeError(
+            "إعدادات Cloudflare غير موجودة في متغيرات البيئة."
+        )
+
+    url = (
+        "https://api.cloudflare.com/client/v4/accounts/"
+        f"{CLOUDFLARE_ACCOUNT_ID}/ai/run/{IMAGE_MODEL}"
+    )
+
+    payload = json.dumps({
+        "prompt": prompt,
+        "steps": 4,
+    }).encode("utf-8")
+
+    request = urllib.request.Request(
+        url,
+        data=payload,
+        headers={
+            "Authorization": f"Bearer {CLOUDFLARE_API_TOKEN}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(request, timeout=120) as response:
+            content = response.read()
+            content_type = response.headers.get("Content-Type", "")
+
+    except urllib.error.HTTPError as exc:
+        details = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(
+            f"Cloudflare رفض الطلب ({exc.code}): {details[:500]}"
+        ) from exc
+
+    # بعض الاستجابات تكون صورة مباشرة.
+    if content_type.startswith("image/"):
+        return content
+
+    # أو تكون JSON تحتوي الصورة بصيغة Base64.
+    try:
+        data = json.loads(content)
+        image_data = data.get("result", {}).get("image")
+
+        if not image_data:
+            raise ValueError("لم تُرجع الخدمة بيانات صورة.")
+
+        return base64.b64decode(image_data)
+
+    except (json.JSONDecodeError, ValueError, TypeError) as exc:
+        raise RuntimeError(
+            "استجابة Cloudflare لم تحتوِ على صورة صالحة."
+        ) from exc
+
+
+async def _send_generated_image(message, prompt: str) -> None:
+    status_message = await message.reply_text(
+        "🎨 جاري إنشاء الصورة، انتظر شوي..."
+    )
+
+    try:
+        image_bytes = await asyncio.to_thread(
+            _generate_image_sync, prompt
+        )
+
+        photo = BytesIO(image_bytes)
+        photo.name = "generated.jpg"
+
+        await message.reply_photo(
+            photo=photo,
+            caption=f"تفضل 🎨\nوصف الصورة: {prompt[:700]}",
+        )
+
+        await status_message.delete()
+
+    except Exception:
+        # لا نعرض مفاتيح API أو تفاصيل حساسة في المجموعة.
+        await status_message.edit_text(
+            "ما قدرت أنشئ الصورة هالمرة. "
+            "تأكد من إعدادات Cloudflare وحصة الاستخدام، "
+            "ثم حاول مرة ثانية."
+        )
+
+
