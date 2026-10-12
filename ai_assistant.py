@@ -700,81 +700,147 @@ async def ai_assistant_message(
     raise ApplicationHandlerStop()
 
 
-def _search_and_download_image_sync(query: str):
-    """البحث عن صورة حقيقية وتنزيل أول نتيجة صالحة."""
+def _image_url_candidates_from_google(query: str):
+    """استخراج روابط الصور من صفحة صور Google دون الحاجة إلى مفتاح API."""
+    search_url = "https://www.google.com/search?tbm=isch&q=" + urlencode({"q": query})[2:]
+    request = urllib.request.Request(
+        search_url,
+        headers={
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/131.0.0.0 Safari/537.36"
+            ),
+            "Accept-Language": "ar,en-US;q=0.9,en;q=0.8",
+        },
+    )
+    with urllib.request.urlopen(request, timeout=12) as response:
+        page = response.read(5 * 1024 * 1024).decode("utf-8", errors="ignore")
 
-    search_queries = [query, f"{query} صورة حقيقية"]
+    page = (page.replace(r"\\/", "/")
+                .replace(r"\u003d", "=")
+                .replace(r"\u0026", "&")
+                .replace(r"\u003c", "<")
+                .replace(r"\u003e", ">"))
+    candidates = []
+    for match in re.finditer(r'"ou"\s*:\s*"(https?://[^"\\]+)', page):
+        url = match.group(1).replace(r"\u0026", "&")
+        if url.startswith(("https://", "http://")) and url not in candidates:
+            candidates.append(url)
+    return candidates[:20]
+
+
+def _image_url_candidates_from_bing(query: str):
+    """بديل للبحث عن الصور إذا تعذر الوصول إلى صور Google."""
+    search_url = "https://www.bing.com/images/search?" + urlencode({"q": query, "form": "HDRSC3"})
+    request = urllib.request.Request(
+        search_url,
+        headers={
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/131.0.0.0 Safari/537.36"
+            ),
+        },
+    )
+    with urllib.request.urlopen(request, timeout=12) as response:
+        page = response.read(5 * 1024 * 1024).decode("utf-8", errors="ignore")
+
+    candidates = []
+    for match in re.finditer(r'<a[^>]+class="[^"]*iusc[^"]*"[^>]+m="([^"\n]+)"', page):
+        raw = match.group(1).replace("&quot;", '"').replace("&amp;", "&")
+        try:
+            data = json.loads(raw)
+            url = str(data.get("murl") or "").strip()
+        except Exception:
+            continue
+        if url.startswith(("https://", "http://")) and url not in candidates:
+            candidates.append(url)
+    return candidates[:20]
+
+
+def _download_image_url(image_url: str):
+    request = urllib.request.Request(
+        image_url,
+        headers={
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/131.0.0.0 Safari/537.36"
+            ),
+            "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+        },
+    )
+    with urllib.request.urlopen(request, timeout=12) as response:
+        image_bytes = response.read(9 * 1024 * 1024 + 1)
+    if not image_bytes or len(image_bytes) > 9 * 1024 * 1024:
+        return None
+
+    # Telegram photos must be real image data, not an HTML error page.
+    if image_bytes.startswith(b"\xff\xd8\xff"):
+        return image_bytes, "jpg"
+    if image_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
+        return image_bytes, "png"
+    if image_bytes.startswith((b"GIF87a", b"GIF89a")):
+        return image_bytes, "gif"
+    if image_bytes.startswith(b"RIFF") and image_bytes[8:12] == b"WEBP":
+        return image_bytes, "webp"
+    return None
+
+
+def _search_and_download_image_sync(query: str):
+    """البحث عن صور حقيقية عبر Google Images ثم Bing ثم DDGS، وتجربة عدة روابط."""
+    search_queries = [query, f"{query} image"]
     seen_urls = set()
 
+    # Google Images first, with Bing as a fallback.
+    for search_query in search_queries:
+        for searcher in (_image_url_candidates_from_google, _image_url_candidates_from_bing):
+            try:
+                urls = searcher(search_query)
+            except Exception as exc:
+                print(f"[AI Images] {searcher.__name__} search error: {exc}")
+                urls = []
+
+            for image_url in urls:
+                if image_url in seen_urls:
+                    continue
+                seen_urls.add(image_url)
+                try:
+                    downloaded = _download_image_url(image_url)
+                    if downloaded:
+                        image_bytes, extension = downloaded
+                        return image_bytes, extension
+                except Exception as exc:
+                    print(f"[AI Images] Direct image download failed: {exc}")
+
+    # DDGS is retained as a third fallback.
     for search_query in search_queries:
         try:
-            results = DDGS(timeout=15).images(
+            results = DDGS(timeout=12).images(
                 search_query,
-                region="us-en",
+                region="wt-wt",
                 safesearch="moderate",
-                max_results=8,
+                max_results=10,
             )
         except Exception as exc:
-            print(f"[AI Images] Search error: {exc}")
+            print(f"[AI Images] DDGS search error: {exc}")
             continue
 
         for item in results or []:
             image_url = str(item.get("image") or "").strip()
-            source_url = str(item.get("url") or "").strip()
-
-            if (
-                not image_url.startswith(("https://", "http://"))
-                or image_url in seen_urls
-            ):
+            if not image_url.startswith(("https://", "http://")) or image_url in seen_urls:
                 continue
-
             seen_urls.add(image_url)
-
             try:
-                request = urllib.request.Request(
-                    image_url,
-                    headers={
-                        "User-Agent": (
-                            "Mozilla/5.0 "
-                            "(compatible; NyoufTelegramBot/1.0)"
-                        ),
-                    },
-                )
-
-                with urllib.request.urlopen(request, timeout=15) as response:
-                    content_type = response.headers.get(
-                        "Content-Type", ""
-                    ).lower()
-                    image_bytes = response.read(9 * 1024 * 1024 + 1)
-
-                if not image_bytes or len(image_bytes) > 9 * 1024 * 1024:
-                    continue
-
-                valid_signatures = (
-                    image_bytes.startswith(b"\xff\xd8\xff"),
-                    image_bytes.startswith(b"\x89PNG\r\n\x1a\n"),
-                    image_bytes.startswith((b"GIF87a", b"GIF89a")),
-                    (
-                        image_bytes.startswith(b"RIFF")
-                        and image_bytes[8:12] == b"WEBP"
-                    ),
-                )
-
-                if not any(valid_signatures):
-                    if not content_type.startswith("image/"):
-                        continue
-                    continue
-
-                if not source_url.startswith(("https://", "http://")):
-                    source_url = image_url
-
-                return image_bytes, source_url
-
+                downloaded = _download_image_url(image_url)
+                if downloaded:
+                    image_bytes, extension = downloaded
+                    return image_bytes, extension
             except Exception as exc:
-                print(f"[AI Images] Download error: {exc}")
-                continue
+                print(f"[AI Images] DDGS image download failed: {exc}")
 
-    raise RuntimeError("ما حصلت صورة قابلة للإرسال.")
+    raise RuntimeError("ما حصلت صورة قابلة للإرسال من نتائج البحث.")
 
 
 async def _send_internet_image(message, query: str) -> None:
@@ -785,15 +851,15 @@ async def _send_internet_image(message, query: str) -> None:
     )
 
     try:
-        image_bytes, source_url = await asyncio.to_thread(
+        image_bytes, extension = await asyncio.to_thread(
             _search_and_download_image_sync,
             query,
         )
 
         photo = BytesIO(image_bytes)
-        photo.name = "internet_image.jpg"
+        photo.name = f"internet_image.{extension}"
 
-        caption = f"📷 صورة: {query[:300]}"
+        caption = f"📷 {query[:300]}"
 
         await message.reply_photo(
             photo=photo,
