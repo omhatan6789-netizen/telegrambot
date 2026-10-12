@@ -807,4 +807,4 @@ async def _send_internet_image(message, query: str) -> None:
         await status_message.edit_text(
             "ما حصلت صورة مناسبة أقدر أرسلها حاليًا. "
             "جرّب اسمًا أو وصفًا مختلفًا."
-        
+        )
