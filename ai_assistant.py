@@ -486,14 +486,6 @@ async def ai_assistant_message(
         )
         raise ApplicationHandlerStop()
 
-    if search_results:
-        links = []
-        for item in search_results[:3]:
-            if item["url"].startswith(("https://", "http://")):
-                links.append(f"• {item['title']}\n{item['url']}")
-        if links:
-            answer += "\n\nالمصادر:\n" + "\n".join(links)
-
     _add_history(key, question, answer)
 
     for start in range(0, len(answer), 3900):
