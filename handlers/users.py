@@ -601,6 +601,60 @@ def _save_join_date_sync(
         conn.close()
 
 
+def _save_group_member_sync(
+    chat_id,
+    user_id,
+    username,
+    first_name,
+    last_seen,
+):
+    """حفظ عضو المجموعة خارج حلقة asyncio حتى لا يوقف استعلام قاعدة البيانات البوت."""
+    conn = connect()
+    cur = None
+
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO group_members
+            (
+                chat_id,
+                user_id,
+                username,
+                first_name,
+                last_seen
+            )
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT (chat_id, user_id)
+            DO UPDATE SET
+                username = EXCLUDED.username,
+                first_name = EXCLUDED.first_name,
+                last_seen = EXCLUDED.last_seen
+            """,
+            (
+                chat_id,
+                user_id,
+                username,
+                first_name,
+                last_seen,
+            ),
+        )
+        conn.commit()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise
+    finally:
+        if cur is not None:
+            try:
+                cur.close()
+            except Exception:
+                pass
+        conn.close()
+
+
 async def save_join_date(update, context):
 
     if not update.chat_member:
@@ -664,54 +718,23 @@ async def save_join_date(update, context):
     )
 
     # =====================================================
-    # حفظ العضو في كاش المجموعة مباشرة
+    # حفظ عضو المجموعة خارج حلقة asyncio
     # =====================================================
 
     try:
-
-        conn = connect()
-        cur = conn.cursor()
-
-        cur.execute(
-            """
-            INSERT INTO group_members
-            (
-                chat_id,
-                user_id,
-                username,
-                first_name,
-                last_seen
-            )
-            VALUES (?, ?, ?, ?, ?)
-
-            ON CONFLICT (chat_id, user_id)
-            DO UPDATE SET
-
-                username = EXCLUDED.username,
-
-                first_name = EXCLUDED.first_name,
-
-                last_seen = EXCLUDED.last_seen
-            """,
-            (
-                update.effective_chat.id,
+        chat = update.effective_chat
+        if chat is not None:
+            await asyncio.to_thread(
+                _save_group_member_sync,
+                chat.id,
                 user.id,
                 user.username,
                 user.first_name,
                 datetime.now().isoformat(),
             )
-        )
-
-        conn.commit()
-
-        cur.close()
-        conn.close()
 
     except Exception as e:
-
-        print(
-            f"⚠️ خطأ أثناء حفظ عضو المجموعة: {e}"
-        )
+        print(f"⚠️ خطأ أثناء حفظ عضو المجموعة: {e}")
 
 
 # =========================================================
