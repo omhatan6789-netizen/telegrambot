@@ -1793,7 +1793,6 @@ def main():
         MessageHandler(
             filters.Regex(r"^عرض الاكواد$"),
             show_scratch_codes,
-            block=False
         ),
         group=-4
     )
