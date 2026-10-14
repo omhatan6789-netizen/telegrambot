@@ -647,22 +647,24 @@ async def my_points(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
-    if not update.message: 
+    if not update.message:
         return
 
-        user = update.effective_user
-        if not user:
-            return
-        # استخدام الكاش أولًا لتجنب انتظار حفظ النقاط في قاعدة البيانات
-        data = await get_user_data(user.id)
-        points = (
-            data.get("points", 0) or 0
-            if data
-            else 0
-        )
-     await update.message.reply_text(
+    user = update.effective_user
+    if not user:
+        return
+
+    # استخدام الكاش أولًا لتجنب انتظار حفظ النقاط في قاعدة البيانات
+    data = await get_user_data(user.id)
+    points = (
+        data.get("points", 0) or 0
+        if data
+        else 0
+    )
+
+    await update.message.reply_text(
         f"🏆 نقاطك الحالية: {points}"
-     )
+    )
 
 
 def _get_points_from_database(user_id):
@@ -703,19 +705,15 @@ async def top_points(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
-
     if not update.message:
         return
 
-    try:
-
-        await flush_pending_points()
-
-    except Exception:
-        pass
-
     user = update.effective_user
+    if not user:
+        return
 
+    # تنفيذ استعلام الترتيب خارج حلقة الأحداث
+    # وعدم انتظار حفظ النقاط المعلقة قبل عرض النتيجة
     rows = await asyncio.to_thread(
         _get_top_points_sync,
         user.id,
@@ -724,20 +722,14 @@ async def top_points(
     )
 
     if not rows:
-
         await update.message.reply_text(
             "❌ لا يوجد ترتيب حتى الآن"
         )
-
         return
 
     text = "🏆 ترتيب اللاعبين\n\n"
 
-    for place, row in enumerate(
-        rows,
-        1
-    ):
-
+    for place, row in enumerate(rows, 1):
         name = row[0] or "مستخدم"
         points = row[1] or 0
 
@@ -746,9 +738,7 @@ async def top_points(
             f"{points} نقطة\n"
         )
 
-    await update.message.reply_text(
-        text
-    )
+    await update.message.reply_text(text)
 
 
 def _get_top_points_sync(
