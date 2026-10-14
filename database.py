@@ -1,10 +1,15 @@
+import logging
 import os
+import threading
+import time
+
 import psycopg2
 from psycopg2 import pool
+from psycopg2.extensions import TRANSACTION_STATUS_IDLE
 
 
 # ==================================================
-# Supabase
+# Supabase / PostgreSQL
 # ==================================================
 
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -14,25 +19,57 @@ if not DATABASE_URL:
         "DATABASE_URL غير موجود في Environment Variables"
     )
 
+logger = logging.getLogger("database")
+
+# يمكن ضبطها من Render Environment Variables دون تعديل الكود.
+DB_POOL_MIN = max(1, int(os.getenv("DB_POOL_MIN", "1")))
+DB_POOL_MAX = max(DB_POOL_MIN, int(os.getenv("DB_POOL_MAX", "10")))
+DB_CONNECT_TIMEOUT = max(3, int(os.getenv("DB_CONNECT_TIMEOUT", "8")))
+DB_SLOW_QUERY_SECONDS = max(
+    0.1,
+    float(os.getenv("DB_SLOW_QUERY_SECONDS", "0.75")),
+)
+
 
 # ==================================================
 # Connection Pool
 # ==================================================
 
 DB_POOL = None
+_DB_POOL_LOCK = threading.Lock()
 
 
 def get_pool():
+    """إنشاء مجموعة اتصالات واحدة بأمان حتى مع تعدد خيوط العمل."""
     global DB_POOL
 
     if DB_POOL is None:
-        DB_POOL = psycopg2.pool.ThreadedConnectionPool(
-            minconn=1,
-            maxconn=10,
-            dsn=DATABASE_URL,
-        )
+        with _DB_POOL_LOCK:
+            if DB_POOL is None:
+                DB_POOL = psycopg2.pool.ThreadedConnectionPool(
+                    minconn=DB_POOL_MIN,
+                    maxconn=DB_POOL_MAX,
+                    dsn=DATABASE_URL,
+                    connect_timeout=DB_CONNECT_TIMEOUT,
+                    application_name="telegrambot",
+                    keepalives=1,
+                    keepalives_idle=30,
+                    keepalives_interval=10,
+                    keepalives_count=3,
+                )
 
     return DB_POOL
+
+
+def close_pool():
+    """إغلاق اتصالات PostgreSQL عند إيقاف التطبيق نهائيًا."""
+    global DB_POOL
+    with _DB_POOL_LOCK:
+        if DB_POOL is not None:
+            try:
+                DB_POOL.closeall()
+            finally:
+                DB_POOL = None
 
 
 # ==================================================
@@ -67,24 +104,31 @@ class CompatibleCursor:
         self._cursor = cursor
 
     def execute(self, query, params=None):
-
         if isinstance(query, str):
             query = query.replace("?", "%s")
 
-        return self._cursor.execute(
-            query,
-            params
-        )
+        started = time.perf_counter()
+        try:
+            return self._cursor.execute(query, params)
+        finally:
+            elapsed = time.perf_counter() - started
+            if elapsed >= DB_SLOW_QUERY_SECONDS:
+                # لا نسجل قيم params حتى لا تظهر بيانات المستخدمين أو الأسرار في السجلات.
+                preview = " ".join(str(query).split())[:180]
+                logger.warning("استعلام قاعدة بيانات بطيء (%.3fs): %s", elapsed, preview)
 
     def executemany(self, query, params_seq):
-
         if isinstance(query, str):
             query = query.replace("?", "%s")
 
-        return self._cursor.executemany(
-            query,
-            params_seq
-        )
+        started = time.perf_counter()
+        try:
+            return self._cursor.executemany(query, params_seq)
+        finally:
+            elapsed = time.perf_counter() - started
+            if elapsed >= DB_SLOW_QUERY_SECONDS:
+                preview = " ".join(str(query).split())[:180]
+                logger.warning("تنفيذ جماعي بطيء في قاعدة البيانات (%.3fs): %s", elapsed, preview)
 
     def fetchone(self):
         return self._cursor.fetchone()
@@ -148,13 +192,22 @@ class CompatibleConnection:
 
         self._closed = True
 
+        reusable = True
+        try:
+            # لا نعيد اتصالًا وفيه transaction مفتوحة أو فاشلة إلى المجموعة.
+            if self._connection.closed:
+                reusable = False
+            elif self._connection.get_transaction_status() != TRANSACTION_STATUS_IDLE:
+                self._connection.rollback()
+        except Exception:
+            reusable = False
+
         try:
             get_pool().putconn(
-                self._connection
+                self._connection,
+                close=not reusable,
             )
-
         except Exception:
-
             try:
                 self._connection.close()
             except Exception:
@@ -172,34 +225,24 @@ class CompatibleConnection:
 # ==================================================
 
 def connect():
-
+    """الحصول على اتصال من المجموعة مع استبعاد الاتصالات المغلقة."""
     pool_instance = get_pool()
-
     conn = pool_instance.getconn()
 
     try:
-
         if conn.closed:
-
-            pool_instance.putconn(
-                conn,
-                close=True
-            )
-
+            pool_instance.putconn(conn, close=True)
             conn = pool_instance.getconn()
 
         return CompatibleConnection(conn)
-
     except Exception:
-
         try:
-            pool_instance.putconn(
-                conn,
-                close=True
-            )
+            pool_instance.putconn(conn, close=True)
         except Exception:
-            pass
-
+            try:
+                conn.close()
+            except Exception:
+                pass
         raise
 
 
@@ -1121,6 +1164,15 @@ def create_tables():
             hour_key BIGINT NOT NULL
         )
         """)
+
+        # ==================================================
+        # فهارس للاستعلامات المتكررة في الأوامر والقوائم
+        # ==================================================
+
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_points_points_desc ON points (points DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_users_messages_desc ON users (messages DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_game_questions_game_name ON game_questions (game_name)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_winners_user_date ON winners (user_id, date)")
 
         # ==================================================
         # حفظ جميع تغييرات إنشاء الجداول
