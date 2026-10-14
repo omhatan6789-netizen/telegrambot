@@ -7,6 +7,7 @@ import psycopg2
 from psycopg2 import pool
 from psycopg2.extensions import TRANSACTION_STATUS_IDLE
 
+
 # ==================================================
 # Supabase / PostgreSQL
 # ==================================================
