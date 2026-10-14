@@ -647,25 +647,22 @@ async def my_points(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
-
-    if not update.message:
+    if not update.message: 
         return
 
-    user_id = update.effective_user.id
-
-    try:
-        await flush_pending_points()
-    except Exception:
-        pass
-
-    points = await asyncio.to_thread(
-        _get_points_from_database,
-        user_id
-    )
-
-    await update.message.reply_text(
+        user = update.effective_user
+        if not user:
+            return
+        # استخدام الكاش أولًا لتجنب انتظار حفظ النقاط في قاعدة البيانات
+        data = await get_user_data(user.id)
+        points = (
+            data.get("points", 0) or 0
+            if data
+            else 0
+        )
+        await update.message.reply_text(
         f"🏆 نقاطك الحالية: {points}"
-    )
+        )
 
 
 def _get_points_from_database(user_id):
