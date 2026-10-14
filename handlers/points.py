@@ -660,9 +660,9 @@ async def my_points(
             if data
             else 0
         )
-        await update.message.reply_text(
+     await update.message.reply_text(
         f"🏆 نقاطك الحالية: {points}"
-        )
+     )
 
 
 def _get_points_from_database(user_id):
