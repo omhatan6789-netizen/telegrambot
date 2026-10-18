@@ -575,6 +575,7 @@ async def show_photo_by_id(
 
 
 def install_handler_timing(application):
+    min_ms = float(os.getenv("HANDLER_TIMING_MIN_MS", "20"))
     """
     قياس مدة تنفيذ كل Handler، بما في ذلك المعالجات
     الموجودة داخل ConversationHandler.
