@@ -586,89 +586,68 @@ def install_handler_timing(application):
 
     instrumented = set()
 
+    
     def instrument(handler, location):
-        handler_id = id(handler)
+        # ConversationHandler ما عنده callback مباشر
+        if isinstance(handler, ConversationHandler):
+            instrumented.add(id(handler))
 
-        if handler_id in instrumented:
+            # قياس معالجات بداية المحادثة 
+            for i, child in enumerate(handler.entry_points):
+                instrument(child, f"{location}/entry_point[{i}]")
+
+            # قياس المعالجات داخل الحالات
+            for state, children in handler.states.items():
+                for i, child in enumerate(children):
+                    instrument(child, f"{location}/state={state}[{i}]")
+
+            # قياس معالجات إنهاء أو الرجوع
+            for i, child in enumerate(handler.fallbacks):
+                instrument(child, f"{location}/fallback[{i}]")
+
             return
 
-        instrumented.add(handler_id)
+        # منع تسجيل نفس الـ Handler أكثر من مرة
+        if id(handler) in instrumented:
+            return
+
+        if not hasattr(handler, "callback"):
+            return
 
         original_callback = handler.callback
+        if not callable(original_callback):
+            return
 
-        callback_name = getattr(
-            original_callback,
-            "__qualname__",
-            getattr(original_callback, "__name__", type(handler).__name__)
-        )
+        instrumented.add(id(handler))
 
         @functools.wraps(original_callback)
-        async def timed_callback(update, context, *args, **kwargs):
+        async def timed_callback(update, context):
             started = time.perf_counter()
 
             try:
-                result = original_callback(
-                    update,
-                    context,
-                    *args,
-                    **kwargs
-                )
-
-                if inspect.isawaitable(result):
-                    return await result
-
-                return result
-
+                return await original_callback(update, context)
             finally:
-                elapsed_ms = (
-                    time.perf_counter() - started
-                ) * 1000
+                elapsed_ms = (time.perf_counter() - started) * 1000
 
-                if elapsed_ms >= minimum_ms:
-                    chat = getattr(
-                        update,
-                        "effective_chat",
-                        None
-                    )
-                    message = getattr(
-                        update,
-                        "effective_message",
-                        None
-                    )
+                if elapsed_ms >= min_ms:
+                    chat = getattr(update, "effective_chat", None)
+                    message = getattr(update, "effective_message", None)
 
-                    chat_id = (
-                        getattr(chat, "id", None)
-                        if chat else None
-                    )
-
-                    message_text = ""
-
-                    if message:
-                        message_text = (
-                            getattr(message, "text", None)
-                            or getattr(message, "caption", None)
-                            or ""
-                        )
-
-                    message_text = (
-                        str(message_text)
-                        .replace("\n", " ")
-                        .replace("\r", " ")
-                        [:80]
-                    )
+                    chat_id = getattr(chat, "id", None)
+                    text_value = getattr(message, "text", None)
 
                     print(
-                        "[HANDLER-TIMING] "
+                        f"[HANDLER-TIMING] "
                         f"duration={elapsed_ms:.2f}ms | "
                         f"location={location} | "
                         f"type={type(handler).__name__} | "
-                        f"callback={callback_name} | "
+                        f"callback={getattr(original_callback, '__qualname__', repr(original_callback))} | "
                         f"chat_id={chat_id} | "
-                        f"text={message_text!r}",
-                        flush=True
+                        f"text={str(text_value)[:100]!r}"
                     )
 
         handler.callback = timed_callback
+
 
         # قياس المعالجات الداخلية للمحادثات
         if isinstance(handler, ConversationHandler):
