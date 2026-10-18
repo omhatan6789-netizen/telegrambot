@@ -379,10 +379,14 @@ from ai_assistant import ensure_ai_tables, ai_assistant_message
 import os
 import asyncio
 import threading
+import functools
+import inspect
+import time
+
 from http.server import SimpleHTTPRequestHandler, HTTPServer
 from urllib.parse import unquote
 # ==================================================
-# 👑 المالك
+# 👑 المطور
 # ==================================================
 OWNER_ID = 8453977662
 # =========================================================
@@ -567,6 +571,142 @@ async def show_photo_by_id(
             "• الـID غير صحيح أو الصورة غير متاحة."
         )
         return WAIT_PHOTO_ID
+
+
+
+def install_handler_timing(application):
+    """
+    قياس مدة تنفيذ كل Handler، بما في ذلك المعالجات
+    الموجودة داخل ConversationHandler.
+    """
+
+    minimum_ms = float(
+        os.environ.get("HANDLER_TIMING_MIN_MS", "20")
+    )
+
+    instrumented = set()
+
+    def instrument(handler, location):
+        handler_id = id(handler)
+
+        if handler_id in instrumented:
+            return
+
+        instrumented.add(handler_id)
+
+        original_callback = handler.callback
+
+        callback_name = getattr(
+            original_callback,
+            "__qualname__",
+            getattr(original_callback, "__name__", type(handler).__name__)
+        )
+
+        @functools.wraps(original_callback)
+        async def timed_callback(update, context, *args, **kwargs):
+            started = time.perf_counter()
+
+            try:
+                result = original_callback(
+                    update,
+                    context,
+                    *args,
+                    **kwargs
+                )
+
+                if inspect.isawaitable(result):
+                    return await result
+
+                return result
+
+            finally:
+                elapsed_ms = (
+                    time.perf_counter() - started
+                ) * 1000
+
+                if elapsed_ms >= minimum_ms:
+                    chat = getattr(
+                        update,
+                        "effective_chat",
+                        None
+                    )
+                    message = getattr(
+                        update,
+                        "effective_message",
+                        None
+                    )
+
+                    chat_id = (
+                        getattr(chat, "id", None)
+                        if chat else None
+                    )
+
+                    message_text = ""
+
+                    if message:
+                        message_text = (
+                            getattr(message, "text", None)
+                            or getattr(message, "caption", None)
+                            or ""
+                        )
+
+                    message_text = (
+                        str(message_text)
+                        .replace("\n", " ")
+                        .replace("\r", " ")
+                        [:80]
+                    )
+
+                    print(
+                        "[HANDLER-TIMING] "
+                        f"duration={elapsed_ms:.2f}ms | "
+                        f"location={location} | "
+                        f"type={type(handler).__name__} | "
+                        f"callback={callback_name} | "
+                        f"chat_id={chat_id} | "
+                        f"text={message_text!r}",
+                        flush=True
+                    )
+
+        handler.callback = timed_callback
+
+        # قياس المعالجات الداخلية للمحادثات
+        if isinstance(handler, ConversationHandler):
+            for index, child in enumerate(handler.entry_points):
+                instrument(
+                    child,
+                    f"{location}/entry[{index}]"
+                )
+
+            for state, children in handler.states.items():
+                for index, child in enumerate(children):
+                    instrument(
+                        child,
+                        f"{location}/state[{state}][{index}]"
+                    )
+
+            for index, child in enumerate(handler.fallbacks):
+                instrument(
+                    child,
+                    f"{location}/fallback[{index}]"
+                )
+
+    total = 0
+
+    for group, handlers in application.handlers.items():
+        for handler in handlers:
+            instrument(handler, f"group={group}")
+            total += 1
+
+    print(
+        f"[HANDLER-TIMING] Enabled | "
+        f"handlers={len(instrumented)} | "
+        f"top_level={total} | "
+        f"minimum={minimum_ms:.2f}ms",
+        flush=True
+    )
+
+
 # ==================================================
 # MAIN
 # ==================================================
@@ -2712,6 +2852,12 @@ def main():
         ),
         group=100
     )
+
+    # ==================================================
+    # قياس سرعة جميع الـ Handlers
+    # ==================================================
+    install_handler_timing(app)
+
     # ==================================================
     # تشغيل البوت
     # ==================================================
