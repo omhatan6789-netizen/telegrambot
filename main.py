@@ -379,10 +379,6 @@ from ai_assistant import ensure_ai_tables, ai_assistant_message
 import os
 import asyncio
 import threading
-import functools
-import inspect
-import time
-
 from http.server import SimpleHTTPRequestHandler, HTTPServer
 from urllib.parse import unquote
 # ==================================================
@@ -572,119 +568,6 @@ async def show_photo_by_id(
         )
         return WAIT_PHOTO_ID
 
-
-
-def install_handler_timing(application):
-    min_ms = float(os.getenv("HANDLER_TIMING_MIN_MS", "20"))
-    """
-    قياس مدة تنفيذ كل Handler، بما في ذلك المعالجات
-    الموجودة داخل ConversationHandler.
-    """
-
-    minimum_ms = float(
-        os.environ.get("HANDLER_TIMING_MIN_MS", "20")
-    )
-
-    instrumented = set()
-
-    
-    def instrument(handler, location):
-        # ConversationHandler ما عنده callback مباشر
-        if isinstance(handler, ConversationHandler):
-            instrumented.add(id(handler))
-
-            # قياس معالجات بداية المحادثة 
-            for i, child in enumerate(handler.entry_points):
-                instrument(child, f"{location}/entry_point[{i}]")
-
-            # قياس المعالجات داخل الحالات
-            for state, children in handler.states.items():
-                for i, child in enumerate(children):
-                    instrument(child, f"{location}/state={state}[{i}]")
-
-            # قياس معالجات إنهاء أو الرجوع
-            for i, child in enumerate(handler.fallbacks):
-                instrument(child, f"{location}/fallback[{i}]")
-
-            return
-
-        # منع تسجيل نفس الـ Handler أكثر من مرة
-        if id(handler) in instrumented:
-            return
-
-        if not hasattr(handler, "callback"):
-            return
-
-        original_callback = handler.callback
-        if not callable(original_callback):
-            return
-
-        instrumented.add(id(handler))
-
-        @functools.wraps(original_callback)
-        async def timed_callback(update, context):
-            started = time.perf_counter()
-
-            try:
-                return await original_callback(update, context)
-            finally:
-                elapsed_ms = (time.perf_counter() - started) * 1000
-
-                if elapsed_ms >= min_ms:
-                    chat = getattr(update, "effective_chat", None)
-                    message = getattr(update, "effective_message", None)
-
-                    chat_id = getattr(chat, "id", None)
-                    text_value = getattr(message, "text", None)
-
-                    print(
-                        f"[HANDLER-TIMING] "
-                        f"duration={elapsed_ms:.2f}ms | "
-                        f"location={location} | "
-                        f"type={type(handler).__name__} | "
-                        f"callback={getattr(original_callback, '__qualname__', repr(original_callback))} | "
-                        f"chat_id={chat_id} | "
-                        f"text={str(text_value)[:100]!r}"
-                    )
-
-        handler.callback = timed_callback
-
-
-        # قياس المعالجات الداخلية للمحادثات
-        if isinstance(handler, ConversationHandler):
-            for index, child in enumerate(handler.entry_points):
-                instrument(
-                    child,
-                    f"{location}/entry[{index}]"
-                )
-
-            for state, children in handler.states.items():
-                for index, child in enumerate(children):
-                    instrument(
-                        child,
-                        f"{location}/state[{state}][{index}]"
-                    )
-
-            for index, child in enumerate(handler.fallbacks):
-                instrument(
-                    child,
-                    f"{location}/fallback[{index}]"
-                )
-
-    total = 0
-
-    for group, handlers in application.handlers.items():
-        for handler in handlers:
-            instrument(handler, f"group={group}")
-            total += 1
-
-    print(
-        f"[HANDLER-TIMING] Enabled | "
-        f"handlers={len(instrumented)} | "
-        f"top_level={total} | "
-        f"minimum={minimum_ms:.2f}ms",
-        flush=True
-    )
 
 
 # ==================================================
@@ -2832,11 +2715,6 @@ def main():
         ),
         group=100
     )
-
-    # ==================================================
-    # قياس سرعة جميع الـ Handlers
-    # ==================================================
-    install_handler_timing(app)
 
     # ==================================================
     # تشغيل البوت
