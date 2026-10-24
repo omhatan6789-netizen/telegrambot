@@ -246,8 +246,16 @@ async def emoji_reactions_handler(update: Update, context: ContextTypes.DEFAULT_
                 message_id=message.message_id,
                 reaction=[reaction],
             )
+
         except TelegramError as exc:
-            logger.debug("تعذر وضع تفاعل الإيموجي: %s", exc)
+            logger.warning(
+                "فشل التفاعل بالإيموجي | "
+                "chat_id=%s | message_id=%s | emoji=%s | error=%s",
+                chat.id,
+                message.message_id,
+                rule["emoji"],
+                exc,
+            )
         except Exception:
             logger.exception("خطأ أثناء وضع تفاعل الإيموجي")
         return
