@@ -103,6 +103,31 @@ def html_escape(value):
     )
 
 
+
+# ==================================================
+# التفاعل بإيموجي المهرج
+# ==================================================
+
+async def react_clown(update, context):
+    message = update.effective_message
+
+    if not message:
+        return
+
+    try:
+        from telegram import ReactionTypeEmoji
+
+        await context.bot.set_message_reaction(
+            chat_id=message.chat_id,
+            message_id=message.message_id,
+            reaction=[
+                ReactionTypeEmoji(emoji="🤡")
+            ],
+        )
+    except Exception as e:
+        print(f"⚠️ تعذر التفاعل بإيموجي 🤡: {e}")
+
+
 # ==================================================
 # إعدادات الإشراف
 # ==================================================
@@ -992,15 +1017,15 @@ async def moderation_command(
     ):
         duration = 60 * 60
 
+    
     # ==================================================
-    # منع الرد عند استهداف البوت أو النفس
+    # التفاعل عند استهداف البوت أو النفس
     # ==================================================
 
-    if target.id == context.bot.id:
+    if target.id == context.bot.id or target.id == actor.id:
+        await react_clown(update, context)
         return
 
-    if target.id == actor.id:
-        return
 
     # ==================================================
     # رتبة الهدف
@@ -1638,12 +1663,15 @@ async def remove_one_restriction(
     if not target:
         return
 
+    
     # ==================================================
-    # منع الرد عند استهداف البوت
+    # التفاعل عند رفع القيد عن البوت أو النفس
     # ==================================================
 
-    if target.id == context.bot.id:
+    if target.id == context.bot.id or target.id == actor.id:
+        await react_clown(update, context)
         return
+
 
     # ==================================================
     # إلغاء الكتم
@@ -1781,13 +1809,18 @@ async def clear_restrictions_command(
     if not target:
         return
 
+    
     # ==================================================
-    # منع الرد عند استهداف البوت
+    # التفاعل عند رفع جميع القيود عن البوت أو النفس
     # ==================================================
 
-    if target.id == context.bot.id:
+    if target.id == context.bot.id or target.id == actor.id:
+        await react_clown(update, context)
         return
 
+
+
+    
     restrictions = await asyncio.to_thread(
         get_user_restrictions,
         chat_id,
