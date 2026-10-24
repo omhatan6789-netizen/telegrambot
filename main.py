@@ -374,6 +374,11 @@ from games.demon_nawaf import (
     demon_nawaf_private_start,
 )
 
+from handlers.emoji_reactions import (
+    ensure_emoji_reactions_table,
+    emoji_reactions_handler,
+)
+
 from ai_assistant import ensure_ai_tables, ai_assistant_message
 
 import os
@@ -580,6 +585,7 @@ def main():
     create_tables()
     create_developer_panel_tables()
     ensure_demon_tables()
+    ensure_emoji_reactions_table()
     ensure_ai_tables()
     ensure_blocked_words_tables()
     ensure_mandatory_subscription_tables()
@@ -713,6 +719,15 @@ def main():
             ai_assistant_message,
         ),
         group=-1000,
+    )
+
+    
+    app.add_handler(
+        MessageHandler(
+            filters.TEXT,
+            emoji_reactions_handler,
+        ),
+        group=-1001,
     )
 
     
