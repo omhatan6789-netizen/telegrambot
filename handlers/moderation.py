@@ -923,6 +923,7 @@ def moderation_message(
 # تنفيذ العقوبة
 # ==================================================
 
+
 async def moderation_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
@@ -992,38 +993,13 @@ async def moderation_command(
         duration = 60 * 60
 
     # ==================================================
-    # منع البوت
+    # منع الرد عند استهداف البوت أو النفس
     # ==================================================
 
     if target.id == context.bot.id:
-
-        await update.message.reply_text(
-            "هذا بوت ياغبي😭😭 …"
-        )
-
         return
 
-    # ==================================================
-    # منع معاقبة النفس
-    # ==================================================
-
     if target.id == actor.id:
-
-        self_messages = {
-            "mute":
-                "• اعرف ان الحياة صعبة بس ماتوصل لمرحلة انك تكتم نفسك 😔 .",
-
-            "restrict":
-                "• اعرف ان الحياة صعبة بس ماتوصل لمرحلة انك تقيد نفسك 😔 .",
-
-            "ban":
-                "• اعرف ان الحياة صعبة بس ماتوصل لمرحلة انك تحظر نفسك 😔 .",
-        }
-
-        await update.message.reply_text(
-            self_messages[action]
-        )
-
         return
 
     # ==================================================
@@ -1219,6 +1195,7 @@ async def moderation_command(
         )
 
         return
+
 
 
 # ==================================================
@@ -1623,6 +1600,8 @@ async def unban_command(
 # إزالة قيد واحد
 # ==================================================
 
+
+
 async def remove_one_restriction(
     update,
     context,
@@ -1659,12 +1638,11 @@ async def remove_one_restriction(
     if not target:
         return
 
+    # ==================================================
+    # منع الرد عند استهداف البوت
+    # ==================================================
+
     if target.id == context.bot.id:
-
-        await update.message.reply_text(
-            "هذا بوت ياغبي😭😭 …"
-        )
-
         return
 
     # ==================================================
@@ -1770,6 +1748,7 @@ async def remove_one_restriction(
 # رفع القيود
 # ==================================================
 
+
 async def clear_restrictions_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
@@ -1802,12 +1781,11 @@ async def clear_restrictions_command(
     if not target:
         return
 
+    # ==================================================
+    # منع الرد عند استهداف البوت
+    # ==================================================
+
     if target.id == context.bot.id:
-
-        await update.message.reply_text(
-            "هذا بوت ياغبي😭😭 …"
-        )
-
         return
 
     restrictions = await asyncio.to_thread(
@@ -1891,6 +1869,7 @@ async def clear_restrictions_command(
         + f"المستخدم ↤︎ {mention_user(target)}",
         parse_mode="HTML"
     )
+
 
 
 # ==================================================
