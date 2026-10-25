@@ -381,6 +381,9 @@ from handlers.emoji_reactions import (
 
 from ai_assistant import ensure_ai_tables, ai_assistant_message
 
+from handlers.youtube_audio import youtube_audio_search
+
+
 import os
 import asyncio
 import threading
@@ -710,6 +713,18 @@ def main():
     )
 
 
+
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.TEXT
+            & ~filters.COMMAND
+            & filters.Regex(r"^(?:بحث|يوت)(?:\s+.*)?$"),
+            youtube_audio_search,
+        ),
+        group=-4,
+    )
 
     app.add_handler(
         MessageHandler(
