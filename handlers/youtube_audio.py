@@ -6,6 +6,7 @@ import asyncio
 import tempfile
 from functools import partial
 
+import logging
 import yt_dlp
 
 from telegram import (
@@ -22,6 +23,7 @@ MAX_AUDIO_BYTES = 49 * 1024 * 1024
 
 COOKIE_FILE = os.getenv("YOUTUBE_COOKIE_FILE", "cookies.txt")
 
+logger = logging.getLogger(__name__)
 
 def _youtube_options():
     options = {
@@ -51,8 +53,10 @@ def _search_youtube(query):
         {
             "id": item.get("id"),
             "title": item.get("title") or "مقطع بدون عنوان",
-            "url": item.get("url")
-            or f"https://www.youtube.com/watch?v={item.get('id')}",
+            "url": (
+                item.get("webpage_url")
+                or f"https://www.youtube.com/watch?v={item.get('id')}"
+            ),
             "duration": item.get("duration"),
         }
         for item in (info or {}).get("entries", [])
@@ -167,9 +171,10 @@ async def youtube_audio_search(
         )
 
     except Exception:
+        logger.exception("فشل البحث في يوتيوب")
         await status.edit_text(
             "❌ تعذّر البحث في يوتيوب.\n"
-            "تأكد من تحديث yt-dlp وصحة ملف cookies.txt إن كنت تحتاجه."
+            "راجع سجلات Render لمعرفة السبب."
         )
 
 
@@ -256,12 +261,18 @@ async def youtube_audio_callback(
         await status.delete()
 
     except Exception:
+        logger.exception(
+            "فشل تحميل أو إرسال مقطع يوتيوب: %s",
+            video.get("url"),
+        )
+
         try:
             await status.edit_text(
                 "❌ تعذّر تحميل هذا المقطع أو إرساله.\n"
-                "جرّب اختيار نتيجة ثانية."
+                "تم تسجيل سبب الخطأ في سجلات Render."
             )
         except Exception:
+            logger.exception("تعذر تحديث رسالة حالة التحميل")
             pass
 
     finally:
