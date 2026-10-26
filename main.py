@@ -381,7 +381,10 @@ from handlers.emoji_reactions import (
 
 from ai_assistant import ensure_ai_tables, ai_assistant_message
 
-from handlers.youtube_audio import youtube_audio_search
+from handlers.youtube_audio import (
+    youtube_audio_search,
+    youtube_audio_callback,
+)
 
 
 import os
@@ -722,6 +725,15 @@ def main():
             & ~filters.COMMAND
             & filters.Regex(r"^(?:بحث|يوت)(?:\s+.*)?$"),
             youtube_audio_search,
+        ),
+        group=-4,
+    )
+
+
+    app.add_handler(
+        CallbackQueryHandler(
+            youtube_audio_callback,
+            pattern=r"^ytpick:",
         ),
         group=-4,
     )
