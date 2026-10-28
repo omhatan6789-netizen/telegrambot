@@ -1,4 +1,3 @@
-
 import os
 import re
 import json
@@ -8,7 +7,7 @@ import logging
 import tempfile
 import urllib.request
 import urllib.error
-
+import urllib.parse
 import yt_dlp
 
 from telegram import (
@@ -37,35 +36,86 @@ def _youtube_options():
     }
 
 
-def _search_youtube(query):
-    options = _youtube_options()
-    options["extract_flat"] = True
 
-    with yt_dlp.YoutubeDL(options) as ydl:
-        info = ydl.extract_info(
-            f"ytsearch{SEARCH_RESULT_COUNT}:{query}",
-            download=False,
+
+def _search_youtube(query):
+    api_key = os.getenv("YOUTUBE_API_KEY")
+
+    if not api_key:
+        raise RuntimeError(
+            "متغير YOUTUBE_API_KEY غير موجود في Render."
         )
+
+    params = urllib.parse.urlencode({
+        "part": "snippet",
+        "q": query,
+        "type": "video",
+        "maxResults": SEARCH_RESULT_COUNT,
+        "regionCode": "SA",
+        "relevanceLanguage": "ar",
+        "key": api_key,
+    })
+
+    url = (
+        "https://www.googleapis.com/youtube/v3/search?"
+        + params
+    )
+
+    request = urllib.request.Request(
+        url,
+        headers={"Accept": "application/json"},
+    )
+
+    try:
+        with urllib.request.urlopen(
+            request,
+            timeout=15,
+        ) as response:
+            data = json.loads(
+                response.read().decode("utf-8")
+            )
+
+    except urllib.error.HTTPError as exc:
+        details = exc.read().decode(
+            "utf-8",
+            errors="replace",
+        )
+
+        logger.error(
+            "YouTube Data API returned HTTP %s: %s",
+            exc.code,
+            details,
+        )
+
+        if exc.code == 403:
+            raise RuntimeError(
+                "رفضت Google الطلب. تحقق من المفتاح "
+                "وتفعيل API والحصة اليومية."
+            ) from exc
+
+        raise RuntimeError(
+            f"YouTube API HTTP error: {exc.code}"
+        ) from exc
 
     results = []
 
-    for item in (info or {}).get("entries", []):
-        if not item or not item.get("id"):
+    for item in data.get("items", []):
+        video_id = item.get("id", {}).get("videoId")
+
+        if not video_id:
             continue
 
-        video_id = item["id"]
+        snippet = item.get("snippet", {})
 
         results.append({
             "id": video_id,
-            "title": item.get("title") or "مقطع بدون عنوان",
-            "url": (
-                item.get("webpage_url")
-                or f"https://www.youtube.com/watch?v={video_id}"
-            ),
-            "duration": item.get("duration"),
+            "title": snippet.get("title") or "مقطع بدون عنوان",
+            "url": f"https://www.youtube.com/watch?v={video_id}",
+            "duration": None,
         })
 
     return results
+
 
 
 def _download_audio(video_url, folder):
