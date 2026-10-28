@@ -8,6 +8,7 @@ import tempfile
 import urllib.request
 import urllib.error
 import urllib.parse
+import yt_dlp
 
 from telegram import (
     Update,
@@ -15,7 +16,6 @@ from telegram import (
     InlineKeyboardMarkup,
 )
 from telegram.ext import ContextTypes
-
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,6 @@ MAX_AUDIO_BYTES = 49 * 1024 * 1024
 
 SAMPLECUT_API = "https://api.samplecut.app/v1/downloads"
 
-
 def _youtube_options():
     return {
         "quiet": True,
@@ -34,88 +33,150 @@ def _youtube_options():
         "ignoreerrors": True,
     }
 
-
-
+def _get_youtube_api_keys():
+    """
+    استخراج جميع مفاتيح الـ API المتاحة من متغيرات البيئة.
+    يدعم: YOUTUBE_API_KEY و YOUTUBE_API_KEY_2 وأي مفاتيح إضافية.
+    """
+    keys = []
+    
+    # جلب المفتاح الأساسي
+    primary_key = os.getenv("YOUTUBE_API_KEY")
+    if primary_key:
+        keys.append(primary_key)
+        
+    # جلب المفاتيح الإضافية المترقمة (مثل YOUTUBE_API_KEY_2, YOUTUBE_API_KEY_3, ...)
+    i = 2
+    while True:
+        key = os.getenv(f"YOUTUBE_API_KEY_{i}")
+        if not key:
+            break
+        keys.append(key)
+        i += 1
+        
+    return keys
 
 def _search_youtube(query):
-    api_key = os.getenv("YOUTUBE_API_KEY")
+    api_keys = _get_youtube_api_keys()
 
-    if not api_key:
+    if not api_keys:
         raise RuntimeError(
-            "متغير YOUTUBE_API_KEY غير موجود في Render."
+            "لا توجد مفاتيح YOUTUBE_API_KEY معرفة في بيئة العمل (Render)."
         )
 
-    params = urllib.parse.urlencode({
-        "part": "snippet",
-        "q": query,
-        "type": "video",
-        "maxResults": SEARCH_RESULT_COUNT,
-        "regionCode": "SA",
-        "relevanceLanguage": "ar",
-        "key": api_key,
-    })
+    last_exception = None
 
-    url = (
-        "https://www.googleapis.com/youtube/v3/search?"
-        + params
-    )
-
-    request = urllib.request.Request(
-        url,
-        headers={"Accept": "application/json"},
-    )
-
-    try:
-        with urllib.request.urlopen(
-            request,
-            timeout=15,
-        ) as response:
-            data = json.loads(
-                response.read().decode("utf-8")
-            )
-
-    except urllib.error.HTTPError as exc:
-        details = exc.read().decode(
-            "utf-8",
-            errors="replace",
-        )
-
-        logger.error(
-            "YouTube Data API returned HTTP %s: %s",
-            exc.code,
-            details,
-        )
-
-        if exc.code == 403:
-            raise RuntimeError(
-                "رفضت Google الطلب. تحقق من المفتاح "
-                "وتفعيل API والحصة اليومية."
-            ) from exc
-
-        raise RuntimeError(
-            f"YouTube API HTTP error: {exc.code}"
-        ) from exc
-
-    results = []
-
-    for item in data.get("items", []):
-        video_id = item.get("id", {}).get("videoId")
-
-        if not video_id:
-            continue
-
-        snippet = item.get("snippet", {})
-
-        results.append({
-            "id": video_id,
-            "title": snippet.get("title") or "مقطع بدون عنوان",
-            "url": f"https://www.youtube.com/watch?v={video_id}",
-            "duration": None,
+    # تجربة المفاتيح واحد تلو الآخر
+    for index, api_key in enumerate(api_keys):
+        params = urllib.parse.urlencode({
+            "part": "snippet",
+            "q": query,
+            "type": "video",
+            "maxResults": SEARCH_RESULT_COUNT,
+            "regionCode": "SA",
+            "relevanceLanguage": "ar",
+            "key": api_key,
         })
 
-    return results
+        url = (
+            "https://www.googleapis.com/youtube/v3/search?"
+            + params
+        )
+
+        request = urllib.request.Request(
+            url,
+            headers={"Accept": "application/json"},
+        )
+
+        try:
+            with urllib.request.urlopen(
+                request,
+                timeout=15,
+            ) as response:
+                data = json.loads(
+                    response.read().decode("utf-8")
+                )
+                
+            # لو نجح الطلب، نقوم بمعالجة النتائج وإرجاعها فوراً
+            results = []
+            for item in data.get("items", []):
+                video_id = item.get("id", {}).get("videoId")
+
+                if not video_id:
+                    continue
+
+                snippet = item.get("snippet", {})
+
+                results.append({
+                    "id": video_id,
+                    "title": snippet.get("title") or "مقطع بدون عنوان",
+                    "url": f"https://www.youtube.com/watch?v={video_id}",
+                    "duration": None,
+                })
+
+            return results
+
+        
+        except urllib.error.HTTPError as exc:
+            details = exc.read().decode(
+                "utf-8",
+                errors="replace",
+            )
+
+            try:
+                error_data = json.loads(details)
+                error_info = error_data.get("error", {})
+                errors = error_info.get("errors", [])
+
+                reasons = {
+                    item.get("reason")
+                    for item in errors
+                    if item.get("reason")
+                }
+
+                status = error_info.get("status", "")
+                message = error_info.get("message", "")
+
+            except (ValueError, AttributeError):
+                reasons = set()
+                status = ""
+                message = details
+
+            logger.error(
+                "YouTube API key #%d failed: HTTP %s, "
+                "reasons=%s, status=%s, message=%s",
+                index + 1,
+                exc.code,
+                sorted(reasons),
+                status,
+                message,
+            )
+
+            last_exception = exc
+
+            quota_reasons = {
+                "quotaExceeded",
+                "dailyLimitExceeded",
+            }
+
+            if reasons & quota_reasons:
+                logger.warning(
+                    "نفدت حصة مفتاح البحث #%d؛ "
+                    "سيتم تجربة المفتاح التالي.",
+                    index + 1,
+                )
+                continue
+
+            raise RuntimeError(
+                f"YouTube API HTTP {exc.code}: "
+                f"{', '.join(sorted(reasons)) or message}"
+            ) from exc
 
 
+    # لو خلصت كل المفاتيح وما زال فيه خطأ
+    raise RuntimeError(
+        "فشلت جميع مفاتيح YouTube API في إتمام البحث."
+    ) from last_exception
 
 def _download_audio(video_url, folder):
     """
@@ -223,7 +284,6 @@ def _download_audio(video_url, folder):
 
     return file_path, info
 
-
 def _format_duration(seconds):
     if seconds is None:
         return ""
@@ -236,7 +296,6 @@ def _format_duration(seconds):
         return f"{hours:02}:{minutes:02}:{seconds:02}"
 
     return f"{minutes:02}:{seconds:02}"
-
 
 async def youtube_audio_search(
     update: Update,
@@ -315,7 +374,6 @@ async def youtube_audio_search(
             "❌ تعذّر البحث في يوتيوب.\n"
             "راجع سجلات Render لمعرفة السبب."
         )
-
 
 async def youtube_audio_callback(
     update: Update,
