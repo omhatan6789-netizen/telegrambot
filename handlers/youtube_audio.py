@@ -8,7 +8,6 @@ import tempfile
 import urllib.request
 import urllib.error
 import urllib.parse
-import yt_dlp
 
 from telegram import (
     Update,
