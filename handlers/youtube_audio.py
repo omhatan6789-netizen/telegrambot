@@ -201,12 +201,19 @@ def _download_audio(video_url, folder):
         method="POST",
     )
 
+    samplecut_started = time.perf_counter()
+
     try:
         with urllib.request.urlopen(
             request,
             timeout=120,
         ) as response:
             data = json.loads(response.read().decode("utf-8"))
+
+        logger.info(
+            "Samplecut processing took %.2f seconds",
+            time.perf_counter() - samplecut_started,
+        )
 
     except urllib.error.HTTPError as exc:
         error_body = exc.read().decode("utf-8", errors="replace")
@@ -238,11 +245,18 @@ def _download_audio(video_url, folder):
         headers={"User-Agent": "NawafTelegramBot/1.0"},
     )
 
+    download_started = time.perf_counter()
+
     try:
         with urllib.request.urlopen(
             download_request,
             timeout=120,
         ) as response:
+            logger.info(
+                "Audio download connection took %.2f seconds",
+                time.perf_counter() - download_started,
+            )
+            
             content_length = response.headers.get("Content-Length")
 
             if content_length:
@@ -462,6 +476,8 @@ async def youtube_audio_callback(
                 ]
             ])
 
+            send_started = time.perf_counter()
+
             with open(file_path, "rb") as audio_file:
                 await context.bot.send_audio(
                     chat_id=chat_id,
@@ -477,6 +493,12 @@ async def youtube_audio_callback(
                     pool_timeout=30,
                 )
 
+
+                    logger.info(
+                    "Telegram audio upload took %.2f seconds",
+                    time.perf_counter() - send_started,
+                )
+                
         await status.delete()
 
     except Exception:
