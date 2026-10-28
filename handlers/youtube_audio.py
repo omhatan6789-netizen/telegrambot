@@ -178,16 +178,14 @@ def _search_youtube(query):
         "فشلت جميع مفاتيح YouTube API في إتمام البحث."
     ) from last_exception
 
+
 def _download_audio(video_url, folder):
-    """
-    تحميل الصوت بواسطة Samplecut API بدل تنزيله مباشرة
-    من يوتيوب باستخدام yt-dlp.
-    """
+    """تحميل ملف MP3 مباشرة من Samplecut دون طلب تنزيل إضافي."""
 
     payload = json.dumps({
         "url": video_url,
         "format": "mp3",
-        "response": "url",
+        "response": "file",
     }).encode("utf-8")
 
     request = urllib.request.Request(
@@ -195,75 +193,51 @@ def _download_audio(video_url, folder):
         data=payload,
         headers={
             "Content-Type": "application/json",
-            "Accept": "application/json",
+            "Accept": "audio/mpeg, application/json",
             "X-Client-Name": "NawafTelegramBot",
         },
         method="POST",
     )
 
-    samplecut_started = time.perf_counter()
+    file_path = os.path.join(folder, "audio.mp3")
 
     try:
         with urllib.request.urlopen(
             request,
             timeout=120,
         ) as response:
-            data = json.loads(response.read().decode("utf-8"))
-
-        logger.info(
-            "Samplecut processing took %.2f seconds",
-            time.perf_counter() - samplecut_started,
-        )
-
-    except urllib.error.HTTPError as exc:
-        error_body = exc.read().decode("utf-8", errors="replace")
-
-        try:
-            error_data = json.loads(error_body)
-            api_error = error_data.get("error", {})
-            error_code = api_error.get("code", "unknown")
-            error_message = api_error.get("message", str(exc))
-        except (ValueError, AttributeError):
-            error_code = "http_error"
-            error_message = error_body or str(exc)
-
-        raise RuntimeError(
-            f"Samplecut API error [{error_code}]: {error_message}"
-        ) from exc
-
-    download_url = data.get("download_url")
-
-    if not download_url:
-        raise RuntimeError(
-            "Samplecut API لم تُرجع رابط تحميل الصوت."
-        )
-
-    file_path = os.path.join(folder, "audio.mp3")
-
-    download_request = urllib.request.Request(
-        download_url,
-        headers={"User-Agent": "NawafTelegramBot/1.0"},
-    )
-
-    download_started = time.perf_counter()
-
-    try:
-        with urllib.request.urlopen(
-            download_request,
-            timeout=120,
-        ) as response:
-            logger.info(
-                "Audio download connection took %.2f seconds",
-                time.perf_counter() - download_started,
+            content_type = (
+                response.headers.get("Content-Type", "")
+                .split(";")[0]
+                .strip()
+                .lower()
             )
-            
+
+            if content_type == "application/json" or not content_type.startswith("audio/"):
+                body = response.read().decode(
+                    "utf-8",
+                    errors="replace",
+                )
+
+                try:
+                    error_data = json.loads(body)
+                    api_error = error_data.get("error", {})
+                    error_code = api_error.get("code", "unknown")
+                    error_message = api_error.get("message", body)
+                except (ValueError, AttributeError):
+                    error_code = "unexpected_response"
+                    error_message = body or "استجابة غير متوقعة من Samplecut"
+
+                raise RuntimeError(
+                    f"Samplecut API error [{error_code}]: {error_message}"
+                )
+
             content_length = response.headers.get("Content-Length")
 
-            if content_length:
-                if int(content_length) > MAX_AUDIO_BYTES:
-                    raise RuntimeError(
-                        "حجم الصوت أكبر من الحد المسموح لإرساله."
-                    )
+            if content_length and int(content_length) > MAX_AUDIO_BYTES:
+                raise RuntimeError(
+                    "حجم الصوت أكبر من الحد المسموح لإرساله."
+                )
 
             total_size = 0
 
@@ -283,6 +257,30 @@ def _download_audio(video_url, folder):
 
                     audio_file.write(chunk)
 
+            title_header = response.headers.get(
+                "X-Samplecut-Title",
+                "",
+            )
+
+    except urllib.error.HTTPError as exc:
+        error_body = exc.read().decode(
+            "utf-8",
+            errors="replace",
+        )
+
+        try:
+            error_data = json.loads(error_body)
+            api_error = error_data.get("error", {})
+            error_code = api_error.get("code", "http_error")
+            error_message = api_error.get("message", str(exc))
+        except (ValueError, AttributeError):
+            error_code = "http_error"
+            error_message = error_body or str(exc)
+
+        raise RuntimeError(
+            f"Samplecut API error [{error_code}]: {error_message}"
+        ) from exc
+
     except Exception:
         if os.path.exists(file_path):
             os.remove(file_path)
@@ -291,12 +289,15 @@ def _download_audio(video_url, folder):
     if not os.path.isfile(file_path) or os.path.getsize(file_path) == 0:
         raise RuntimeError("ملف الصوت فارغ أو لم يكتمل تحميله.")
 
+    title = urllib.parse.unquote(title_header) if title_header else ""
+
     info = {
-        "title": data.get("title") or "صوت من يوتيوب",
-        "duration": data.get("track_duration_sec"),
+        "title": title or "صوت من يوتيوب",
+        "duration": None,
     }
 
     return file_path, info
+
 
 def _format_duration(seconds):
     if seconds is None:
