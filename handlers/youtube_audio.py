@@ -9,7 +9,7 @@ import urllib.request
 import urllib.error
 import urllib.parse
 import yt_dlp
-
+import time
 from telegram import (
     Update,
     InlineKeyboardButton,
@@ -322,9 +322,16 @@ async def youtube_audio_search(
     status = await message.reply_text("🔎 ثواني قاعد ابحث...")
 
     try:
+        started = time.perf_counter()
+
         results = await asyncio.to_thread(
             _search_youtube,
             query,
+        )
+
+        logger.info(
+            "YouTube search completed in %.2f seconds",
+            time.perf_counter() - started,
         )
 
         if not results:
