@@ -1,12 +1,14 @@
+
 import os
 import re
-import glob
+import json
 import uuid
 import asyncio
-import tempfile
-from functools import partial
-
 import logging
+import tempfile
+import urllib.request
+import urllib.error
+
 import yt_dlp
 
 from telegram import (
@@ -17,26 +19,22 @@ from telegram import (
 from telegram.ext import ContextTypes
 
 
+logger = logging.getLogger(__name__)
+
 BOT_USERNAME = "lnll0bot"
 SEARCH_RESULT_COUNT = 4
 MAX_AUDIO_BYTES = 49 * 1024 * 1024
 
-COOKIE_FILE = os.getenv("YOUTUBE_COOKIE_FILE", "cookies.txt")
+SAMPLECUT_API = "https://api.samplecut.app/v1/downloads"
 
-logger = logging.getLogger(__name__)
 
 def _youtube_options():
-    options = {
+    return {
         "quiet": True,
         "no_warnings": True,
         "noplaylist": True,
         "ignoreerrors": True,
     }
-
-    if os.path.isfile(COOKIE_FILE):
-        options["cookiefile"] = COOKIE_FILE
-
-    return options
 
 
 def _search_youtube(query):
@@ -49,59 +47,139 @@ def _search_youtube(query):
             download=False,
         )
 
-    return [
-        {
-            "id": item.get("id"),
+    results = []
+
+    for item in (info or {}).get("entries", []):
+        if not item or not item.get("id"):
+            continue
+
+        video_id = item["id"]
+
+        results.append({
+            "id": video_id,
             "title": item.get("title") or "مقطع بدون عنوان",
             "url": (
                 item.get("webpage_url")
-                or f"https://www.youtube.com/watch?v={item.get('id')}"
+                or f"https://www.youtube.com/watch?v={video_id}"
             ),
             "duration": item.get("duration"),
-        }
-        for item in (info or {}).get("entries", [])
-        if item and item.get("id")
-    ]
+        })
+
+    return results
 
 
 def _download_audio(video_url, folder):
-    options = _youtube_options()
-    options.update({
-        "format": "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio",
-        "outtmpl": os.path.join(folder, "%(id)s.%(ext)s"),
-        "noplaylist": True,
-        "overwrites": True,
-        "retries": 2,
-        "fragment_retries": 2,
-    })
+    """
+    تحميل الصوت بواسطة Samplecut API بدل تنزيله مباشرة
+    من يوتيوب باستخدام yt-dlp.
+    """
 
-    with yt_dlp.YoutubeDL(options) as ydl:
-        info = ydl.extract_info(video_url, download=True)
+    payload = json.dumps({
+        "url": video_url,
+        "format": "mp3",
+        "response": "url",
+    }).encode("utf-8")
 
-    files = [
-        path for path in glob.glob(os.path.join(folder, "*"))
-        if os.path.isfile(path)
-        and not path.endswith((".part", ".ytdl", ".json"))
-    ]
+    request = urllib.request.Request(
+        SAMPLECUT_API,
+        data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "X-Client-Name": "NawafTelegramBot",
+        },
+        method="POST",
+    )
 
-    if not files:
-        raise RuntimeError("لم يتم العثور على الملف بعد التحميل.")
+    try:
+        with urllib.request.urlopen(
+            request,
+            timeout=120,
+        ) as response:
+            data = json.loads(response.read().decode("utf-8"))
 
-    file_path = max(files, key=os.path.getmtime)
+    except urllib.error.HTTPError as exc:
+        error_body = exc.read().decode("utf-8", errors="replace")
 
-    if os.path.getsize(file_path) > MAX_AUDIO_BYTES:
+        try:
+            error_data = json.loads(error_body)
+            api_error = error_data.get("error", {})
+            error_code = api_error.get("code", "unknown")
+            error_message = api_error.get("message", str(exc))
+        except (ValueError, AttributeError):
+            error_code = "http_error"
+            error_message = error_body or str(exc)
+
         raise RuntimeError(
-            "حجم الصوت أكبر من الحد المسموح لإرساله عبر البوت."
+            f"Samplecut API error [{error_code}]: {error_message}"
+        ) from exc
+
+    download_url = data.get("download_url")
+
+    if not download_url:
+        raise RuntimeError(
+            "Samplecut API لم تُرجع رابط تحميل الصوت."
         )
 
-    return file_path, info or {}
+    file_path = os.path.join(folder, "audio.mp3")
+
+    download_request = urllib.request.Request(
+        download_url,
+        headers={"User-Agent": "NawafTelegramBot/1.0"},
+    )
+
+    try:
+        with urllib.request.urlopen(
+            download_request,
+            timeout=120,
+        ) as response:
+            content_length = response.headers.get("Content-Length")
+
+            if content_length:
+                if int(content_length) > MAX_AUDIO_BYTES:
+                    raise RuntimeError(
+                        "حجم الصوت أكبر من الحد المسموح لإرساله."
+                    )
+
+            total_size = 0
+
+            with open(file_path, "wb") as audio_file:
+                while True:
+                    chunk = response.read(64 * 1024)
+
+                    if not chunk:
+                        break
+
+                    total_size += len(chunk)
+
+                    if total_size > MAX_AUDIO_BYTES:
+                        raise RuntimeError(
+                            "حجم الصوت أكبر من الحد المسموح لإرساله."
+                        )
+
+                    audio_file.write(chunk)
+
+    except Exception:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        raise
+
+    if not os.path.isfile(file_path) or os.path.getsize(file_path) == 0:
+        raise RuntimeError("ملف الصوت فارغ أو لم يكتمل تحميله.")
+
+    info = {
+        "title": data.get("title") or "صوت من يوتيوب",
+        "duration": data.get("track_duration_sec"),
+    }
+
+    return file_path, info
 
 
 def _format_duration(seconds):
     if seconds is None:
         return ""
 
-    seconds = int(seconds)
+    seconds = int(float(seconds))
     hours, remainder = divmod(seconds, 3600)
     minutes, seconds = divmod(remainder, 60)
 
@@ -128,27 +206,38 @@ async def youtube_audio_search(
     query = match.group(1).strip()
 
     if not query:
-        await message.reply_text("❌ اكتب اسم المقطع بعد كلمة بحث.")
+        await message.reply_text(
+            "❌ اكتب اسم المقطع بعد كلمة بحث."
+        )
         return
 
     status = await message.reply_text("🔎 ثواني قاعد ابحث...")
 
     try:
-        results = await asyncio.to_thread(_search_youtube, query)
+        results = await asyncio.to_thread(
+            _search_youtube,
+            query,
+        )
 
         if not results:
-            await status.edit_text("❌ لم يتم العثور على نتائج.")
+            await status.edit_text(
+                "❌ لم يتم العثور على نتائج."
+            )
             return
 
         search_id = uuid.uuid4().hex[:10]
 
-        searches = context.chat_data.setdefault("youtube_searches", {})
+        searches = context.chat_data.setdefault(
+            "youtube_searches",
+            {},
+        )
         searches[search_id] = results
 
         keyboard = []
 
         for index, result in enumerate(results):
             title = result["title"]
+
             if len(title) > 55:
                 title = title[:52] + "..."
 
@@ -172,6 +261,7 @@ async def youtube_audio_search(
 
     except Exception:
         logger.exception("فشل البحث في يوتيوب")
+
         await status.edit_text(
             "❌ تعذّر البحث في يوتيوب.\n"
             "راجع سجلات Render لمعرفة السبب."
@@ -187,11 +277,13 @@ async def youtube_audio_callback(
     if not query or not query.data:
         return
 
-    await query.answer()
-
-    match = re.fullmatch(r"ytpick:([a-f0-9]+):(\d+)", query.data)
+    match = re.fullmatch(
+        r"ytpick:([a-f0-9]+):(\d+)",
+        query.data,
+    )
 
     if not match:
+        await query.answer()
         return
 
     search_id = match.group(1)
@@ -201,8 +293,13 @@ async def youtube_audio_callback(
     results = searches.get(search_id, [])
 
     if index >= len(results):
-        await query.answer("انتهت صلاحية النتائج، ابحث مرة ثانية.", show_alert=True)
+        await query.answer(
+            "انتهت صلاحية النتائج، ابحث مرة ثانية.",
+            show_alert=True,
+        )
         return
+
+    await query.answer()
 
     video = results[index]
     chat_id = query.message.chat_id
@@ -214,11 +311,13 @@ async def youtube_audio_callback(
 
     status = await context.bot.send_message(
         chat_id=chat_id,
-        text="⏳ جاري تحميل الصوت، انتظر...",
+        text="⏳ قاعد ابحث، انتظر...",
     )
 
     try:
-        with tempfile.TemporaryDirectory(prefix="yt_audio_") as folder:
+        with tempfile.TemporaryDirectory(
+            prefix="yt_audio_"
+        ) as folder:
             file_path, info = await asyncio.to_thread(
                 _download_audio,
                 video["url"],
@@ -226,11 +325,17 @@ async def youtube_audio_callback(
             )
 
             title = info.get("title") or video["title"]
-            duration = _format_duration(
-                info.get("duration") or video.get("duration")
+
+            duration_value = (
+                info.get("duration")
+                or video.get("duration")
+                or 0
             )
 
+            duration = _format_duration(duration_value)
+
             caption = "• Nawaf"
+
             if duration:
                 caption += f" . ↠ {duration}"
 
@@ -249,7 +354,7 @@ async def youtube_audio_callback(
                     audio=audio_file,
                     title=title[:64],
                     performer="Nawaf",
-                    duration=int(info.get("duration") or video.get("duration") or 0),
+                    duration=int(float(duration_value)),
                     caption=caption,
                     reply_markup=keyboard,
                     read_timeout=120,
@@ -262,18 +367,19 @@ async def youtube_audio_callback(
 
     except Exception:
         logger.exception(
-            "فشل تحميل أو إرسال مقطع يوتيوب: %s",
+            "فشل تحميل أو إرسال مقطع يوتيوب عبر Samplecut: %s",
             video.get("url"),
         )
 
         try:
             await status.edit_text(
                 "❌ تعذّر تحميل هذا المقطع أو إرساله.\n"
-                "تم تسجيل سبب الخطأ في سجلات Render."
+                "جرّب اختيار نتيجة ثانية أو راجع سجلات Render."
             )
         except Exception:
-            logger.exception("تعذر تحديث رسالة حالة التحميل")
-            pass
+            logger.exception(
+                "تعذر تحديث رسالة حالة التحميل"
+            )
 
     finally:
         searches.pop(search_id, None)
