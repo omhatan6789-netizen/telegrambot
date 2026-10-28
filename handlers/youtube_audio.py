@@ -492,12 +492,13 @@ async def youtube_audio_callback(
                     connect_timeout=30,
                     pool_timeout=30,
                 )
-
-
-                    logger.info(
-                    "Telegram audio upload took %.2f seconds",
-                    time.perf_counter() - send_started,
-                )
+                
+                
+                
+            logger.info(
+                "Telegram audio upload took %.2f seconds",
+                time.perf_counter() - send_started,
+            )
                 
         await status.delete()
 
