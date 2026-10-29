@@ -988,6 +988,70 @@ def main():
         ),
         group=-7
     )
+
+    
+    # ==================================================
+    # الرسائل المؤقتة - أوامر الإدارة
+    # ==================================================
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(
+                r"^(?:اضف رسالة مؤقتة|اضف رساله مؤقته"
+                r"|الرسائل المؤقتة|الرسائل المؤقته"
+                r"|مسح الرس(?:الة|اله) المؤقت(?:ة|ه)\s+\d+"
+                r"|مسح الرسائل المؤقتة|مسح الرسائل المؤقته"
+                r"|ضع الرسالة\s+\d+)(?: عام)?$"
+            ),
+            temporary_message_command,
+        ),
+        group=-8,
+    )
+
+    # ==================================================
+    # الرسائل المؤقتة - أزرار لوحة التحكم
+    # ==================================================
+    app.add_handler(
+        CallbackQueryHandler(
+            temporary_message_callback,
+            pattern=r"^tmp:",
+        ),
+        group=48,
+    )
+
+    # ==================================================
+    # الرسائل المؤقتة - استقبال المحتوى المعلّق
+    # ==================================================
+    async def temporary_message_pending_handler_safe(
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE,
+    ):
+        from custom_commands import is_alias_execution
+
+        if is_alias_execution(update):
+            return
+
+        await temporary_message_pending_handler(update, context)
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & (
+                filters.TEXT
+                | filters.PHOTO
+                | filters.VIDEO
+                | filters.ANIMATION
+                | filters.Document.ALL
+                | filters.AUDIO
+                | filters.VOICE
+                | filters.VIDEO_NOTE
+                | filters.Sticker.ALL
+            ),
+            temporary_message_pending_handler_safe,
+        ),
+        group=49,
+    )
+
     # ==================================================
     # حارس الأوامر
     # ==================================================
