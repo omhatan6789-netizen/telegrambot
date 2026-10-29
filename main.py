@@ -748,7 +748,7 @@ def main():
     app.add_handler(
         CallbackQueryHandler(
             youtube_audio_callback,
-            pattern=r"^ytpick:",
+            pattern=r"^(ytpick|ytmode):",
         ),
         group=-4,
     )
