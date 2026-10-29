@@ -767,9 +767,26 @@ def main():
     ):
         from custom_commands import is_alias_execution
 
-        # لا تعامل الأمر الأصلي الوهمي كرسالة جديدة
+        # لا تعالج التحديثات الداخلية الناتجة عن الأوامر المضافة
         if is_alias_execution(update):
+           return
+
+        message = update.effective_message
+        user = update.effective_user
+
+        if not message or not user:
             return
+
+        # لا تعترض أمرًا مضافًا أثناء انتظار محتوى الرسالة المؤقتة
+        if message.text:
+            from custom_commands import get_custom_command
+
+            if (
+                user.id not in add_command_sessions
+                and not context.user_data.get("delete_command")
+                and get_custom_command(message.text.strip())
+            ):
+                return
 
         await temporary_message_pending_handler(
             update,
