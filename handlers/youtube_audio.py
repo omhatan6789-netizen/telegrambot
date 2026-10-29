@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 BOT_USERNAME = "lnll0bot"
 SEARCH_RESULT_COUNT = 4
 MAX_AUDIO_BYTES = 49 * 1024 * 1024
-
+MAX_VIDEO_BYTES = 49 * 1024 * 1024
 SAMPLECUT_API = "https://api.samplecut.app/v1/downloads"
 
 def _youtube_options():
@@ -283,6 +283,63 @@ def _download_audio(video_url, folder):
 
     return file_path, info
 
+
+
+def _download_video(video_url, folder):
+    """
+    تحميل الفيديو مع الصوت باستخدام yt-dlp.
+    يحاول اختيار فيديو MP4 بدقة 480p أو أقل لتقليل الحجم.
+    """
+    os.makedirs(folder, exist_ok=True)
+
+    options = {
+        "format": (
+            "best[height<=480][ext=mp4][acodec!=none][vcodec!=none]/"
+            "best[height<=480][acodec!=none][vcodec!=none]/"
+            "best[ext=mp4][acodec!=none][vcodec!=none]/"
+            "best[acodec!=none][vcodec!=none]"
+        ),
+        "outtmpl": os.path.join(folder, "video.%(ext)s"),
+        "noplaylist": True,
+        "quiet": True,
+        "no_warnings": True,
+        "socket_timeout": 30,
+        "retries": 2,
+        "max_filesize": MAX_VIDEO_BYTES,
+        "overwrites": True,
+    }
+
+    with yt_dlp.YoutubeDL(options) as ydl:
+        info = ydl.extract_info(video_url, download=True)
+        file_path = ydl.prepare_filename(info)
+
+    if not os.path.isfile(file_path):
+        candidates = [
+            os.path.join(folder, name)
+            for name in os.listdir(folder)
+            if name.startswith("video.")
+        ]
+
+        if not candidates:
+            raise FileNotFoundError(
+                "لم يتم العثور على ملف الفيديو بعد التحميل."
+            )
+
+        file_path = candidates[0]
+
+    file_size = os.path.getsize(file_path)
+
+    if file_size > MAX_VIDEO_BYTES:
+        raise RuntimeError(
+            "حجم الفيديو أكبر من الحد المسموح لإرساله."
+        )
+
+    if file_size == 0:
+        raise RuntimeError("ملف الفيديو فارغ.")
+
+    return file_path, info
+
+
 def _format_duration(seconds):
     if seconds is None:
         return ""
@@ -295,6 +352,22 @@ def _format_duration(seconds):
         return f"{hours:02}:{minutes:02}:{seconds:02}"
 
     return f"{minutes:02}:{seconds:02}"
+
+
+def _youtube_mode_keyboard(search_id, index):
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(
+                "🎬 فيديو",
+                callback_data=f"ytmode:{search_id}:{index}:video",
+            ),
+            InlineKeyboardButton(
+                "🎵 ملف صوتي",
+                callback_data=f"ytmode:{search_id}:{index}:audio",
+            ),
+        ]
+    ])
+
 
 async def youtube_audio_search(
     update: Update,
@@ -380,6 +453,7 @@ async def youtube_audio_search(
             "❌ تعذّر البحث في يوتيوب.\n"
             "راجع سجلات Render لمعرفة السبب."
         )
+        
 
 async def youtube_audio_callback(
     update: Update,
@@ -390,17 +464,63 @@ async def youtube_audio_callback(
     if not query or not query.data:
         return
 
-    match = re.fullmatch(
+    # المرحلة الأولى: المستخدم يختار نتيجة من نتائج البحث
+    pick_match = re.fullmatch(
         r"ytpick:([a-f0-9]+):(\d+)",
         query.data,
     )
 
-    if not match:
+    # المرحلة الثانية: المستخدم يختار فيديو أو صوت
+    mode_match = re.fullmatch(
+        r"ytmode:([a-f0-9]+):(\d+):(audio|video)",
+        query.data,
+    )
+
+    if pick_match:
+        search_id = pick_match.group(1)
+        index = int(pick_match.group(2))
+
+        searches = context.chat_data.get("youtube_searches", {})
+        results = searches.get(search_id, [])
+
+        if index >= len(results):
+            await query.answer(
+                "انتهت صلاحية النتائج، ابحث مرة ثانية.",
+                show_alert=True,
+            )
+            return
+
+        video = results[index]
+
+        await query.answer()
+
+        title = video.get("title") or "مقطع بدون عنوان"
+
+        try:
+            await query.message.edit_text(
+                f"🎬 **{title}**\n\nاختر طريقة الإرسال:",
+                reply_markup=_youtube_mode_keyboard(
+                    search_id,
+                    index,
+                ),
+                parse_mode="Markdown",
+            )
+        except Exception:
+            logger.exception("تعذر عرض خيارات الفيديو والصوت")
+            await query.answer(
+                "تعذر عرض الخيارات، حاول مرة ثانية.",
+                show_alert=True,
+            )
+
+        return
+
+    if not mode_match:
         await query.answer()
         return
 
-    search_id = match.group(1)
-    index = int(match.group(2))
+    search_id = mode_match.group(1)
+    index = int(mode_match.group(2))
+    mode = mode_match.group(3)
 
     searches = context.chat_data.get("youtube_searches", {})
     results = searches.get(search_id, [])
@@ -412,87 +532,144 @@ async def youtube_audio_callback(
         )
         return
 
-    await query.answer()
-
     video = results[index]
     chat_id = query.message.chat_id
 
+    await query.answer()
+
+    # حذف رسالة الخيارات بعد اختيار الفيديو أو الصوت
     try:
         await query.message.delete()
     except Exception:
-        pass
+        logger.warning("تعذر حذف رسالة خيارات المقطع")
 
     status = await context.bot.send_message(
         chat_id=chat_id,
-        text="⏳ قاعد ابحث، انتظر...",
+        text=(
+            "⏳ جاري تحميل الفيديو، انتظر..."
+            if mode == "video"
+            else "⏳ قاعد ابحث، انتظر..."
+        ),
     )
 
     try:
         with tempfile.TemporaryDirectory(
-            prefix="yt_audio_"
+            prefix="yt_download_"
         ) as folder:
-            file_path, info = await asyncio.to_thread(
-                _download_audio,
-                video["url"],
-                folder,
-            )
 
-            title = info.get("title") or video["title"]
-
-            duration_value = (
-                info.get("duration")
-                or video.get("duration")
-                or 0
-            )
-
-            duration = _format_duration(duration_value)
-
-            caption = "• Nawaf"
-
-            if duration:
-                caption += f" . ↠ {duration}"
-
-            keyboard = InlineKeyboardMarkup([
-                [
-                    InlineKeyboardButton(
-                        "🌷",
-                        url=f"https://t.me/{BOT_USERNAME}",
-                    )
-                ]
-            ])
-
-            with open(file_path, "rb") as audio_file:
-                await context.bot.send_audio(
-                    chat_id=chat_id,
-                    audio=audio_file,
-                    title=title[:64],
-                    performer="Nawaf",
-                    duration=int(float(duration_value)),
-                    caption=caption,
-                    reply_markup=keyboard,
-                    read_timeout=120,
-                    write_timeout=120,
-                    connect_timeout=30,
-                    pool_timeout=30,
+            if mode == "video":
+                # تحميل الفيديو باستخدام yt-dlp
+                file_path, info = await asyncio.to_thread(
+                    _download_video,
+                    video["url"],
+                    folder,
                 )
+
+                duration_value = int(
+                    float(
+                        info.get("duration")
+                        or video.get("duration")
+                        or 0
+                    )
+                )
+
+                duration = _format_duration(duration_value) or "00:00"
+
+                caption = f"@{BOT_USERNAME} ~ {duration}"
+
+                keyboard = InlineKeyboardMarkup([
+                    [
+                        InlineKeyboardButton(
+                            "🌷",
+                            url=f"https://t.me/{BOT_USERNAME}",
+                        )
+                    ]
+                ])
+
+                with open(file_path, "rb") as video_file:
+                    await context.bot.send_video(
+                        chat_id=chat_id,
+                        video=video_file,
+                        caption=caption,
+                        duration=duration_value,
+                        supports_streaming=True,
+                        reply_markup=keyboard,
+                        read_timeout=120,
+                        write_timeout=120,
+                        connect_timeout=30,
+                        pool_timeout=30,
+                    )
+
+            else:
+                # الصوت يبقى على طريقة Samplecut الحالية
+                file_path, info = await asyncio.to_thread(
+                    _download_audio,
+                    video["url"],
+                    folder,
+                )
+
+                title = info.get("title") or video["title"]
+
+                duration_value = (
+                    info.get("duration")
+                    or video.get("duration")
+                    or 0
+                )
+
+                duration = _format_duration(duration_value)
+
+                caption = "• Nawaf"
+
+                if duration:
+                    caption += f" . ↠ {duration}"
+
+                keyboard = InlineKeyboardMarkup([
+                    [
+                        InlineKeyboardButton(
+                            "🌷",
+                            url=f"https://t.me/{BOT_USERNAME}",
+                        )
+                    ]
+                ])
+
+                with open(file_path, "rb") as audio_file:
+                    await context.bot.send_audio(
+                        chat_id=chat_id,
+                        audio=audio_file,
+                        title=title[:64],
+                        performer="Nawaf",
+                        duration=int(float(duration_value)),
+                        caption=caption,
+                        reply_markup=keyboard,
+                        read_timeout=120,
+                        write_timeout=120,
+                        connect_timeout=30,
+                        pool_timeout=30,
+                    )
 
         await status.delete()
 
     except Exception:
         logger.exception(
-            "فشل تحميل أو إرسال مقطع يوتيوب عبر Samplecut: %s",
+            "فشل تحميل أو إرسال مقطع يوتيوب؛ mode=%s url=%s",
+            mode,
             video.get("url"),
         )
 
         try:
             await status.edit_text(
-                "❌ تعذّر تحميل هذا المقطع أو إرساله.\n"
-                "جرّب اختيار نتيجة ثانية أو راجع سجلات Render."
+                (
+                    "❌ تعذّر تحميل الفيديو أو إرساله.\n"
+                    "قد يكون المقطع غير متاح أو يتطلب تسجيل دخول، "
+                    "أو أن حجمه أكبر من الحد المسموح."
+                    if mode == "video"
+                    else
+                    "❌ تعذّر تحميل هذا المقطع أو إرساله.\n"
+                    "جرّب اختيار نتيجة ثانية أو راجع سجلات Render."
+                )
             )
         except Exception:
-            logger.exception(
-                "تعذر تحديث رسالة حالة التحميل"
-            )
+            logger.exception("تعذر تحديث رسالة حالة التحميل")
 
     finally:
         searches.pop(search_id, None)
