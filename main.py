@@ -386,6 +386,14 @@ from handlers.youtube_audio import (
     youtube_audio_callback,
 )
 
+from handlers.temporary_messages import (
+    ensure_temporary_message_tables,
+    temporary_message_command,
+    temporary_message_pending_handler,
+    temporary_message_callback,
+    temporary_message_scheduler,
+    track_temporary_message_chat,
+)
 
 import os
 import asyncio
@@ -591,6 +599,7 @@ def main():
     create_tables()
     create_developer_panel_tables()
     ensure_demon_tables()
+    ensure_temporary_message_tables()
     ensure_emoji_reactions_table()
     ensure_ai_tables()
     ensure_blocked_words_tables()
@@ -635,6 +644,12 @@ def main():
                 application
             )
         )
+
+        application.create_task(
+            temporary_message_scheduler(application)
+        )
+
+    
     async def post_shutdown(application):
         global message_flush_task
         global moderation_expiry_task
@@ -716,6 +731,61 @@ def main():
     )
 
 
+
+    # ==========================================
+    # الرسائل المؤقتة
+    # ==========================================
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS,
+            track_temporary_message_chat,
+        ),
+        group=-1010,
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.Regex(
+                r"^(?:اضف رسالة مؤقتة|اضف رساله مؤقته"
+                r"|الرسائل المؤقتة|الرسائل المؤقته"
+                r"|مسح الرسالة المؤقتة \d+"
+                r"|مسح الرساله المؤقته \d+"
+                r"|مسح الرسائل المؤقتة|مسح الرسائل المؤقته"
+                r"|ضع الرسالة \d+)(?: عام)?$"
+            ),
+            temporary_message_command,
+        ),
+        group=-8,
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & (
+                filters.TEXT
+                | filters.PHOTO
+                | filters.VIDEO
+                | filters.ANIMATION
+                | filters.Document.ALL
+                | filters.AUDIO
+                | filters.VOICE
+                | filters.VIDEO_NOTE
+                | filters.Sticker.ALL
+            ),
+            temporary_message_pending_handler,
+        ),
+        group=-7,
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            temporary_message_callback,
+            pattern=r"^tmp:",
+        ),
+        group=-8,
+    )
 
 
     app.add_handler(
