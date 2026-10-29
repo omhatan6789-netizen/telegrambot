@@ -729,6 +729,7 @@ async def temporary_message_pending_handler(update, context):
 # عرض الرسالة وأزرار التحكم
 # ==========================================
 
+
 async def temporary_message_callback(update, context):
     query = update.callback_query
     await query.answer()
@@ -750,11 +751,73 @@ async def temporary_message_callback(update, context):
         await query.answer("هذا للمشرفين وفوق فقط.", show_alert=True)
         return
 
-    row = _get_row_by_id(scope, chat_id, row_id)
-    if not row and action != "list":
-        await query.answer("الرسالة غير موجودة.", show_alert=True)
+    # جلب الرسالة المطلوبة، باستثناء الرجوع للقائمة
+    row = None
+    if action != "list":
+        row = _get_row_by_id(scope, chat_id, row_id)
+        if not row:
+            await query.answer("الرسالة غير موجودة.", show_alert=True)
+            return
+
+    # الرجوع للقائمة داخل نفس رسالة لوحة التحكم
+    if action == "list":
+        rows = _get_rows(scope, chat_id)
+        title = (
+            "قائمة الرسائل المؤقتة العامة:"
+            if scope == "global"
+            else "قائمة الرسائل المؤقتة بالقروب:"
+        )
+
+        if not rows:
+            await query.edit_message_text(
+                title + "\n• ما فيه رسائل مؤقتة."
+            )
+            return
+
+        lines = [title]
+        buttons = []
+
+        for number, item in enumerate(rows, 1):
+            payload = json.loads(item[1])
+            raw = (
+                payload.get("text")
+                or payload.get("caption")
+                or "[رسالة وسائط]"
+            )
+            words = raw.split()
+            preview = " ".join(words[:4])
+            if len(words) > 4:
+                preview += "..."
+
+            timing = (
+                f" — كل {_format_duration(item[3])}"
+                if item[3]
+                else " — لم يحدد الوقت"
+            )
+            lines.append(
+                f"{number} ~ {preview or 'رسالة وسائط'}{timing}"
+            )
+            buttons.append(
+                InlineKeyboardButton(
+                    f"عرض الرسالة {number}",
+                    callback_data=(
+                        f"tmp:view:{scope}:{chat_id}:{item[0]}"
+                    ),
+                )
+            )
+
+        keyboard = [
+            buttons[index:index + 2]
+            for index in range(0, len(buttons), 2)
+        ]
+
+        await query.edit_message_text(
+            "\n".join(lines),
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
         return
 
+    # طلب تعديل المحتوى؛ نحدّث لوحة التحكم نفسها
     if action == "edit":
         context.user_data["temporary_message_pending"] = {
             "scope": scope,
@@ -763,12 +826,16 @@ async def temporary_message_callback(update, context):
             "stage": "edit_content",
             "row_id": row_id,
         }
-        await query.message.reply_text(
-            "ارسل محتوى الرسالة من جديد، ويمكنك تضمين الأزرار في آخرها.\n"
-            "لإلغاء التعديل، أرسل: إلغاء"
+
+        await query.edit_message_text(
+            "✏️ **تعديل محتوى الرسالة**\n\n"
+            "أرسل الرسالة أو الوسائط الجديدة في القروب.\n"
+            "لإلغاء العملية أرسل: إلغاء",
+            parse_mode="Markdown",
         )
         return
 
+    # طلب تعديل الأزرار؛ نحدّث لوحة التحكم نفسها
     if action == "buttons":
         context.user_data["temporary_message_pending"] = {
             "scope": scope,
@@ -777,25 +844,29 @@ async def temporary_message_callback(update, context):
             "stage": "edit_buttons",
             "row_id": row_id,
         }
-        await query.message.reply_text(
-            "أرسل الأزرار الجديدة بهذا الشكل:\n"
+
+        await query.edit_message_text(
+            "🔘 **تعديل أزرار الرسالة**\n\n"
+            "أرسل الأزرار الجديدة، كل صف في سطر:\n"
             "[قناتي 🌷 - @channel]\n"
-            "[حسابي 🌹 - @username]\n"
-            "كل سطر صف مستقل.\n"
-            "لإزالة جميع الأزرار أرسل: حذف الكل\n"
-            "ولإلغاء العملية أرسل: إلغاء"
+            "[حسابي 🌹 - @username]\n\n"
+            "لحذف جميع الأزرار أرسل: حذف الكل\n"
+            "للإلغاء أرسل: إلغاء",
+            parse_mode="Markdown",
         )
         return
 
-    if action == "list":
-        await _show_list(query.message, scope, chat_id)
-        return
-
+    # عرض تفاصيل الرسالة
     payload = json.loads(row[1])
-    buttons = json.loads(row[2] or "[]")
+    saved_buttons = json.loads(row[2] or "[]")
     rows = _get_rows(scope, chat_id)
+
     number = next(
-        (index for index, item in enumerate(rows, 1) if item[0] == row_id),
+        (
+            index
+            for index, item in enumerate(rows, 1)
+            if item[0] == row_id
+        ),
         0,
     )
 
@@ -807,7 +878,8 @@ async def temporary_message_callback(update, context):
 
     button_info = []
     index = 0
-    for button_row in buttons:
+
+    for button_row in saved_buttons:
         for button in button_row:
             index += 1
             button_info.append(
@@ -818,28 +890,44 @@ async def temporary_message_callback(update, context):
     display = (
         f"الرسالة {number}:\n{content}\n\n"
         "الأزرار المضافة بالرسالة:\n"
-        + ("\n".join(button_info) if button_info else "لا توجد أزرار.")
+        + (
+            "\n".join(button_info)
+            if button_info
+            else "لا توجد أزرار."
+        )
     )
 
     markup = InlineKeyboardMarkup([
-        [InlineKeyboardButton(
-            "تعديل الرسالة",
-            callback_data=f"tmp:edit:{scope}:{chat_id}:{row_id}",
-        )],
-        [InlineKeyboardButton(
-            "تعديل الأزرار",
-            callback_data=f"tmp:buttons:{scope}:{chat_id}:{row_id}",
-        )],
-        [InlineKeyboardButton(
-            "رجوع للقائمة",
-            callback_data=f"tmp:list:{scope}:{chat_id}:{row_id}",
-        )],
+        [
+            InlineKeyboardButton(
+                "تعديل الرسالة",
+                callback_data=f"tmp:edit:{scope}:{chat_id}:{row_id}",
+            ),
+            InlineKeyboardButton(
+                "تعديل الأزرار",
+                callback_data=f"tmp:buttons:{scope}:{chat_id}:{row_id}",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "رجوع للقائمة",
+                callback_data=f"tmp:list:{scope}:{chat_id}:{row_id}",
+            ),
+        ],
     ])
 
-    await query.message.reply_text(display[:4000], reply_markup=markup)
-
-    if payload.get("type") != "text":
-        await _send_payload(context.bot, query.message.chat_id, payload, buttons)
+    # إذا كانت لوحة التحكم نصية، نحدّثها بدل إنشاء رسالة جديدة
+    try:
+        await query.edit_message_text(
+            display[:4000],
+            reply_markup=markup,
+        )
+    except TelegramError:
+        # إذا تعذّر تعديل الرسالة، نعرض التفاصيل برسالة بديلة
+        await query.message.reply_text(
+            display[:4000],
+            reply_markup=markup,
+        )
 
 
 # ==========================================
