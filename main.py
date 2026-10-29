@@ -760,6 +760,23 @@ def main():
         group=-8,
     )
 
+    
+    async def temporary_message_pending_handler_safe(
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE
+    ):
+        from custom_commands import is_alias_execution
+
+        # لا تعامل الأمر الأصلي الوهمي كرسالة جديدة
+        if is_alias_execution(update):
+            return
+
+        await temporary_message_pending_handler(
+            update,
+            context
+        )
+
+
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
@@ -774,10 +791,11 @@ def main():
                 | filters.VIDEO_NOTE
                 | filters.Sticker.ALL
             ),
-            temporary_message_pending_handler,
+            temporary_message_pending_handler_safe,
         ),
         group=-7,
     )
+
 
     app.add_handler(
         CallbackQueryHandler(
