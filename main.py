@@ -1059,7 +1059,7 @@ def main():
             filters.TEXT & ~filters.COMMAND,
             custom_command_alias_handler
         ),
-        group=-9
+        group=-7
     )
     # ==================================================
     # حارس الأوامر
