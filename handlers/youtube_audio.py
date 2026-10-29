@@ -649,12 +649,23 @@ async def youtube_audio_callback(
 
         await status.delete()
 
-    except Exception:
+    except Exception as exc:
         logger.exception(
             "فشل تحميل أو إرسال مقطع يوتيوب؛ mode=%s url=%s",
             mode,
             video.get("url"),
         )
+
+        error_text = f"{type(exc).__name__}: {str(exc)}"
+
+        try:
+            await status.edit_text(
+                "❌ فشل تحميل الفيديو.\n\n"
+                f"**السبب:** `{error_text[:700]}`",
+                parse_mode="Markdown",
+            )
+        except Exception:
+            logger.exception("تعذر تحديث رسالة حالة التحميل")
 
         try:
             await status.edit_text(
