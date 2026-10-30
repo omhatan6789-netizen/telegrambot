@@ -887,42 +887,51 @@ def _search_and_download_image_sync(query: str):
     raise RuntimeError("ما حصلت صورة قابلة للإرسال من نتائج البحث.")
 
 
+from urllib.parse import quote
+
 async def _send_internet_image(message, query: str) -> None:
-    """توليد صورة حقيقية بالذكاء الاصطناعي ."""
+    """توليد صورة بالذكاء الاصطناعي مجاناً وبسرعة عالية."""
 
     status_message = await message.reply_text(
-        "ثواني قاعد ادور صورة...⏳"
+        "🎨 جاري رسم الصورة بالذكاء الاصطناعي، لحظات..."
     )
 
     try:
-        # تجهيز الوصف وإرساله للـ API (يُفضل إضافة touches لضمان جودة الصورة)
-        prompt_encoded = urlencode({"prompt": f"{query}, highly detailed, anime style or high quality"})[7:]
-        image_url = f"https://image.pollinations.ai/prompt/{prompt_encoded}"
-
-        # تحميل الصورة المتولدة مباشرة
-        request = urllib.request.Request(
-            image_url,
-            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-        )
+        # ترميز نص الوصف بشكل صحيح حتى يفهم الرابط الكلمات والمقاطع
+        clean_query = query.strip()
+        encoded_prompt = quote(clean_query)
         
-        with urllib.request.urlopen(request, timeout=30) as response:
-            image_bytes = response.read()
+        # رابط الخدمة المباشر مع تحديد النموذج لضمان الجودة والسرعة
+        image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?nologo=true&private=true"
 
-        if not image_bytes:
-            raise RuntimeError("فشل تحميل الصورة .")
+        # طلب تحميل الصورة عبر الطلبات المتزامنة في خيط منفصل لتجنب تعليق البوت
+        def _fetch_image():
+            req = urllib.request.Request(
+                image_url,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                }
+            )
+            with urllib.request.urlopen(req, timeout=25) as response:
+                return response.read()
+
+        image_bytes = await asyncio.to_thread(_fetch_image)
+
+        if not image_bytes or len(image_bytes) < 1000:
+            raise RuntimeError("الصورة المستلمة فارغة أو تالفة.")
 
         photo = BytesIO(image_bytes)
         photo.name = "ai_image.jpg"
 
         await message.reply_photo(
             photo=photo,
-            caption=f"🎨 صورة: {query[:300]}",
+            caption=f"🎨 **الصورة:** {clean_query[:200]}",
         )
 
         await status_message.delete()
 
     except Exception as exc:
-        print(f"[AI Images] Generation failed: {exc}")
+        print(f"[AI Images Error]: {exc}")
         await status_message.edit_text(
-            "مالقيت صورة مناسبة ."
+            "⚠️ تعذر جلب الصورة، حاول كتابة الطلب باللغة الإنجليزية أو اختر وصفاً أسهل."
         )
