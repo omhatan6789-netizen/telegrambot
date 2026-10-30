@@ -887,51 +887,34 @@ def _search_and_download_image_sync(query: str):
     raise RuntimeError("ما حصلت صورة قابلة للإرسال من نتائج البحث.")
 
 
-from urllib.parse import quote
-
 async def _send_internet_image(message, query: str) -> None:
-    """توليد صورة بالذكاء الاصطناعي مجاناً وبسرعة عالية."""
+    """البحث عن صورة حقيقية وإرسالها في تيليجرام."""
 
     status_message = await message.reply_text(
-        "🎨 جاري رسم الصورة بالذكاء الاصطناعي، لحظات..."
+        "🔎 أدور لك على صورة حقيقية من الإنترنت..."
     )
 
     try:
-        # ترميز نص الوصف بشكل صحيح حتى يفهم الرابط الكلمات والمقاطع
-        clean_query = query.strip()
-        encoded_prompt = quote(clean_query)
-        
-        # رابط الخدمة المباشر مع تحديد النموذج لضمان الجودة والسرعة
-        image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?nologo=true&private=true"
-
-        # طلب تحميل الصورة عبر الطلبات المتزامنة في خيط منفصل لتجنب تعليق البوت
-        def _fetch_image():
-            req = urllib.request.Request(
-                image_url,
-                headers={
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-                }
-            )
-            with urllib.request.urlopen(req, timeout=25) as response:
-                return response.read()
-
-        image_bytes = await asyncio.to_thread(_fetch_image)
-
-        if not image_bytes or len(image_bytes) < 1000:
-            raise RuntimeError("الصورة المستلمة فارغة أو تالفة.")
+        image_bytes, extension = await asyncio.to_thread(
+            _search_and_download_image_sync,
+            query,
+        )
 
         photo = BytesIO(image_bytes)
-        photo.name = "ai_image.jpg"
+        photo.name = f"internet_image.{extension}"
+
+        caption = f"📷 {query[:300]}"
 
         await message.reply_photo(
             photo=photo,
-            caption=f"🎨 **الصورة:** {clean_query[:200]}",
+            caption=caption[:1000],
         )
 
         await status_message.delete()
 
     except Exception as exc:
-        print(f"[AI Images Error]: {exc}")
+        print(f"[AI Images] Image request failed: {exc}")
         await status_message.edit_text(
-            "⚠️ تعذر جلب الصورة، حاول كتابة الطلب باللغة الإنجليزية أو اختر وصفاً أسهل."
+            "ما حصلت صورة مناسبة أقدر أرسلها حاليًا. "
+            "جرّب اسمًا أو وصفًا مختلفًا."
         )
