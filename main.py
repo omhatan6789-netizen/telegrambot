@@ -386,6 +386,18 @@ from handlers.youtube_audio import (
     youtube_audio_callback,
 )
 
+from handlers.music import (
+    music_message_handler,
+    music_callback,
+    voice_chat_started,
+    voice_chat_ended,
+)
+
+from music_call import (
+    start_music_call,
+    shutdown_music_call,
+)
+
 from handlers.temporary_messages import (
     ensure_temporary_message_tables,
     temporary_message_command,
@@ -649,6 +661,13 @@ def main():
             temporary_message_scheduler(application)
         )
 
+
+            # تشغيل حساب الموسيقى
+        try:
+            await start_music_call()
+        except Exception as e:
+            print(f"⚠️ تعذر تشغيل حساب الصوت: {e}")
+
     
     async def post_shutdown(application):
         global message_flush_task
@@ -681,6 +700,15 @@ def main():
                 await blocked_words_expiry_task
             except asyncio.CancelledError:
                 pass
+                
+
+
+                # إيقاف حساب الموسيقى
+        try:
+            await shutdown_music_call()
+        except Exception as e:
+            print(f"⚠️ تعذر إيقاف حساب الموسيقى: {e}")
+
         # ==================================================
         # حفظ الرسائل المعلقة
         # ==================================================
@@ -733,22 +761,44 @@ def main():
 
 
 
+    # ==================================================
+    # 🎵 تشغيل الموسيقى داخل المكالمة
+    # ==================================================
+
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS
             & filters.TEXT
-            & ~filters.COMMAND
-            & filters.Regex(r"^(?:بحث|يوت)(?:\s+.*)?$"),
-            youtube_audio_search,
+            & ~filters.COMMAND,
+            music_message_handler,
+        ),
+        group=-1002,
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            music_callback,
+            pattern=r"^musicpick:",
         ),
         group=-4,
     )
 
+    # ==================================================
+    # 📞 إشعارات بدء وانتهاء المكالمة
+    # ==================================================
 
     app.add_handler(
-        CallbackQueryHandler(
-            youtube_audio_callback,
-            pattern=r"^(ytpick|ytmode):",
+        MessageHandler(
+            filters.StatusUpdate.VIDEO_CHAT_STARTED,
+            voice_chat_started,
+        ),
+        group=-4,
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.StatusUpdate.VIDEO_CHAT_ENDED,
+            voice_chat_ended,
         ),
         group=-4,
     )
