@@ -888,33 +888,41 @@ def _search_and_download_image_sync(query: str):
 
 
 async def _send_internet_image(message, query: str) -> None:
-    """البحث عن صورة حقيقية وإرسالها في تيليجرام."""
+    """توليد صورة حقيقية بالذكاء الاصطناعي ."""
 
     status_message = await message.reply_text(
-        "🔎 أدور لك على صورة حقيقية من الإنترنت..."
+        "ثواني قاعد ادور صورة...⏳"
     )
 
     try:
-        image_bytes, extension = await asyncio.to_thread(
-            _search_and_download_image_sync,
-            query,
+        # تجهيز الوصف وإرساله للـ API (يُفضل إضافة touches لضمان جودة الصورة)
+        prompt_encoded = urlencode({"prompt": f"{query}, highly detailed, anime style or high quality"})[7:]
+        image_url = f"https://image.pollinations.ai/prompt/{prompt_encoded}"
+
+        # تحميل الصورة المتولدة مباشرة
+        request = urllib.request.Request(
+            image_url,
+            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
         )
+        
+        with urllib.request.urlopen(request, timeout=30) as response:
+            image_bytes = response.read()
+
+        if not image_bytes:
+            raise RuntimeError("فشل تحميل الصورة .")
 
         photo = BytesIO(image_bytes)
-        photo.name = f"internet_image.{extension}"
-
-        caption = f"📷 {query[:300]}"
+        photo.name = "ai_image.jpg"
 
         await message.reply_photo(
             photo=photo,
-            caption=caption[:1000],
+            caption=f"🎨 صورة: {query[:300]}",
         )
 
         await status_message.delete()
 
     except Exception as exc:
-        print(f"[AI Images] Image request failed: {exc}")
+        print(f"[AI Images] Generation failed: {exc}")
         await status_message.edit_text(
-            "ما حصلت صورة مناسبة أقدر أرسلها حاليًا. "
-            "جرّب اسمًا أو وصفًا مختلفًا."
+            "مالقيت صورة مناسبة ."
         )
