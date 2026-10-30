@@ -1,0 +1,349 @@
+import asyncio
+import os
+import re
+import tempfile
+
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.constants import ParseMode
+from telegram.ext import ApplicationHandlerStop
+
+from handlers.youtube_audio import (
+    _download_audio,
+    _format_duration,
+    _search_youtube,
+)
+from handlers.roles import (
+    RANK_LEVELS,
+    get_group_ranks,
+    get_highest_rank,
+)
+from music_call import play_track, stop_track
+
+
+BOT_USERNAME = "lnll0bot"
+SEARCH_RESULT_COUNT = 4
+
+
+def _format_call_duration(seconds):
+    seconds = max(0, int(seconds or 0))
+    hours, remainder = divmod(seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+
+    parts = []
+    if hours:
+        parts.append(f"{hours} ساعة")
+    if minutes:
+        parts.append(f"{minutes} دقيقة")
+    if seconds or not parts:
+        parts.append(f"{seconds} ثانية")
+
+    return " و".join(parts)
+
+
+async def _is_music_admin(chat_id, user_id):
+    try:
+        ranks = await asyncio.to_thread(
+            get_group_ranks,
+            chat_id,
+            user_id,
+        )
+        highest = get_highest_rank(ranks)
+        return RANK_LEVELS.get(highest, 0) >= RANK_LEVELS["ادمن"]
+    except Exception as exc:
+        print(f"[MUSIC] Rank check failed: {exc}")
+        return False
+
+
+async def _show_search(message, context, query, requester):
+    status = await message.reply_text("🔎 جاري البحث عن الأغاني...")
+
+    try:
+        results = await asyncio.to_thread(_search_youtube, query)
+        if not results:
+            await status.edit_text("ما حصلت نتائج للبحث.")
+            return
+
+        search_id = os.urandom(5).hex()
+        searches = context.chat_data.setdefault("music_searches", {})
+        searches[search_id] = {
+            "results": results[:SEARCH_RESULT_COUNT],
+            "requester_id": requester.id,
+        }
+
+        keyboard = []
+        for index, result in enumerate(results[:SEARCH_RESULT_COUNT]):
+            title = str(result.get("title") or "مقطع بدون عنوان")
+            if len(title) > 55:
+                title = title[:52] + "..."
+
+            duration = _format_duration(result.get("duration"))
+            label = f"{index + 1}. {title}"
+            if duration:
+                label += f" [{duration}]"
+
+            keyboard.append([
+                InlineKeyboardButton(
+                    label,
+                    callback_data=f"musicpick:{search_id}:{index}",
+                )
+            ])
+
+        await status.edit_text(
+            f"🎵 نتائج البحث عن: {query}\n\nاختر المقطع:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
+
+    except Exception as exc:
+        print(f"[MUSIC] YouTube search failed: {exc}")
+        await status.edit_text(
+            "تعذّر البحث الآن. تأكد من إعداد YOUTUBE_API_KEY "
+            "وراجع سجلات Render."
+        )
+
+
+async def _play_selected(
+    chat_id,
+    context,
+    source_message,
+    video,
+    requester,
+    status_message=None,
+):
+    status = status_message
+    if status is None:
+        status = await source_message.reply_text("⏳ جاري تجهيز المقطع...")
+
+    try:
+        with tempfile.TemporaryDirectory(prefix="music_call_") as folder:
+            file_path, info = await asyncio.to_thread(
+                _download_audio,
+                video["url"],
+                folder,
+            )
+
+            title = info.get("title") or video.get("title") or "مقطع صوتي"
+            duration_seconds = (
+                info.get("duration")
+                or video.get("duration")
+                or 0
+            )
+            duration_text = _format_duration(duration_seconds) or "غير معروف"
+
+            await play_track(
+                chat_id=chat_id,
+                source_path=file_path,
+                title=title,
+                duration=duration_text,
+                requester=requester.full_name,
+            )
+
+        context.chat_data["music_last_track"] = {
+            "id": video.get("id"),
+            "url": video["url"],
+            "title": title,
+            "duration": duration_seconds,
+        }
+
+        text = (
+            "♡ تم بدء التشغيل\n\n"
+            f"- العنوان : {title}\n"
+            f"- مدة التشغيل : {duration_text}\n"
+            f"- الشخص الي شغله : {requester.full_name}"
+        )
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(
+                    "🌷",
+                    url=f"https://t.me/{BOT_USERNAME}",
+                )
+            ]
+        ])
+
+        try:
+            await status.delete()
+        except Exception:
+            pass
+
+        sent = await context.bot.send_message(
+            chat_id=chat_id,
+            text=text,
+            reply_markup=keyboard,
+        )
+        context.chat_data["music_last_message_id"] = sent.message_id
+
+    except Exception as exc:
+        print(f"[MUSIC] Could not play selected track: {exc}")
+        try:
+            await status.edit_text(
+                "تعذّر تشغيل هذا المقطع داخل المكالمة. "
+                "تأكد من وجود مكالمة صوتية وأن حساب الموسيقى عضو في المجموعة، "
+                "ثم راجع سجلات Render."
+            )
+        except Exception:
+            pass
+
+
+async def music_callback(update, context):
+    query = update.callback_query
+    if not query or not query.data or not query.message:
+        return
+
+    match = re.fullmatch(r"musicpick:([a-f0-9]+):(\d+)", query.data)
+    if not match:
+        await query.answer()
+        return
+
+    chat_id = query.message.chat_id
+    user = query.from_user
+
+    if not await _is_music_admin(chat_id, user.id):
+        await query.answer("التشغيل للأدمن وفوق فقط.", show_alert=True)
+        return
+
+    search_id = match.group(1)
+    index = int(match.group(2))
+    search_data = context.chat_data.get("music_searches", {}).get(search_id)
+    results = search_data.get("results", []) if search_data else []
+
+    if index >= len(results):
+        await query.answer("انتهت صلاحية النتائج، ابحث مرة ثانية.", show_alert=True)
+        return
+
+    await query.answer()
+    video = results[index]
+
+    try:
+        await query.message.delete()
+    except Exception:
+        pass
+
+    status = await context.bot.send_message(
+        chat_id=chat_id,
+        text="⏳ جاري تجهيز المقطع وتشغيله في المكالمة...",
+    )
+
+    await _play_selected(
+        chat_id=chat_id,
+        context=context,
+        source_message=query.message,
+        video=video,
+        requester=user,
+        status_message=status,
+    )
+
+    context.chat_data.get("music_searches", {}).pop(search_id, None)
+
+
+async def _stop_music(message, chat_id, user):
+    stopped = await stop_track(chat_id)
+    if not stopped:
+        await message.reply_text("مافيه شي شغال بالمكالمة .")
+        return
+
+    await message.reply_text(f"تم الإيقاف بواسطة ~ {user.full_name}")
+
+
+async def music_message_handler(update, context):
+    message = update.effective_message
+    chat = update.effective_chat
+    user = update.effective_user
+
+    if not message or not message.text or not chat or not user:
+        return
+    if chat.type not in ("group", "supergroup"):
+        return
+
+    original = message.text.strip()
+    text = original
+    ai_command = False
+
+    ai_match = re.match(
+        r"^نيوف\s+(.+?)\s*$",
+        original,
+        flags=re.IGNORECASE,
+    )
+    if ai_match:
+        text = ai_match.group(1).strip()
+        ai_command = True
+
+    stop_words = {"ايقاف", "إيقاف", "وقف المقطع"}
+    if text in stop_words:
+        if not await _is_music_admin(chat.id, user.id):
+            await message.reply_text("هذا الأمر للأدمن وفوق فقط.")
+        else:
+            await _stop_music(message, chat.id, user)
+        raise ApplicationHandlerStop()
+
+    search_match = re.fullmatch(
+        r"(?:بحث|يوت|تشغيل|شغل)\s+(.+)",
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    if search_match:
+        if not await _is_music_admin(chat.id, user.id):
+            await message.reply_text("البحث والتشغيل للأدمن وفوق فقط.")
+        else:
+            await _show_search(
+                message,
+                context,
+                search_match.group(1).strip(),
+                user,
+            )
+        raise ApplicationHandlerStop()
+
+    if text == "تشغيل" and message.reply_to_message:
+        last_message_id = context.chat_data.get("music_last_message_id")
+        last_track = context.chat_data.get("music_last_track")
+
+        if (
+            last_track
+            and last_message_id
+            and message.reply_to_message.message_id == last_message_id
+        ):
+            if not await _is_music_admin(chat.id, user.id):
+                await message.reply_text("التشغيل للأدمن وفوق فقط.")
+            else:
+                await _play_selected(
+                    chat_id=chat.id,
+                    context=context,
+                    source_message=message,
+                    video=last_track,
+                    requester=user,
+                )
+            raise ApplicationHandlerStop()
+
+    if ai_command and text in stop_words:
+        raise ApplicationHandlerStop()
+
+
+async def voice_chat_started(update, context):
+    message = update.effective_message
+    if not message or not message.video_chat_started:
+        return
+
+    try:
+        await message.reply_text(
+            "<b>• تم بدأ المكالمة.</b>",
+            parse_mode=ParseMode.HTML,
+        )
+    except Exception as exc:
+        print(f"[MUSIC] Could not reply to voice-chat start: {exc}")
+
+
+async def voice_chat_ended(update, context):
+    message = update.effective_message
+    if not message or not message.video_chat_ended:
+        return
+
+    duration = getattr(message.video_chat_ended, "duration", None)
+    duration_text = _format_call_duration(duration)
+
+    try:
+        await message.reply_text(
+            "<b>• انتهت المكالمة.\n"
+            f"مدتها: {duration_text}.</b>",
+            parse_mode=ParseMode.HTML,
+        )
+    except Exception as exc:
+        print(f"[MUSIC] Could not reply to voice-chat end: {exc}")
