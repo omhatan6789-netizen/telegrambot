@@ -4,3 +4,4 @@ psycopg2-binary
 requests
 ddgs>=9.0.0
 yt-dlp>=2025.9.26
+py-tgcalls[pyrogram]==3.0.0
