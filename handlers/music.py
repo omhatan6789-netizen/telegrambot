@@ -159,10 +159,13 @@ async def _play_selected(
         }
 
         text = (
-            "<blockquote>♡ تم بدء التشغيل</blockquote>\n\n\n"
-            f"- <b>العنوان</b> : {escape(str(title))}\n\n"
-            f"- مدة التشغيل : {escape(str(duration_text))}\n\n"
-            f"- <b>بواسطة</b> : {escape(requester.full_name)}"
+            "\u200e\u00a0" * 0
+            + "\u200e"
+            + "\u00a0" * 15
+            + "♡ تم بدء التشغيل\n\n\n"
+            f"- العنوان : {escape(str(title))}\n"
+            f"- مدة التشغيل : {escape(str(duration_text))}\n"
+            f"- الشخص الي شغله : {escape(requester.full_name)}"
         )
 
         keyboard = InlineKeyboardMarkup([
