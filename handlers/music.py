@@ -381,7 +381,7 @@ async def music_message_handler(update, context):
         raise ApplicationHandlerStop()
 
     search_match = re.fullmatch(
-        r"(?:بحث|يوت|تشغيل|شغل)\s+(.+)",
+        r"تشغيل\s+(.+)",
         text,
         flags=re.IGNORECASE,
     )
