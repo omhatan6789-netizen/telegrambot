@@ -159,10 +159,11 @@ async def _play_selected(
         }
 
         text = (
-            "\u200e\u00a0" * 0
+            "<blockquote>"
             + "\u200e"
             + "\u00a0" * 15
-            + "♡ تم بدء التشغيل\n\n\n"
+            + "♡ تم بدء التشغيل"
+            + "</blockquote>\n\n\n"
             f"- العنوان : {escape(str(title))}\n"
             f"- مدة التشغيل : {escape(str(duration_text))}\n"
             f"- الشخص الي شغله : {escape(requester.full_name)}"
