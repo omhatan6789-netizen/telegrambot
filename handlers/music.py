@@ -14,6 +14,7 @@ from handlers.youtube_audio import (
 )
 from handlers.roles import (
     RANK_LEVELS,
+    OWNER_ID,
     get_group_ranks,
     get_highest_rank,
 )
@@ -22,7 +23,10 @@ from music_call import (
     stop_track,
     is_music_account_member,
     ensure_music_account_in_group,
+    get_call_participants,
+    get_music_account_id,
 )
+
 from datetime import datetime, timedelta, timezone
 from html import escape
 
@@ -73,6 +77,109 @@ async def _is_link_admin(chat_id, user_id):
         print(f"[MUSIC] Link rank check failed: {exc}")
         return False
         
+
+def _call_mention(user):
+    name = escape(user.full_name or user.first_name or "مستخدم")
+    return f'<a href="tg://user?id={user.id}">{name}</a>'
+
+
+async def _show_call_participants(message, context):
+    chat_id = message.chat_id
+
+    try:
+        participants = await get_call_participants(chat_id)
+        music_id = await get_music_account_id()
+
+        if not participants:
+            await message.reply_text("ما فيه مكالمة صوتية نشطة حاليًا.")
+            return
+
+        # استبعاد حساب تشغيل الموسيقى فقط
+        user_ids = list(dict.fromkeys(
+            p.user_id
+            for p in participants
+            if p.user_id != music_id
+        ))
+
+        if not user_ids:
+            await message.reply_text("ما فيه أعضاء بالمكالمة حاليًا.")
+            return
+
+        developer = None
+        admins = []
+        members = []
+
+        for user_id in user_ids:
+            try:
+                member = await context.bot.get_chat_member(
+                    chat_id,
+                    user_id,
+                )
+                user = member.user
+
+                if user_id == OWNER_ID:
+                    developer = user
+                elif member.status in ("administrator", "creator"):
+                    admins.append(user)
+                else:
+                    members.append(user)
+
+            except Exception as exc:
+                print(
+                    f"[MUSIC] Could not get call member {user_id}: {exc}"
+                )
+
+        lines = ["الحلوين الي بالمكالمة:", ""]
+
+        if developer:
+            lines.append(
+                f"~ القوت معكم بالكول「 {_call_mention(developer)} 」❤️‍🔥"
+            )
+            lines.append("")
+
+        lines.append("المشرفين:")
+
+        if admins:
+            for index, user in enumerate(admins, 1):
+                lines.append(
+                    f"{index} ~「 {_call_mention(user)} 」"
+                )
+        else:
+            lines.append("~ مافيه مشرف بالكول حاليًا")
+
+        lines.extend([
+            "—————————————————",
+            "الاعضاء:",
+        ])
+
+        for index, user in enumerate(members, 1):
+            lines.append(
+                f"{index} ~「 {_call_mention(user)} 」"
+            )
+
+        if not members:
+            lines.append("~ ما فيه أعضاء آخرين بالكول")
+
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(
+                    "🌷",
+                    url=f"https://t.me/{BOT_USERNAME}",
+                )
+            ]
+        ])
+
+        await message.reply_text(
+            "\n".join(lines),
+            parse_mode=ParseMode.HTML,
+            reply_markup=keyboard,
+        )
+
+    except Exception as exc:
+        print(f"[MUSIC] Get call participants failed: {exc}")
+        await message.reply_text(
+            "تعذّر جلب قائمة الموجودين بالمكالمة."
+        )
 
 async def _show_search(message, context, query, requester):
     status = await message.reply_text("🔎 جاري البحث عن الأغاني...")
@@ -415,7 +522,13 @@ async def music_message_handler(update, context):
             )
 
         raise ApplicationHandlerStop()
-        
+
+
+
+    if text in {"من بالكول", "مين في الكول", "مين بالكول", "مين بالمكالمة"}:
+    await _show_call_participants(message, context)
+    raise ApplicationHandlerStop()
+    
     stop_words = {"ايقاف", "إيقاف", "وقف المقطع"}
     if text in stop_words:
         if not await _is_music_admin(chat.id, user.id):
