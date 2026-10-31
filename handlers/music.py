@@ -18,7 +18,7 @@ from handlers.roles import (
     get_highest_rank,
 )
 from music_call import play_track, stop_track
-
+from html import escape
 
 BOT_USERNAME = "lnll0bot"
 SEARCH_RESULT_COUNT = 4
@@ -159,11 +159,12 @@ async def _play_selected(
         }
 
         text = (
-            "♡ تم بدء التشغيل\n\n"
-            f"- العنوان : {title}\n"
-            f"- مدة التشغيل : {duration_text}\n"
-            f"- الشخص الي شغله : {requester.full_name}"
+            f"<b>العنوان</b> : {escape(str(title))}\n\n"
+            f"مدة التشغيل : {escape(str(duration_text))}\n\n"
+            f"<b>الشخص الي شغله</b> : {escape(requester.full_name)}\n\n"
+            "<blockquote>♡ تم بدء التشغيل</blockquote>"
         )
+
         keyboard = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton(
@@ -181,8 +182,10 @@ async def _play_selected(
         sent = await context.bot.send_message(
             chat_id=chat_id,
             text=text,
+            parse_mode=ParseMode.HTML,
             reply_markup=keyboard,
         )
+        
         context.chat_data["music_last_message_id"] = sent.message_id
 
     except Exception as exc:
