@@ -4,7 +4,7 @@ import shutil
 import tempfile
 import uuid
 from pathlib import Path
-
+from pyrogram.errors import UserNotParticipant, UserAlreadyParticipant
 from pyrogram import Client
 from pytgcalls import PyTgCalls
 from pytgcalls import filters as call_filters
@@ -197,3 +197,44 @@ async def shutdown_music_call():
     _calls = None
     _started = False
     print("[MUSIC] Second Telegram account stopped.")
+
+
+async def is_music_account_member(chat_id):
+    if not _started or _client is None:
+        raise RuntimeError("حساب الصوت مب متصل.")
+
+    me = await _client.get_me()
+
+    try:
+        member = await _client.get_chat_member(
+            int(chat_id),
+            me.id,
+        )
+        return member.status not in ("left", "kicked")
+
+    except UserNotParticipant:
+        return False
+
+
+async def ensure_music_account_in_group(
+    chat_id,
+    invite_link=None,
+    public_username=None,
+):
+    if await is_music_account_member(chat_id):
+        return True
+
+    try:
+        if public_username:
+            await _client.join_chat(public_username)
+
+        elif invite_link:
+            await _client.join_chat(invite_link)
+
+        else:
+            raise RuntimeError("لا يوجد رابط أو اسم للمجموعة.")
+
+    except UserAlreadyParticipant:
+        pass
+
+    return True
