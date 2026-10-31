@@ -526,8 +526,8 @@ async def music_message_handler(update, context):
 
 
     if text in {"من بالكول", "مين في الكول", "مين بالكول", "مين بالمكالمة"}:
-    await _show_call_participants(message, context)
-    raise ApplicationHandlerStop()
+        await _show_call_participants(message, context)
+        raise ApplicationHandlerStop()
     
     stop_words = {"ايقاف", "إيقاف", "وقف المقطع"}
     if text in stop_words:
