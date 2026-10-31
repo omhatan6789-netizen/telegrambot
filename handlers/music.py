@@ -17,7 +17,13 @@ from handlers.roles import (
     get_group_ranks,
     get_highest_rank,
 )
-from music_call import play_track, stop_track
+from music_call import (
+    play_track,
+    stop_track,
+    is_music_account_member,
+    ensure_music_account_in_group,
+)
+from datetime import datetime, timedelta, timezone
 from html import escape
 
 BOT_USERNAME = "lnll0bot"
@@ -114,6 +120,37 @@ async def _show_search(message, context, query, requester):
             "وراجع سجلات Render."
         )
 
+async def _ensure_music_joined(chat_id, context, chat_username=None):
+
+    if await is_music_account_member(chat_id):
+        return
+
+    invite_link = None
+
+    try:
+        if not chat_username:
+            invite = await context.bot.create_chat_invite_link(
+                chat_id=chat_id,
+                member_limit=1,
+                expire_date=datetime.now(timezone.utc) + timedelta(minutes=5),
+            )
+            invite_link = invite.invite_link
+
+        await ensure_music_account_in_group(
+            chat_id=chat_id,
+            invite_link=invite_link,
+            public_username=chat_username,
+        )
+
+    finally:
+        if invite_link:
+            try:
+                await context.bot.revoke_chat_invite_link(
+                    chat_id=chat_id,
+                    invite_link=invite_link,
+                )
+            except Exception as exc:
+                print(f"[MUSIC] Invite revoke failed: {exc}")
 
 async def _play_selected(
     chat_id,
@@ -143,6 +180,13 @@ async def _play_selected(
             )
             duration_text = _format_duration(duration_seconds) or "غير معروف"
 
+
+            await _ensure_music_joined(
+                chat_id=chat_id,
+                context=context,
+                chat_username=source_message.chat.username,
+            )
+            
             await play_track(
                 chat_id=chat_id,
                 source_path=file_path,
