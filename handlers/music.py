@@ -159,10 +159,10 @@ async def _play_selected(
         }
 
         text = (
-            "<blockquote>           ♡ تم بدء التشغيل</blockquote>\n\n"
-            f"<b>العنوان</b> : {escape(str(title))}\n\n"
-            f"مدة التشغيل : {escape(str(duration_text))}\n\n"
-            f"<b>الشخص الي شغله</b> : {escape(requester.full_name)}"
+            "<blockquote>♡ تم بدء التشغيل</blockquote>\n\n\n"
+            f"- <b>العنوان</b> : {escape(str(title))}\n\n"
+            f"- مدة التشغيل : {escape(str(duration_text))}\n\n"
+            f"- <b>بواسطة</b> : {escape(requester.full_name)}"
         )
 
         keyboard = InlineKeyboardMarkup([
@@ -173,11 +173,6 @@ async def _play_selected(
                 )
             ]
         ])
-
-        try:
-            await status.delete()
-        except Exception:
-            pass
 
         sent = await context.bot.send_message(
             chat_id=chat_id,
