@@ -54,6 +54,20 @@ async def _is_music_admin(chat_id, user_id):
         return False
 
 
+async def _is_link_admin(chat_id, user_id):
+    try:
+        ranks = await asyncio.to_thread(
+            get_group_ranks,
+            chat_id,
+            user_id,
+        )
+        highest = get_highest_rank(ranks)
+        return RANK_LEVELS.get(highest, 0) >= RANK_LEVELS["ادمن اساسي"]
+    except Exception as exc:
+        print(f"[MUSIC] Link rank check failed: {exc}")
+        return False
+        
+
 async def _show_search(message, context, query, requester):
     status = await message.reply_text("🔎 جاري البحث عن الأغاني...")
 
@@ -266,6 +280,96 @@ async def music_message_handler(update, context):
         text = ai_match.group(1).strip()
         ai_command = True
 
+
+
+    # ==========================================
+    # إنشاء رابط المجموعة
+    # ==========================================
+
+    if text == "انشاء رابط":
+
+        if not await _is_link_admin(chat.id, user.id):
+            await message.reply_text(
+                "هذا الأمر لرتبة ادمن اساسي وفوق فقط."
+            )
+
+        else:
+            try:
+                # المجموعات العامة لا تحتاج رابط دعوة جديد
+                if chat.username:
+                    await message.reply_text(
+                        "المجموعة عامة، رابطها موجود بالفعل."
+                    )
+
+                else:
+                    invite = await context.bot.create_chat_invite_link(
+                        chat_id=chat.id
+                    )
+
+                    context.chat_data["music_group_invite_link"] = (
+                        invite.invite_link
+                    )
+
+                    await message.reply_text(
+                        "• تم انشاء رابط جديد\n"
+                        "• لعرض الرابط ارسل 〖 الرابط 〗"
+                    )
+
+            except Exception as exc:
+                print(f"[MUSIC] Create invite link failed: {exc}")
+                await message.reply_text(
+                    "تعذّر إنشاء الرابط. تأكد أن البوت يملك صلاحية دعوة المستخدمين."
+                )
+
+        raise ApplicationHandlerStop()
+
+
+    # ==========================================
+    # عرض رابط المجموعة
+    # ==========================================
+
+    if text == "الرابط":
+
+        try:
+            if chat.username:
+                # رابط المجموعة العامة
+                group_link = f"https://t.me/{chat.username}"
+
+            else:
+                # آخر رابط أنشأه البوت للمجموعة الخاصة
+                group_link = context.chat_data.get(
+                    "music_group_invite_link"
+                )
+
+            if not group_link:
+                await message.reply_text(
+                    "ما تم إنشاء رابط للمجموعة حتى الآن.\n"
+                    "اكتب انشاء رابط لإنشاء رابط جديد."
+                )
+
+            else:
+                keyboard = InlineKeyboardMarkup([
+                    [
+                        InlineKeyboardButton(
+                            chat.title or "دخول المجموعة",
+                            url=group_link,
+                        )
+                    ]
+                ])
+
+                await message.reply_text(
+                    "• رابط المجموعة:",
+                    reply_markup=keyboard,
+                )
+
+        except Exception as exc:
+            print(f"[MUSIC] Show group link failed: {exc}")
+            await message.reply_text(
+                "تعذّر عرض رابط المجموعة."
+            )
+
+        raise ApplicationHandlerStop()
+        
     stop_words = {"ايقاف", "إيقاف", "وقف المقطع"}
     if text in stop_words:
         if not await _is_music_admin(chat.id, user.id):
