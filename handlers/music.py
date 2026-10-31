@@ -1,7 +1,9 @@
+
 import asyncio
 import os
 import re
 import tempfile
+import time
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
@@ -76,7 +78,7 @@ async def _is_link_admin(chat_id, user_id):
     except Exception as exc:
         print(f"[MUSIC] Link rank check failed: {exc}")
         return False
-        
+
 
 def _call_mention(user):
     name = escape(user.full_name or user.first_name or "مستخدم")
@@ -94,7 +96,6 @@ async def _show_call_participants(message, context):
             await message.reply_text("ما فيه مكالمة صوتية نشطة حاليًا.")
             return
 
-        # استبعاد حساب تشغيل الموسيقى فقط
         user_ids = list(dict.fromkeys(
             p.user_id
             for p in participants
@@ -181,11 +182,20 @@ async def _show_call_participants(message, context):
             "تعذّر جلب قائمة الموجودين بالمكالمة."
         )
 
+
 async def _show_search(message, context, query, requester):
     status = await message.reply_text("🔎 جاري البحث عن الأغاني...")
 
     try:
+        search_started = time.perf_counter()
+
         results = await asyncio.to_thread(_search_youtube, query)
+
+        print(
+            f"[MUSIC SPEED] YouTube search: "
+            f"{time.perf_counter() - search_started:.2f}s"
+        )
+
         if not results:
             await status.edit_text("ما حصلت نتائج للبحث.")
             return
@@ -227,6 +237,7 @@ async def _show_search(message, context, query, requester):
             "وراجع سجلات Render."
         )
 
+
 async def _ensure_music_joined(chat_id, context, chat_username=None):
 
     if await is_music_account_member(chat_id):
@@ -259,6 +270,7 @@ async def _ensure_music_joined(chat_id, context, chat_username=None):
             except Exception as exc:
                 print(f"[MUSIC] Invite revoke failed: {exc}")
 
+
 async def _play_selected(
     chat_id,
     context,
@@ -271,12 +283,26 @@ async def _play_selected(
     if status is None:
         status = await source_message.reply_text("⏳ جاري تجهيز المقطع...")
 
+    total_started = time.perf_counter()
+
     try:
         with tempfile.TemporaryDirectory(prefix="music_call_") as folder:
+
+            # ==========================================
+            # تحميل الصوت
+            # ==========================================
+
+            download_started = time.perf_counter()
+
             file_path, info = await asyncio.to_thread(
                 _download_audio,
                 video["url"],
                 folder,
+            )
+
+            print(
+                f"[MUSIC SPEED] Download: "
+                f"{time.perf_counter() - download_started:.2f}s"
             )
 
             title = info.get("title") or video.get("title") or "مقطع صوتي"
@@ -287,13 +313,29 @@ async def _play_selected(
             )
             duration_text = _format_duration(duration_seconds) or "غير معروف"
 
+            # ==========================================
+            # التأكد من دخول حساب الموسيقى
+            # ==========================================
+
+            join_started = time.perf_counter()
 
             await _ensure_music_joined(
                 chat_id=chat_id,
                 context=context,
                 chat_username=source_message.chat.username,
             )
-            
+
+            print(
+                f"[MUSIC SPEED] Join/check: "
+                f"{time.perf_counter() - join_started:.2f}s"
+            )
+
+            # ==========================================
+            # بدء التشغيل
+            # ==========================================
+
+            play_started = time.perf_counter()
+
             await play_track(
                 chat_id=chat_id,
                 source_path=file_path,
@@ -301,6 +343,16 @@ async def _play_selected(
                 duration=duration_text,
                 requester=requester.full_name,
             )
+
+            print(
+                f"[MUSIC SPEED] Play: "
+                f"{time.perf_counter() - play_started:.2f}s"
+            )
+
+        print(
+            f"[MUSIC SPEED] Total until playback: "
+            f"{time.perf_counter() - total_started:.2f}s"
+        )
 
         context.chat_data["music_last_track"] = {
             "id": video.get("id"),
@@ -335,7 +387,7 @@ async def _play_selected(
             parse_mode=ParseMode.HTML,
             reply_markup=keyboard,
         )
-        
+
         context.chat_data["music_last_message_id"] = sent.message_id
 
     except Exception as exc:
@@ -433,8 +485,6 @@ async def music_message_handler(update, context):
         text = ai_match.group(1).strip()
         ai_command = True
 
-
-
     # ==========================================
     # إنشاء رابط المجموعة
     # ==========================================
@@ -448,7 +498,6 @@ async def music_message_handler(update, context):
 
         else:
             try:
-                # المجموعات العامة لا تحتاج رابط دعوة جديد
                 if chat.username:
                     await message.reply_text(
                         "المجموعة عامة، رابطها موجود بالفعل."
@@ -476,7 +525,6 @@ async def music_message_handler(update, context):
 
         raise ApplicationHandlerStop()
 
-
     # ==========================================
     # عرض رابط المجموعة
     # ==========================================
@@ -485,11 +533,9 @@ async def music_message_handler(update, context):
 
         try:
             if chat.username:
-                # رابط المجموعة العامة
                 group_link = f"https://t.me/{chat.username}"
 
             else:
-                # آخر رابط أنشأه البوت للمجموعة الخاصة
                 group_link = context.chat_data.get(
                     "music_group_invite_link"
                 )
@@ -523,12 +569,10 @@ async def music_message_handler(update, context):
 
         raise ApplicationHandlerStop()
 
-
-
     if text in {"من بالكول", "مين في الكول", "مين بالكول", "مين بالمكالمة"}:
         await _show_call_participants(message, context)
         raise ApplicationHandlerStop()
-    
+
     stop_words = {"ايقاف", "إيقاف", "وقف المقطع"}
     if text in stop_words:
         if not await _is_music_admin(chat.id, user.id):
