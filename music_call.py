@@ -238,3 +238,20 @@ async def ensure_music_account_in_group(
         pass
 
     return True
+
+
+async def get_call_participants(chat_id):
+    """إرجاع المشاركين الموجودين فعليًا في المكالمة."""
+    if not _started or _calls is None:
+        raise RuntimeError("حساب التشغيل غير متصل.")
+
+    return await _calls.get_participants(int(chat_id))
+
+
+async def get_music_account_id():
+    """معرّف حساب الموسيقى لاستبعاده من قائمة الأعضاء."""
+    if not _started or _client is None:
+        return None
+
+    me = await _client.get_me()
+    return me.id
