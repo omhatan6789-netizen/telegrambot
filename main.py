@@ -775,6 +775,30 @@ def main():
         group=-1002,
     )
 
+
+    # ==========================================
+    # 🎵 البحث العادي وإرسال الصوت
+    # ==========================================
+
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS
+            & filters.TEXT
+            & ~filters.COMMAND
+            & filters.Regex(r"^(?:بحث|يوت)\s+.+$"),
+            youtube_audio_search,
+        ),
+        group=-1001,
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            youtube_audio_callback,
+            pattern=r"^ytpick:",
+        ),
+        group=-4,
+    )
+
     app.add_handler(
         CallbackQueryHandler(
             music_callback,
