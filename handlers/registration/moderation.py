@@ -1,9 +1,5 @@
 
-from telegram.ext import (
-    MessageHandler,
-    CallbackQueryHandler,
-    filters,
-)
+from telegram.ext import MessageHandler, CallbackQueryHandler, filters
 
 from handlers.command_guard import command_guard
 
@@ -13,22 +9,22 @@ from handlers.mandatory_subscription import (
 )
 
 from handlers.moderation import (
-    moderation_command,
     check_muted_message,
+    enable_durations_command,
+    disable_durations_command,
+    enable_reasons_command,
+    disable_reasons_command,
+    reveal_command,
+    reveal_restrictions_command,
+    moderation_command,
     unmute_command,
     unrestrict_command,
     unban_command,
     clear_restrictions_command,
     moderation_lists_command,
     clear_list_callback,
-    enable_durations_command,
-    disable_durations_command,
-    enable_reasons_command,
-    disable_reasons_command,
     warning_command,
     clear_warnings_command,
-    reveal_restrictions_command,
-    reveal_command,
 )
 
 from handlers.blocked_words import (
@@ -51,34 +47,27 @@ from handlers.repetition import (
 
 
 def build_moderation_handlers(app):
-    handlers = [
-
-        # ==========================================
-        # الاشتراك الإجباري
-        # ==========================================
-
+    return [
         (
             9,
             -100,
             MessageHandler(
-                filters.ALL,
+                filters.ChatType.GROUPS,
                 mandatory_subscription_guard,
             ),
         ),
-
         (
             10,
             -90,
             MessageHandler(
-                filters.ALL,
+                filters.ChatType.GROUPS
+                & filters.TEXT
+                & filters.Regex(
+                    r"^(?:ضع اجباري\s+.+|حذف اجباري\s+.+|مسح الاجباري|عرض الاجباري|الاجباري|تفعيل الاجباري|تعطيل الاجباري)$"
+                ),
                 mandatory_subscription_commands,
             ),
         ),
-
-        # ==========================================
-        # حارس الأوامر
-        # ==========================================
-
         (
             32,
             -22,
@@ -87,11 +76,6 @@ def build_moderation_handlers(app):
                 command_guard,
             ),
         ),
-
-        # ==========================================
-        # الكتم
-        # ==========================================
-
         (
             33,
             -30,
@@ -100,61 +84,42 @@ def build_moderation_handlers(app):
                 check_muted_message,
             ),
         ),
-
-        # ==========================================
-        # إعدادات الكلمات المحظورة
-        # ==========================================
-
         (
             34,
             -20,
             MessageHandler(
                 filters.ChatType.GROUPS
-                & filters.Regex(
-                    r"^تفعيل المدة للمشرفين$"
-                ),
+                & filters.Regex(r"^تفعيل المدة للمشرفين$"),
                 enable_durations_command,
             ),
         ),
-
         (
             35,
             -20,
             MessageHandler(
                 filters.ChatType.GROUPS
-                & filters.Regex(
-                    r"^تعطيل المدة للمشرفين$"
-                ),
+                & filters.Regex(r"^تعطيل المدة للمشرفين$"),
                 disable_durations_command,
             ),
         ),
-
         (
             36,
             -20,
             MessageHandler(
                 filters.ChatType.GROUPS
-                & filters.Regex(
-                    r"^تفعيل الاسباب$"
-                ),
+                & filters.Regex(r"^تفعيل الاسباب$"),
                 enable_reasons_command,
             ),
         ),
-
         (
             37,
             -20,
             MessageHandler(
                 filters.ChatType.GROUPS
-                & filters.Regex(
-                    r"^تعطيل الاسباب$"
-                ),
+                & filters.Regex(r"^تعطيل الاسباب$"),
                 disable_reasons_command,
             ),
         ),
-
-        # 38 محجوز لتسجيل change_button_color_start في media.py
-
         (
             39,
             -20,
@@ -167,7 +132,6 @@ def build_moderation_handlers(app):
                 blocked_words_message_handler,
             ),
         ),
-
         (
             40,
             -20,
@@ -176,11 +140,6 @@ def build_moderation_handlers(app):
                 pattern=r"^bw:",
             ),
         ),
-
-        # ==========================================
-        # كشف
-        # ==========================================
-
         (
             41,
             -19,
@@ -192,7 +151,6 @@ def build_moderation_handlers(app):
                 reveal_command,
             ),
         ),
-
         (
             42,
             -19,
@@ -204,83 +162,60 @@ def build_moderation_handlers(app):
                 reveal_restrictions_command,
             ),
         ),
-
-        # ==========================================
-        # الكتم والتقييد والحظر
-        # ==========================================
-
         (
             43,
             -18,
             MessageHandler(
                 filters.ChatType.GROUPS
-                & filters.Regex(
-                    r"^(كتم|تقييد|حظر)(?:\s+.+)?$"
-                ),
+                & filters.Regex(r"^(كتم|تقييد|حظر)(?:\s+.+)?$"),
                 moderation_command,
             ),
         ),
-
         (
             44,
             -18,
             MessageHandler(
                 filters.ChatType.GROUPS
-                & filters.Regex(
-                    r"^الغاء الكتم(?:\s+.+)?$"
-                ),
+                & filters.Regex(r"^الغاء الكتم(?:\s+.+)?$"),
                 unmute_command,
             ),
         ),
-
         (
             45,
             -18,
             MessageHandler(
                 filters.ChatType.GROUPS
-                & filters.Regex(
-                    r"^الغاء التقييد(?:\s+.+)?$"
-                ),
+                & filters.Regex(r"^الغاء التقييد(?:\s+.+)?$"),
                 unrestrict_command,
             ),
         ),
-
         (
             46,
             -18,
             MessageHandler(
                 filters.ChatType.GROUPS
-                & filters.Regex(
-                    r"^الغاء الحظر(?:\s+.+)?$"
-                ),
+                & filters.Regex(r"^الغاء الحظر(?:\s+.+)?$"),
                 unban_command,
             ),
         ),
-
         (
             47,
             -18,
             MessageHandler(
                 filters.ChatType.GROUPS
-                & filters.Regex(
-                    r"^رفع القيود(?:\s+.+)?$"
-                ),
+                & filters.Regex(r"^رفع القيود(?:\s+.+)?$"),
                 clear_restrictions_command,
             ),
         ),
-
         (
             48,
             -18,
             MessageHandler(
                 filters.ChatType.GROUPS
-                & filters.Regex(
-                    r"^(المكتومين|المقيدين|المحظورين)$"
-                ),
+                & filters.Regex(r"^(المكتومين|المقيدين|المحظورين)$"),
                 moderation_lists_command,
             ),
         ),
-
         (
             49,
             -18,
@@ -289,99 +224,69 @@ def build_moderation_handlers(app):
                 pattern=r"^moderation:clear:",
             ),
         ),
-
-        # ==========================================
-        # الإنذارات
-        # ==========================================
-
         (
             50,
             -18,
             MessageHandler(
                 filters.ChatType.GROUPS
-                & filters.Regex(
-                    r"^انذار(?:\s+.+)?$"
-                ),
+                & filters.Regex(r"^انذار(?:\s+.+)?$"),
                 warning_command,
             ),
         ),
-
         (
             51,
             -18,
             MessageHandler(
                 filters.ChatType.GROUPS
-                & filters.Regex(
-                    r"^مسح انذاراته$"
-                ),
+                & filters.Regex(r"^مسح انذاراته$"),
                 clear_warnings_command,
             ),
         ),
-
-        # ==========================================
-        # نظام التكرار
-        # ==========================================
-
         (
             52,
             -17,
             MessageHandler(
                 filters.ChatType.GROUPS
-                & filters.Regex(
-                    r"^تفعيل التكرار$"
-                ),
+                & filters.Regex(r"^تفعيل التكرار$"),
                 enable_repetition,
             ),
         ),
-
         (
             53,
             -17,
             MessageHandler(
                 filters.ChatType.GROUPS
-                & filters.Regex(
-                    r"^تعطيل التكرار$"
-                ),
+                & filters.Regex(r"^تعطيل التكرار$"),
                 disable_repetition,
             ),
         ),
-
         (
             54,
             -17,
             MessageHandler(
                 filters.ChatType.GROUPS
-                & filters.Regex(
-                    r"^ضع تكرار \d+$"
-                ),
+                & filters.Regex(r"^ضع تكرار \d+$"),
                 set_repetition_start,
             ),
         ),
-
         (
             55,
             -17,
             MessageHandler(
                 filters.ChatType.GROUPS
-                & filters.Regex(
-                    r"^ضع كتم تكرار \S+$"
-                ),
+                & filters.Regex(r"^ضع كتم تكرار \S+$"),
                 set_mute_duration,
             ),
         ),
-
         (
             56,
             -17,
             MessageHandler(
                 filters.ChatType.GROUPS
-                & filters.Regex(
-                    r"^ضع تقييد تكرار \S+$"
-                ),
+                & filters.Regex(r"^ضع تقييد تكرار \S+$"),
                 set_restrict_duration,
             ),
         ),
-
         (
             57,
             -17,
@@ -394,19 +299,15 @@ def build_moderation_handlers(app):
                 set_repetition_rank,
             ),
         ),
-
         (
             58,
             -17,
             MessageHandler(
                 filters.ChatType.GROUPS
-                & filters.Regex(
-                    r"^مسح انذاراته$"
-                ),
+                & filters.Regex(r"^مسح انذاراته$"),
                 clear_user_repetition_warnings,
             ),
         ),
-
         (
             59,
             -17,
@@ -415,11 +316,6 @@ def build_moderation_handlers(app):
                 pattern=r"^repetition_punish:(?:mute|restrict):\d+$",
             ),
         ),
-
-        # ==========================================
-        # استقبال مدة التكرار
-        # ==========================================
-
         (
             60,
             -16,
@@ -430,11 +326,6 @@ def build_moderation_handlers(app):
                 receive_repetition_duration,
             ),
         ),
-
-        # ==========================================
-        # مراقبة التكرار
-        # ==========================================
-
         (
             61,
             -15,
@@ -444,5 +335,3 @@ def build_moderation_handlers(app):
             ),
         ),
     ]
-
-    return handlers
