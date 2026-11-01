@@ -740,11 +740,11 @@ def main():
             await shutdown_music_call()
         except Exception as e:
             print(f"⚠️ تعذر إيقاف حساب الموسيقى: {e}")
-                # إيقاف حساب الموسيقى
-                try:
-                    await shutdown_music_call()
-                except Exception as e:
-                    print(f"⚠️ تعذر إيقاف حساب الموسيقى: {e}")
+        # إيقاف حساب الموسيقى
+        try:
+            await shutdown_music_call()
+        except Exception as e:
+            print(f"⚠️ تعذر إيقاف حساب الموسيقى: {e}")
 
         # حفظ الرسائل المعلقة
         try:
