@@ -255,3 +255,11 @@ async def get_music_account_id():
 
     me = await _client.get_me()
     return me.id
+
+
+def get_music_client():
+    """إرجاع اتصال حساب الموسيقى لاستخدامه في الميزات الأخرى."""
+    if not _started or _client is None:
+        return None
+
+    return _client
