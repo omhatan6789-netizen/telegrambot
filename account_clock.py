@@ -1,4 +1,3 @@
-
 import asyncio
 import re
 from datetime import datetime
@@ -18,6 +17,16 @@ CLOCK_PATTERN = re.compile(
     r"\s+⌁\s+\d{1,2}:\d{2}\s+(?:AM|PM)$"
 )
 
+def small_clock(text):
+    numbers = str.maketrans(
+        "0123456789",
+        "⁰¹²³⁴⁵⁶⁷⁸⁹"
+    )
+    return text.translate(numbers).replace(
+        "AM", "ᴬᴹ"
+    ).replace(
+        "PM", "ᴾᴹ"
+    )
 
 async def _clock_loop():
     client = get_music_client()
@@ -43,7 +52,7 @@ async def _clock_loop():
             base_name = CLOCK_PATTERN.sub("", me.first_name).strip()
 
             now = datetime.now(TIMEZONE)
-            clock = now.strftime("%I:%M %p")
+            clock = small_clock(now.strftime("%I:%M %p"))
 
             new_name = f"{base_name} ⌁ {clock}"
 
