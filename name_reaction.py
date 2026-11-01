@@ -2,6 +2,7 @@
 import re
 
 from pyrogram import filters
+from pyrogram.enums import UserStatus
 from pyrogram.handlers import MessageHandler
 from pyrogram.errors import FloodWait
 
@@ -15,6 +16,9 @@ from music_call import get_music_client
 TARGET_WORD = "نواف"
 REACTION_EMOJI = "😴"
 
+ONLINE_REPLY = "ثواني مشغول اكلم واحد واجيك🙏🏻"
+OFFLINE_REPLY = "يعني الواحد ماينام على راحته"
+
 HANDLER_GROUP = 1100
 
 _client = None
@@ -22,7 +26,7 @@ _handler = None
 
 
 # ==========================================
-# اكتشاف الكلمة
+# اكتشاف كلمة نواف
 # ==========================================
 
 WORD_PATTERN = re.compile(
@@ -31,7 +35,30 @@ WORD_PATTERN = re.compile(
 
 
 # ==========================================
-# استقبال الرسائل والتفاعل
+# معرفة حالة الحساب
+# ==========================================
+
+async def get_account_status():
+
+    try:
+        me = await _client.get_me()
+
+        if me.status == UserStatus.ONLINE:
+            return ONLINE_REPLY
+
+        if me.status == UserStatus.OFFLINE:
+            return OFFLINE_REPLY
+
+        # إذا كانت الحالة غير معروفة
+        return ONLINE_REPLY
+
+    except Exception as exc:
+        print(f"[NAME REACTION] Status error: {exc}")
+        return ONLINE_REPLY
+
+
+# ==========================================
+# استقبال الرسائل
 # ==========================================
 
 async def _name_reaction_handler(client, message):
@@ -39,20 +66,21 @@ async def _name_reaction_handler(client, message):
     if not message.from_user:
         return
 
-    # تجاهل رسائل الحساب نفسه
     if message.from_user.is_self:
         return
 
-    # قراءة النص أو وصف الوسائط
     text = message.text or message.caption or ""
 
     if not text:
         return
 
-    # التأكد من وجود كلمة نواف
     if not WORD_PATTERN.search(text):
         return
 
+    # تحديد الرد حسب حالة الحساب
+    reply = await get_account_status()
+
+    # إضافة التفاعل 😴
     try:
         await client.send_reaction(
             chat_id=message.chat.id,
@@ -61,19 +89,32 @@ async def _name_reaction_handler(client, message):
         )
 
         print(
-            f"[NAME REACTION] Reacted to message "
-            f"{message.id} in chat {message.chat.id}"
+            f"[NAME REACTION] Reacted in chat {message.chat.id}"
         )
 
     except FloodWait as exc:
-        print(f"[NAME REACTION] FloodWait: {exc.value}s")
+        print(f"[NAME REACTION] Reaction FloodWait: {exc.value}s")
 
     except Exception as exc:
-        print(f"[NAME REACTION] Error: {exc}")
+        print(f"[NAME REACTION] Reaction error: {exc}")
+
+    # الرد على الرسالة
+    try:
+        await message.reply_text(reply)
+
+        print(
+            f"[NAME REACTION] Replied: {reply}"
+        )
+
+    except FloodWait as exc:
+        print(f"[NAME REACTION] Reply FloodWait: {exc.value}s")
+
+    except Exception as exc:
+        print(f"[NAME REACTION] Reply error: {exc}")
 
 
 # ==========================================
-# تشغيل السكربت
+# التشغيل
 # ==========================================
 
 async def start_name_reaction():
@@ -105,7 +146,7 @@ async def start_name_reaction():
 
 
 # ==========================================
-# إيقاف السكربت
+# الإيقاف
 # ==========================================
 
 async def shutdown_name_reaction():
