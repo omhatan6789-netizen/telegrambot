@@ -1,3 +1,4 @@
+
 import asyncio
 import html
 import json
@@ -19,11 +20,18 @@ OWNER_ID = 8453977662
 QUESTION_TIMEOUT = 300
 POINTS_REWARD = 3
 
+# الجلسات النشطة: جلسة واحدة لكل قروب.
 active_games = {}
 question_tasks = {}
 
+# جلسات الإضافة: مرتبطة بالمستخدم والقروب.
 add_game_sessions = {}
 add_question_sessions = {}
+
+# كاش أسماء الألعاب لتجنب استعلام قاعدة البيانات مع كل رسالة.
+GAMES_CACHE_SECONDS = 30
+_games_cache = []
+_games_cache_at = 0
 
 
 # ==================================================
@@ -43,6 +51,11 @@ def is_game_admin(user_id):
     return user_id == OWNER_ID or is_admin(user_id)
 
 
+def invalidate_games_cache():
+    global _games_cache_at
+    _games_cache_at = 0
+
+
 def cancel_question_task(chat_id):
     task = question_tasks.pop(chat_id, None)
 
@@ -55,13 +68,68 @@ def cancel_active_game(chat_id):
     cancel_question_task(chat_id)
 
 
+def cancel_question_everywhere(question_id):
+    """إلغاء السؤال النشط في كل القروبات التي تستخدمه."""
+    for chat_id, active in list(active_games.items()):
+        if active.get("question_id") == question_id:
+            cancel_active_game(chat_id)
+
+
+def cancel_game_everywhere(game_name):
+    """إلغاء جميع الجلسات التابعة للعبة."""
+    target = normalize_text(game_name)
+
+    for chat_id, active in list(active_games.items()):
+        if normalize_text(active.get("game")) == target:
+            cancel_active_game(chat_id)
+
+
+# ==================================================
+# قراءة أسماء الألعاب مع Cache
+# ==================================================
+
+def get_games(force=False):
+    global _games_cache, _games_cache_at
+
+    now = time.monotonic()
+
+    if (
+        not force
+        and _games_cache
+        and now - _games_cache_at < GAMES_CACHE_SECONDS
+    ):
+        return list(_games_cache)
+
+    conn = connect()
+    cur = conn.cursor()
+
+    try:
+        cur.execute("""
+            SELECT name
+            FROM games
+            WHERE status = 'on'
+            ORDER BY name
+        """)
+
+        _games_cache = [row[0] for row in cur.fetchall()]
+        _games_cache_at = time.monotonic()
+
+        return list(_games_cache)
+
+    finally:
+        cur.close()
+        conn.close()
+
+
 def get_matching_game(game_name):
-    games = get_games()
     normalized = normalize_text(game_name)
+
+    if not normalized:
+        return None
 
     return next(
         (
-            name for name in games
+            name for name in get_games()
             if normalize_text(name) == normalized
         ),
         None
@@ -115,7 +183,6 @@ def ensure_game_tables():
             ON game_questions(game_name)
         """)
 
-        # علامة ترحيل النظام القديم، حتى لا نحذف البيانات عند كل تشغيل.
         cur.execute("""
             CREATE TABLE IF NOT EXISTS game_engine_migrations (
                 migration_name TEXT PRIMARY KEY,
@@ -123,6 +190,7 @@ def ensure_game_tables():
             )
         """)
 
+        # حذف بيانات نظام الألعاب القديم مرة واحدة فقط.
         cur.execute("""
             SELECT migration_name
             FROM game_engine_migrations
@@ -132,8 +200,6 @@ def ensure_game_tables():
         migration_done = cur.fetchone()
 
         if not migration_done:
-            # هذه الجداول تخص نظام الألعاب القديم والجديد فقط.
-            # الحذف يتم مرة واحدة عند أول تشغيل لهذا الإصدار.
             cur.execute("DELETE FROM game_question_messages")
             cur.execute("DELETE FROM game_questions")
             cur.execute("DELETE FROM games")
@@ -152,7 +218,7 @@ def ensure_game_tables():
                 ON CONFLICT (name) DO NOTHING
             """, (game_name,))
 
-        # إضافة الأسئلة الافتراضية الناقصة فقط.
+        # إضافة الأسئلة الافتراضية إذا كانت اللعبة فارغة.
         defaults = get_default_questions()
 
         for game_name in DEFAULT_GAMES:
@@ -187,6 +253,7 @@ def ensure_game_tables():
                 ))
 
         conn.commit()
+        invalidate_games_cache()
 
     except Exception:
         conn.rollback()
@@ -198,27 +265,8 @@ def ensure_game_tables():
 
 
 # ==================================================
-# قراءة الألعاب والأسئلة
+# قراءة أسئلة لعبة
 # ==================================================
-
-def get_games():
-    conn = connect()
-    cur = conn.cursor()
-
-    try:
-        cur.execute("""
-            SELECT name
-            FROM games
-            WHERE status = 'on'
-            ORDER BY name
-        """)
-
-        return [row[0] for row in cur.fetchall()]
-
-    finally:
-        cur.close()
-        conn.close()
-
 
 def get_game_questions(game_name):
     conn = connect()
@@ -243,6 +291,9 @@ def get_game_questions(game_name):
 
             if isinstance(answers, str):
                 answers = [answers]
+
+            if not isinstance(answers, list):
+                answers = []
 
             result.append({
                 "id": row[0],
@@ -269,7 +320,6 @@ async def expire_question(chat_id, question_id, context):
 
         active = active_games.get(chat_id)
 
-        # لا ننهي سؤالًا جديدًا حل مكان السؤال القديم.
         if not active or active.get("question_id") != question_id:
             return
 
@@ -289,7 +339,7 @@ async def expire_question(chat_id, question_id, context):
 
 
 # ==================================================
-# عرض السؤال وبدء اللعبة
+# تشغيل لعبة
 # ==================================================
 
 async def start_game(message, game_name, context):
@@ -300,7 +350,7 @@ async def start_game(message, game_name, context):
     if not matched_game:
         return False
 
-    # بمجرد طلب لعبة صحيحة، يُلغى السؤال السابق فورًا.
+    # إلغاء السؤال السابق فورًا.
     cancel_active_game(chat_id)
 
     questions = get_game_questions(matched_game)
@@ -312,8 +362,20 @@ async def start_game(message, game_name, context):
         return True
 
     question = random.choice(questions)
-    started_at = time.time()
 
+    # التأكد من وجود إجابات.
+    answers = [
+        answer for answer in question["answers"]
+        if str(answer).strip()
+    ]
+
+    if not answers:
+        await message.reply_text(
+            "هذا السؤال لا يحتوي على إجابات صحيحة."
+        )
+        return True
+
+    started_at = time.time()
     display_text = question["question"]
 
     if matched_game == "صور":
@@ -331,7 +393,7 @@ async def start_game(message, game_name, context):
     active_games[chat_id] = {
         "question_id": question["id"],
         "game": matched_game,
-        "answers": question["answers"],
+        "answers": answers,
         "started_at": started_at,
         "expires_at": started_at + QUESTION_TIMEOUT,
         "winner": None,
@@ -339,11 +401,10 @@ async def start_game(message, game_name, context):
 
     try:
         if question["image"]:
-            # الألعاب الخاصة بالصور لا تعرض كابشن السؤال المرسل.
             if matched_game in ("صور", "شخصيات انمي"):
                 caption = None
             else:
-                caption = question["caption"] or display_text
+                caption = question["caption"] or display_text or None
 
             sent = await message.reply_photo(
                 photo=question["image"],
@@ -353,6 +414,7 @@ async def start_game(message, game_name, context):
         else:
             sent = await message.reply_text(display_text)
 
+        # ربط رسالة السؤال برقم السؤال حتى يمكن حذفه بالرد.
         conn = connect()
         cur = conn.cursor()
 
@@ -375,7 +437,6 @@ async def start_game(message, game_name, context):
             cur.close()
             conn.close()
 
-        # تشغيل مؤقت الخمس دقائق بعد إرسال السؤال.
         question_tasks[chat_id] = asyncio.create_task(
             expire_question(
                 chat_id,
@@ -425,7 +486,7 @@ async def check_answer(message):
     if text not in answers:
         return False
 
-    # تثبيت الفائز قبل إضافة النقاط لمنع فوز شخصين.
+    # تثبيت الفائز قبل إضافة النقاط.
     game["winner"] = user.id
 
     elapsed = max(0, time.time() - game["started_at"])
@@ -438,7 +499,7 @@ async def check_answer(message):
         elapsed_text = f"{minutes} دقيقة و {seconds:.2f} ثانية"
 
     try:
-        # استخدام نظام النقاط الأصلي حتى يتحدث الكاش والحفظ المؤجل.
+        # دالة add_points ترجع الرصيد الجديد وتحدث الكاش.
         total_points = add_points(
             user.id,
             POINTS_REWARD
@@ -508,6 +569,8 @@ async def save_new_game(message, name):
         conn.commit()
 
         if created:
+            invalidate_games_cache()
+
             await message.reply_text(
                 f"تمت إضافة لعبة {name} بنجاح.\n"
                 "اللعبة أُنشئت فارغة، ويمكنك إضافة الأسئلة لها."
@@ -552,9 +615,13 @@ async def begin_add_question(message, user_id, game_name):
         "answers": [],
     }
 
+    if matched_game in ("صور", "شخصيات انمي"):
+        instruction = "أرسل صورة السؤال الآن."
+    else:
+        instruction = "أرسل السؤال كنص أو صورة مع كابشن."
+
     await message.reply_text(
-        f"أرسل محتوى السؤال للعبة {matched_game}.\n"
-        "يمكنك إرسال نص أو صورة مع كابشن.\n"
+        f"{instruction}\n"
         "اكتب الغاء لإيقاف العملية."
     )
 
@@ -564,21 +631,32 @@ async def begin_add_question(message, user_id, game_name):
 # ==================================================
 
 async def receive_add_question(message, session):
-    user_id = message.from_user.id
-
     if message.chat_id != session["chat_id"]:
         return False
 
+    game_name = session["game"]
+
     if session["stage"] == "question":
+
+        if game_name in ("صور", "شخصيات انمي"):
+            if not message.photo:
+                await message.reply_text(
+                    "هذه اللعبة مخصصة للصور فقط. أرسل صورة."
+                )
+                return True
 
         if message.photo:
             session["image"] = message.photo[-1].file_id
             session["caption"] = message.caption or ""
 
-            if session["game"] in ("صور", "شخصيات انمي"):
+            if game_name in ("صور", "شخصيات انمي"):
+                # لا نستخدم كابشن الصورة في السؤال.
                 session["question"] = ""
+                session["caption"] = ""
+
             else:
                 session["question"] = message.caption or ""
+                session["caption"] = message.caption or ""
 
         elif message.text:
             session["question"] = message.text.strip()
@@ -621,7 +699,12 @@ async def receive_add_question(message, session):
                 return True
 
             await save_question(message, session, answers)
-            add_question_sessions.pop(user_id, None)
+
+            add_question_sessions.pop(
+                message.from_user.id,
+                None
+            )
+
             return True
 
         new_answers = [
@@ -715,9 +798,8 @@ async def delete_game(message, user_id, game_name):
 
         conn.commit()
 
-        for chat_id, active in list(active_games.items()):
-            if active.get("game") == actual_name:
-                cancel_active_game(chat_id)
+        cancel_game_everywhere(actual_name)
+        invalidate_games_cache()
 
         await message.reply_text(
             f"تم حذف لعبة {actual_name} وجميع أسئلتها."
@@ -748,6 +830,12 @@ async def delete_question_by_reply(message, user_id, game_name):
             "رد على رسالة السؤال واكتب:\n"
             "حذف اسم اللعبة"
         )
+        return
+
+    actual_game = get_matching_game(game_name)
+
+    if not actual_game:
+        await message.reply_text("اللعبة غير موجودة.")
         return
 
     conn = connect()
@@ -786,11 +874,9 @@ async def delete_question_by_reply(message, user_id, game_name):
             await message.reply_text("السؤال غير موجود.")
             return
 
-        actual_game = question_row[0]
-
-        if normalize_text(actual_game) != normalize_text(game_name):
+        if normalize_text(question_row[0]) != normalize_text(actual_game):
             await message.reply_text(
-                f"السؤال الذي رددت عليه ليس من لعبة {game_name}."
+                f"السؤال الذي رددت عليه ليس من لعبة {actual_game}."
             )
             return
 
@@ -806,12 +892,12 @@ async def delete_question_by_reply(message, user_id, game_name):
 
         conn.commit()
 
-        active = active_games.get(message.chat_id)
+        # السؤال عالمي؛ ألغِه في كل القروبات وليس القروب الحالي فقط.
+        cancel_question_everywhere(question_id)
 
-        if active and active.get("question_id") == question_id:
-            cancel_active_game(message.chat_id)
-
-        await message.reply_text("تم حذف السؤال وإجاباته بنجاح.")
+        await message.reply_text(
+            "تم حذف السؤال وإجاباته بنجاح."
+        )
 
     except Exception:
         conn.rollback()
@@ -843,16 +929,21 @@ async def game_message_handler(
     text = (message.text or "").strip()
     normalized = normalize_text(text)
 
-    # إلغاء جلسات الإضافة.
+    # --------------------------------------------------
+    # إلغاء جلسات الإضافة
+    # --------------------------------------------------
+
     if normalized == "الغاء":
         removed = False
 
         game_session = add_game_sessions.get(user.id)
+
         if game_session and game_session["chat_id"] == chat.id:
             add_game_sessions.pop(user.id, None)
             removed = True
 
         question_session = add_question_sessions.get(user.id)
+
         if question_session and question_session["chat_id"] == chat.id:
             add_question_sessions.pop(user.id, None)
             removed = True
@@ -861,7 +952,10 @@ async def game_message_handler(
             await message.reply_text("تم إلغاء العملية.")
             return
 
-    # استقبال اسم لعبة جديدة.
+    # --------------------------------------------------
+    # استقبال اسم لعبة جديدة
+    # --------------------------------------------------
+
     game_session = add_game_sessions.get(user.id)
 
     if game_session and game_session["chat_id"] == chat.id:
@@ -870,27 +964,28 @@ async def game_message_handler(
             await save_new_game(message, text)
             return
 
-    # استقبال سؤال أو إجابات.
+    # --------------------------------------------------
+    # استقبال سؤال أو إجابات
+    # --------------------------------------------------
+
     question_session = add_question_sessions.get(user.id)
 
-    if question_session:
-        if question_session["chat_id"] == chat.id:
-            handled = await receive_add_question(
-                message,
-                question_session
-            )
+    if question_session and question_session["chat_id"] == chat.id:
+        handled = await receive_add_question(
+            message,
+            question_session
+        )
 
-            if handled:
-                return
+        if handled:
+            return
 
-    # التحقق من الإجابة.
-    if await check_answer(message):
-        return
+    # --------------------------------------------------
+    # أوامر الإدارة
+    # --------------------------------------------------
 
     if not text:
         return
 
-    # إضافة لعبة.
     if normalized == "اضف لعبة":
         await begin_add_game(message, user.id)
         return
@@ -900,29 +995,28 @@ async def game_message_handler(
         await save_new_game(message, name)
         return
 
-    # حذف لعبة.
     if normalized.startswith("حذف لعبة "):
         name = text[len("حذف لعبة "):].strip()
         await delete_game(message, user.id, name)
         return
 
-    # حذف سؤال بالرد.
     if normalized.startswith("حذف ") and message.reply_to_message:
         name = text[len("حذف "):].strip()
         await delete_question_by_reply(message, user.id, name)
         return
 
-    # إضافة سؤال.
     if normalized.startswith("اضف "):
         game_name = text[len("اضف "):].strip()
 
-        if normalize_text(game_name) == "لعبة":
-            return
+        if normalize_text(game_name) != "لعبة":
+            await begin_add_question(message, user.id, game_name)
 
-        await begin_add_question(message, user.id, game_name)
         return
 
-    # عرض الألعاب.
+    # --------------------------------------------------
+    # عرض الألعاب
+    # --------------------------------------------------
+
     if normalized in ("الالعاب", "العاب"):
         games = get_games()
 
@@ -941,7 +1035,17 @@ async def game_message_handler(
         await message.reply_text("\n".join(lines))
         return
 
-    # تشغيل لعبة بالاسم.
+    # --------------------------------------------------
+    # فحص الإجابة
+    # --------------------------------------------------
+
+    if await check_answer(message):
+        return
+
+    # --------------------------------------------------
+    # تشغيل لعبة بالاسم
+    # --------------------------------------------------
+
     matched_game = get_matching_game(text)
 
     if matched_game:
