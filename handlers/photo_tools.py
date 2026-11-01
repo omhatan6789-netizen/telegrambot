@@ -3,7 +3,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from config import OWNER_ID
-
+from telegram.ext import ConversationHandler
 
 WAIT_PHOTO_ID = 999
 
@@ -54,7 +54,7 @@ async def show_photo_by_id(
             photo=photo_id
         )
 
-        return -1  # ConversationHandler.END
+        return ConversationHandler.END
 
     except Exception:
         await update.message.reply_text(
