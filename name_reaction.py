@@ -16,8 +16,8 @@ from music_call import get_music_client
 TARGET_WORD = "نواف"
 REACTION_EMOJI = "😴"
 
-ONLINE_REPLY = "ثواني مشغول اكلم واحد واجيك🙏🏻"
-OFFLINE_REPLY = "يعني الواحد ماينام على راحته"
+ONLINE_REPLY = "مشغول👾"
+OFFLINE_REPLY = "نايم"
 
 HANDLER_GROUP = 1100
 
