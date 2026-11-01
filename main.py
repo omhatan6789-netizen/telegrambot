@@ -407,6 +407,8 @@ from handlers.temporary_messages import (
     track_temporary_message_chat,
 )
 
+from account_clock import start_account_clock, shutdown_account_clock
+
 import os
 import asyncio
 import threading
@@ -638,114 +640,105 @@ def main():
                     f"⚠️ خطأ في الحفظ التلقائي للرسائل: {e}"
                 )
             await asyncio.sleep(5)
+    
     async def post_init(application):
         global message_flush_task
         global moderation_expiry_task
         global blocked_words_expiry_task
+
         message_flush_task = asyncio.create_task(
             automatic_message_flush()
         )
+
         moderation_expiry_task = asyncio.create_task(
             moderation_expiry_loop(application)
         )
+
         blocked_words_expiry_task = asyncio.create_task(
             blocked_words_expiry_loop(application)
         )
+
         application.create_task(
-            repetition_expiry_loop(
-                application
-            )
+            repetition_expiry_loop(application)
         )
 
         application.create_task(
             temporary_message_scheduler(application)
         )
 
-
-            # تشغيل حساب الموسيقى
+        # تشغيل حساب الموسيقى
         try:
-            await start_music_call()
+            music_started = await start_music_call()
+
+            if music_started:
+                await start_account_clock()
+
         except Exception as e:
             print(f"⚠️ تعذر تشغيل حساب الصوت: {e}")
 
-    
+
     async def post_shutdown(application):
         global message_flush_task
         global moderation_expiry_task
         global blocked_words_expiry_task
-        # ==================================================
+
+        # إيقاف الساعة أولاً
+        try:
+            await shutdown_account_clock()
+        except Exception as e:
+            print(f"⚠️ تعذر إيقاف الساعة: {e}")
+
         # إيقاف حفظ الرسائل
-        # ==================================================
         if message_flush_task:
             message_flush_task.cancel()
             try:
                 await message_flush_task
             except asyncio.CancelledError:
                 pass
-        # ==================================================
+
         # إيقاف انتهاء القيود
-        # ==================================================
         if moderation_expiry_task:
             moderation_expiry_task.cancel()
             try:
                 await moderation_expiry_task
             except asyncio.CancelledError:
                 pass
-        # ==================================================
+
         # إيقاف انتهاء الكلمات المحظورة
-        # ==================================================
         if blocked_words_expiry_task:
             blocked_words_expiry_task.cancel()
             try:
                 await blocked_words_expiry_task
             except asyncio.CancelledError:
                 pass
-                
 
-
-                # إيقاف حساب الموسيقى
+        # إيقاف حساب الموسيقى
         try:
             await shutdown_music_call()
         except Exception as e:
             print(f"⚠️ تعذر إيقاف حساب الموسيقى: {e}")
 
-        # ==================================================
         # حفظ الرسائل المعلقة
-        # ==================================================
         try:
             await flush_user_messages()
-            print(
-                "💾 تم حفظ الرسائل المعلقة قبل إيقاف البوت"
-            )
+            print("💾 تم حفظ الرسائل المعلقة قبل إيقاف البوت")
         except Exception as e:
-            print(
-                f"⚠️ تعذر حفظ الرسائل عند الإيقاف: {e}"
-            )
-        # ==================================================
+            print(f"⚠️ تعذر حفظ الرسائل عند الإيقاف: {e}")
+
         # حفظ النقاط المعلقة
-        # ==================================================
         try:
             await flush_pending_points()
-            print(
-                "💰 تم حفظ النقاط المعلقة قبل إيقاف البوت"
-            )
+            print("💰 تم حفظ النقاط المعلقة قبل إيقاف البوت")
         except Exception as e:
-            print(
-                f"⚠️ تعذر حفظ النقاط عند الإيقاف: {e}"
-            )
+            print(f"⚠️ تعذر حفظ النقاط عند الإيقاف: {e}")
 
-        # ==================================================
         # حفظ أوقات التسليات المعلقة
-        # ==================================================
         try:
             await flush_pending_tasliyat_cooldowns()
-            print(
-                "⏱️ تم حفظ أوقات التسليات المعلقة قبل إيقاف البوت"
-            )
+            print("⏱️ تم حفظ أوقات التسليات المعلقة قبل إيقاف البوت")
         except Exception as e:
-            print(
-                f"⚠️ تعذر حفظ أوقات التسليات عند الإيقاف: {e}"
-            )
+            print(f"⚠️ تعذر حفظ أوقات التسليات عند الإيقاف: {e}")
+
     # ==================================================
     # إنشاء التطبيق
     # ==================================================
