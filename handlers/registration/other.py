@@ -4,53 +4,14 @@ from telegram.ext import (
     ApplicationHandlerStop,
     CommandHandler,
     MessageHandler,
-    ChatMemberHandler,
     CallbackQueryHandler,
+    ChatMemberHandler,
     ConversationHandler,
     ContextTypes,
     filters,
 )
 
-# ==================================================
-# الموسيقى واليوتي
-# ==================================================
-
-from handlers.music import (
-    music_message_handler,
-    music_callback,
-    voice_chat_started,
-    voice_chat_ended,
-)
-
-from handlers.youtube_audio import (
-    youtube_audio_search,
-    youtube_audio_callback,
-)
-
-from ai_assistant import ai_assistant_message
-
-from handlers.emoji_reactions import emoji_reactions_handler
-
-
-# ==================================================
-# الإرسال
-# ==================================================
-
-from handlers.send import (
-    send_command,
-    delete_slash_command,
-    handle_send_media,
-)
-
-from handlers.tasliyat import (
-    transfer_message_receiver,
-    transfer_message_callback,
-)
-
-
-# ==================================================
-# الأوامر المضافة
-# ==================================================
+from permissions import permission_command
 
 from custom_commands import (
     add_command_start,
@@ -61,39 +22,16 @@ from custom_commands import (
     delete_command,
     delete_all_commands,
     check_custom_commands,
+    is_alias_execution,
     WAIT_OLD,
     WAIT_NEW,
 )
 
-
-# ==================================================
-# الصلاحيات وقفل الأوامر
-# ==================================================
-
-from permissions import permission_command
-
-from handlers.command_lock import (
-    lock_command,
-    save_lock_rank,
-    open_command,
+from handlers.send import (
+    send_command,
+    delete_slash_command,
+    handle_send_media,
 )
-
-
-# ==================================================
-# تعديل الستارت
-# ==================================================
-
-from handlers.start_editor import (
-    start_editor_command,
-    start_editor_callback,
-    start_editor_special_callback,
-    start_editor_message,
-)
-
-
-# ==================================================
-# لوحة المطور
-# ==================================================
 
 from handlers.developer_panel import (
     developer_panel_command,
@@ -103,21 +41,18 @@ from handlers.developer_panel import (
     track_bot_chat_member,
 )
 
-
-# ==================================================
-# الرسائل المؤقتة
-# ==================================================
-
-from handlers.temporary_messages import (
-    temporary_message_command,
-    temporary_message_pending_handler,
-    temporary_message_callback,
+from handlers.start_editor import (
+    start_editor_command,
+    start_editor_callback,
+    start_editor_special_callback,
+    start_editor_message,
 )
 
-
-# ==================================================
-# البداية وقائمة الأوامر
-# ==================================================
+from handlers.command_lock import (
+    lock_command,
+    save_lock_rank,
+    open_command,
+)
 
 from handlers.start import start
 
@@ -125,30 +60,6 @@ from handlers.commands_menu import (
     commands_menu_start,
     commands_menu_callback,
 )
-
-
-# ==================================================
-# الملفات الشخصية وردود الإدارة
-# ==================================================
-
-from handlers.profile_replies import (
-    developer_command,
-    change_developer_username,
-    owner_command,
-    change_owner_username,
-    add_my_admin_reply,
-    delete_my_admin_reply,
-    delete_other_admin_reply,
-    admin_replies_list,
-    enable_admin_replies,
-    disable_admin_replies,
-    delete_all_admin_replies_command,
-)
-
-
-# ==================================================
-# الهمسات
-# ==================================================
 
 from handlers.whisper import (
     whisper_command,
@@ -160,15 +71,7 @@ from handlers.whisper import (
     whispers_list_command,
 )
 
-
-# ==================================================
-# التسليات
-# ==================================================
-
 from handlers.tasliyat import (
-    show_scratch_codes,
-    scratch_code,
-    reset_scratch_cooldown,
     create_bank_account,
     bank_callback,
     my_bank_account,
@@ -183,34 +86,96 @@ from handlers.tasliyat import (
     rob,
     transfer,
     transfer_account_number,
+    transfer_message_callback,
+    transfer_message_receiver,
     invest,
     luck,
+    show_scratch_codes,
+    scratch_code,
+    reset_scratch_cooldown,
 )
 
-
-# ==================================================
-# حذف الرسائل
-# ==================================================
+from handlers.temporary_messages import (
+    temporary_message_command,
+    temporary_message_pending_handler,
+    temporary_message_callback,
+)
 
 from handlers.delete_messages import delete_messages
 
+from handlers.youtube_audio import (
+    youtube_audio_search,
+    youtube_audio_callback,
+)
 
-# ==================================================
-# الردود العامة
-# ==================================================
+from handlers.music import (
+    music_message_handler,
+    music_callback,
+    voice_chat_started,
+    voice_chat_ended,
+)
 
-from handlers.replies import check_replies
+from ai_assistant import ai_assistant_message
+
+from handlers.emoji_reactions import emoji_reactions_handler
 
 
 def build_other_handlers(app):
 
-    handlers = []
+    async def custom_command_alias_handler(
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE,
+    ):
+        if is_alias_execution(update):
+            return
 
-    # ==================================================
-    # الموسيقى واليوتي وميزات الذكاء الاصطناعي
-    # ==================================================
+        executed = await check_custom_commands(
+            update,
+            context,
+            application=app,
+        )
 
-    handlers.extend([
+        if executed:
+            raise ApplicationHandlerStop()
+
+    async def temporary_message_pending_handler_safe(
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE,
+    ):
+        if is_alias_execution(update):
+            return
+
+        await temporary_message_pending_handler(
+            update,
+            context,
+        )
+
+    add_command_conv = ConversationHandler(
+        entry_points=[
+            MessageHandler(
+                filters.Regex(r"^اضف امر$"),
+                add_command_start,
+            )
+        ],
+        states={
+            WAIT_OLD: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    receive_old_command,
+                )
+            ],
+            WAIT_NEW: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    receive_new_command,
+                )
+            ],
+        },
+        fallbacks=[],
+    )
+
+    return [
+        # الموسيقى داخل المكالمة
         (
             1,
             -1002,
@@ -219,9 +184,10 @@ def build_other_handlers(app):
                 & filters.TEXT
                 & ~filters.COMMAND,
                 music_message_handler,
-            )
+            ),
         ),
 
+        # البحث العادي وإرسال الصوت
         (
             2,
             -1001,
@@ -231,7 +197,7 @@ def build_other_handlers(app):
                 & ~filters.COMMAND
                 & filters.Regex(r"^(?:بحث|يوت)\s+.+$"),
                 youtube_audio_search,
-            )
+            ),
         ),
 
         (
@@ -240,7 +206,7 @@ def build_other_handlers(app):
             CallbackQueryHandler(
                 youtube_audio_callback,
                 pattern=r"^ytpick:",
-            )
+            ),
         ),
 
         (
@@ -249,16 +215,17 @@ def build_other_handlers(app):
             CallbackQueryHandler(
                 music_callback,
                 pattern=r"^musicpick:",
-            )
+            ),
         ),
 
+        # إشعارات المكالمة
         (
             5,
             -4,
             MessageHandler(
                 filters.StatusUpdate.VIDEO_CHAT_STARTED,
                 voice_chat_started,
-            )
+            ),
         ),
 
         (
@@ -267,9 +234,10 @@ def build_other_handlers(app):
             MessageHandler(
                 filters.StatusUpdate.VIDEO_CHAT_ENDED,
                 voice_chat_ended,
-            )
+            ),
         ),
 
+        # المساعد الذكي
         (
             7,
             -1000,
@@ -278,24 +246,20 @@ def build_other_handlers(app):
                 & filters.TEXT
                 & ~filters.COMMAND,
                 ai_assistant_message,
-            )
+            ),
         ),
 
+        # التفاعلات
         (
             8,
             -1001,
             MessageHandler(
                 filters.TEXT,
                 emoji_reactions_handler,
-            )
+            ),
         ),
-    ])
 
-    # ==================================================
-    # الإرسال
-    # ==================================================
-
-    handlers.extend([
+        # إرسال
         (
             11,
             -30,
@@ -304,7 +268,7 @@ def build_other_handlers(app):
                     r"^/send(?:@[A-Za-z0-9_]+)?(?:\s+[\s\S]+)?$"
                 ),
                 send_command,
-            )
+            ),
         ),
 
         (
@@ -314,7 +278,7 @@ def build_other_handlers(app):
                 filters.ChatType.PRIVATE
                 & ~filters.COMMAND,
                 transfer_message_receiver,
-            )
+            ),
         ),
 
         (
@@ -333,7 +297,7 @@ def build_other_handlers(app):
                     | filters.Document.ALL
                 ),
                 handle_send_media,
-            )
+            ),
         ),
 
         (
@@ -342,48 +306,23 @@ def build_other_handlers(app):
             MessageHandler(
                 filters.Regex(r"^/[\s\S]+$"),
                 delete_slash_command,
-            )
+            ),
         ),
-    ])
 
-    # ==================================================
-    # الأوامر المضافة
-    # ==================================================
-
-    add_command_conv = ConversationHandler(
-        entry_points=[
-            MessageHandler(
-                filters.Regex(r"^اضف امر$"),
-                add_command_start
-            )
-        ],
-        states={
-            WAIT_OLD: [
-                MessageHandler(
-                    filters.TEXT & ~filters.COMMAND,
-                    receive_old_command
-                )
-            ],
-            WAIT_NEW: [
-                MessageHandler(
-                    filters.TEXT & ~filters.COMMAND,
-                    receive_new_command
-                )
-            ]
-        },
-        fallbacks=[]
-    )
-
-    handlers.extend([
-        (15, -2, add_command_conv),
+        # الأوامر المضافة
+        (
+            15,
+            -2,
+            add_command_conv,
+        ),
 
         (
             16,
             0,
             MessageHandler(
                 filters.Regex(r"^الاوامر المضافة$"),
-                custom_commands_list
-            )
+                custom_commands_list,
+            ),
         ),
 
         (
@@ -391,8 +330,8 @@ def build_other_handlers(app):
             0,
             MessageHandler(
                 filters.Regex(r"^مسح امر$"),
-                delete_command_start
-            )
+                delete_command_start,
+            ),
         ),
 
         (
@@ -400,8 +339,8 @@ def build_other_handlers(app):
             -2,
             MessageHandler(
                 filters.TEXT & ~filters.COMMAND,
-                delete_command
-            )
+                delete_command,
+            ),
         ),
 
         (
@@ -409,39 +348,29 @@ def build_other_handlers(app):
             0,
             MessageHandler(
                 filters.Regex(r"^مسح الاوامر المضافة$"),
-                delete_all_commands
-            )
+                delete_all_commands,
+            ),
         ),
-    ])
 
-    # ==================================================
-    # الصلاحيات
-    # ==================================================
-
-    handlers.append(
+        # منع وسماح
         (
             20,
             -10,
             MessageHandler(
                 filters.Regex(r"^(منع|سماح)(?:\s+.+)?$"),
-                permission_command
-            )
-        )
-    )
+                permission_command,
+            ),
+        ),
 
-    # ==================================================
-    # تعديل الستارت
-    # ==================================================
-
-    handlers.extend([
+        # تعديل الستارت
         (
             21,
             -8,
             MessageHandler(
                 filters.ChatType.PRIVATE
                 & filters.Regex(r"^(تعديل ستارت|الستارت)$"),
-                start_editor_command
-            )
+                start_editor_command,
+            ),
         ),
 
         (
@@ -452,8 +381,8 @@ def build_other_handlers(app):
                 pattern=(
                     r"^startedit:(?:menu|message|buttons|add_button|"
                     r"order_button|delete_button|access|image)$"
-                )
-            )
+                ),
+            ),
         ),
 
         (
@@ -464,8 +393,8 @@ def build_other_handlers(app):
                 pattern=(
                     r"^startedit:(?:access_add|access_delete|"
                     r"image_add|image_delete|image_delete_all)$"
-                )
-            )
+                ),
+            ),
         ),
 
         (
@@ -473,33 +402,27 @@ def build_other_handlers(app):
             -8,
             MessageHandler(
                 filters.ChatType.PRIVATE & ~filters.COMMAND,
-                start_editor_message
-            )
+                start_editor_message,
+            ),
         ),
-    ])
 
-    # ==================================================
-    # لوحة المطور
-    # ==================================================
-
-    handlers.extend([
+        # لوحة المطور
         (
             25,
             -10,
             CallbackQueryHandler(
                 developer_panel_callback,
-                pattern=r"^devpanel:"
-            )
+                pattern=r"^devpanel:",
+            ),
         ),
 
         (
             26,
             -9,
             MessageHandler(
-                filters.ChatType.PRIVATE
-                & ~filters.COMMAND,
-                developer_panel_message
-            )
+                filters.ChatType.PRIVATE & ~filters.COMMAND,
+                developer_panel_message,
+            ),
         ),
 
         (
@@ -507,49 +430,21 @@ def build_other_handlers(app):
             -10,
             ChatMemberHandler(
                 track_bot_chat_member,
-                ChatMemberHandler.MY_CHAT_MEMBER
-            )
+                ChatMemberHandler.MY_CHAT_MEMBER,
+            ),
         ),
-    ])
 
-    # ==================================================
-    # تشغيل الأوامر المضافة
-    # ==================================================
-
-    async def custom_command_alias_handler(
-        update: Update,
-        context: ContextTypes.DEFAULT_TYPE
-    ):
-        from custom_commands import is_alias_execution
-
-        if is_alias_execution(update):
-            return
-
-        executed = await check_custom_commands(
-            update,
-            context,
-            application=app
-        )
-
-        if executed:
-            raise ApplicationHandlerStop()
-
-    handlers.append(
+        # تشغيل الأوامر المضافة
         (
             28,
             -7,
             MessageHandler(
                 filters.TEXT & ~filters.COMMAND,
-                custom_command_alias_handler
-            )
-        )
-    )
+                custom_command_alias_handler,
+            ),
+        ),
 
-    # ==================================================
-    # الرسائل المؤقتة
-    # ==================================================
-
-    handlers.extend([
+        # الرسائل المؤقتة
         (
             29,
             -8,
@@ -563,7 +458,7 @@ def build_other_handlers(app):
                     r"|ضع الرسالة\s+\d+)(?: عام)?$"
                 ),
                 temporary_message_command,
-            )
+            ),
         ),
 
         (
@@ -572,25 +467,9 @@ def build_other_handlers(app):
             CallbackQueryHandler(
                 temporary_message_callback,
                 pattern=r"^tmp:",
-            )
+            ),
         ),
-    ])
 
-    async def temporary_message_pending_handler_safe(
-        update: Update,
-        context: ContextTypes.DEFAULT_TYPE,
-    ):
-        from custom_commands import is_alias_execution
-
-        if is_alias_execution(update):
-            return
-
-        await temporary_message_pending_handler(
-            update,
-            context
-        )
-
-    handlers.append(
         (
             31,
             49,
@@ -608,22 +487,17 @@ def build_other_handlers(app):
                     | filters.Sticker.ALL
                 ),
                 temporary_message_pending_handler_safe,
-            )
-        )
-    )
+            ),
+        ),
 
-    # ==================================================
-    # قفل وفتح الأوامر
-    # ==================================================
-
-    handlers.extend([
+        # قفل وفتح الأوامر
         (
             63,
             0,
             MessageHandler(
                 filters.Regex(r"^قفل امر .+$"),
-                lock_command
-            )
+                lock_command,
+            ),
         ),
 
         (
@@ -631,8 +505,8 @@ def build_other_handlers(app):
             0,
             MessageHandler(
                 filters.Regex(r"^فتح امر .+$"),
-                open_command
-            )
+                open_command,
+            ),
         ),
 
         (
@@ -640,16 +514,11 @@ def build_other_handlers(app):
             -13,
             MessageHandler(
                 filters.TEXT & ~filters.COMMAND,
-                save_lock_rank
-            )
+                save_lock_rank,
+            ),
         ),
-    ])
 
-    # ==================================================
-    # الهمسات والبداية
-    # ==================================================
-
-    handlers.extend([
+        # الهمسات - روابط البداية
         (
             66,
             0,
@@ -658,7 +527,7 @@ def build_other_handlers(app):
                     r"^/start\s+whisper_[A-Za-z0-9_-]+$"
                 ),
                 whisper_start,
-            )
+            ),
         ),
 
         (
@@ -667,19 +536,21 @@ def build_other_handlers(app):
             MessageHandler(
                 filters.ChatType.PRIVATE
                 & filters.Regex(r"^/start(?:\s.*)?$"),
-                track_private_start
-            )
+                track_private_start,
+            ),
         ),
 
+        # البداية
         (
             68,
             0,
             CommandHandler(
                 "start",
-                start
-            )
+                start,
+            ),
         ),
 
+        # قائمة الأوامر
         (
             69,
             -5,
@@ -688,8 +559,8 @@ def build_other_handlers(app):
                 & filters.Regex(
                     r"^/start(?:@\w+)?\s+commands$"
                 ),
-                commands_menu_start
-            )
+                commands_menu_start,
+            ),
         ),
 
         (
@@ -697,8 +568,8 @@ def build_other_handlers(app):
             -5,
             CommandHandler(
                 "help",
-                commands_menu_start
-            )
+                commands_menu_start,
+            ),
         ),
 
         (
@@ -706,427 +577,275 @@ def build_other_handlers(app):
             -8,
             MessageHandler(
                 filters.Regex(r"^(?:الأوامر|الاوامر)$"),
-                commands_menu_start
-            )
-        ),
-    ])
-
-    # ==================================================
-    # الملفات الشخصية وردود الإدارة
-    # ==================================================
-
-    handlers.extend([
-        (
-            80,
-            0,
-            MessageHandler(
-                filters.Regex(r"^المطور$"),
-                developer_command
-            )
+                commands_menu_start,
+            ),
         ),
 
-        (
-            81,
-            0,
-            MessageHandler(
-                filters.Regex(r"^تغيير يوزر المطور$"),
-                change_developer_username
-            )
-        ),
-
-        (
-            82,
-            0,
-            MessageHandler(
-                filters.Regex(r"^المالك$"),
-                owner_command
-            )
-        ),
-
-        (
-            83,
-            0,
-            MessageHandler(
-                filters.Regex(r"^تغيير يوزر المالك$"),
-                change_owner_username
-            )
-        ),
-
-        (
-            84,
-            0,
-            MessageHandler(
-                filters.Regex(r"^اضف ردي$"),
-                add_my_admin_reply
-            )
-        ),
-
-        (
-            85,
-            0,
-            MessageHandler(
-                filters.Regex(r"^حذف ردي$"),
-                delete_my_admin_reply
-            )
-        ),
-
-        (
-            86,
-            0,
-            MessageHandler(
-                filters.Regex(r"^حذف رده$"),
-                delete_other_admin_reply
-            )
-        ),
-
-        (
-            87,
-            0,
-            MessageHandler(
-                filters.Regex(r"^ردود الادمن$"),
-                admin_replies_list
-            )
-        ),
-
-        (
-            88,
-            0,
-            MessageHandler(
-                filters.Regex(r"^تفعيل ردود الادمن$"),
-                enable_admin_replies
-            )
-        ),
-
-        (
-            89,
-            0,
-            MessageHandler(
-                filters.Regex(r"^تعطيل ردود الادمن$"),
-                disable_admin_replies
-            )
-        ),
-
-        (
-            90,
-            0,
-            MessageHandler(
-                filters.Regex(r"^حذف ردود الادمن$"),
-                delete_all_admin_replies_command
-            )
-        ),
-    ])
-
-    # ==================================================
-    # الهمسات
-    # ==================================================
-
-    handlers.extend([
-        (
-            116,
-            0,
-            MessageHandler(
-                filters.Regex(r"^(همسه|همسة|اهمس)$"),
-                whisper_command,
-            )
-        ),
-
+        # الهمسات
         (
             117,
             0,
             MessageHandler(
-                filters.Regex(r"^تفعيل الهمسات$"),
-                enable_whispers_command,
-            )
+                filters.Regex(r"^(همسه|همسة|اهمس)$"),
+                whisper_command,
+            ),
         ),
 
         (
             118,
             0,
             MessageHandler(
-                filters.Regex(r"^تعطيل الهمسات$"),
-                disable_whispers_command,
-            )
+                filters.Regex(r"^تفعيل الهمسات$"),
+                enable_whispers_command,
+            ),
         ),
 
         (
             119,
             0,
             MessageHandler(
-                filters.ChatType.PRIVATE,
-                whisper_private_message,
-            )
+                filters.Regex(r"^تعطيل الهمسات$"),
+                disable_whispers_command,
+            ),
         ),
 
         (
             120,
+            0,
+            MessageHandler(
+                filters.ChatType.PRIVATE,
+                whisper_private_message,
+            ),
+        ),
+
+        (
+            121,
             -1,
             MessageHandler(
                 filters.Regex(r"^الهمسات$"),
                 whispers_list_command,
-            )
-        ),
-    ])
-
-    # ==================================================
-    # التسليات
-    # ==================================================
-
-    handlers.extend([
-        (
-            124,
-            -4,
-            MessageHandler(
-                filters.Regex(r"^عرض الاكواد$"),
-                show_scratch_codes,
-            )
+            ),
         ),
 
+        # التسليات والبنك
         (
             125,
             -4,
             MessageHandler(
-                filters.Regex(r"^كشط\s+[A-Za-z0-9]+$"),
-                scratch_code
-            )
+                filters.Regex(r"^عرض الاكواد$"),
+                show_scratch_codes,
+            ),
         ),
 
         (
             126,
             -4,
             MessageHandler(
-                filters.Regex(r"^رست الكشط$"),
-                reset_scratch_cooldown
-            )
+                filters.Regex(r"^كشط\s+[A-Za-z0-9]+$"),
+                scratch_code,
+            ),
         ),
 
         (
             127,
             -4,
             MessageHandler(
-                filters.Regex(r"^انشاء حساب بنكي$"),
-                create_bank_account
-            )
+                filters.Regex(r"^رست الكشط$"),
+                reset_scratch_cooldown,
+            ),
         ),
 
         (
             128,
             -4,
             MessageHandler(
-                filters.Regex(r"^حسابي$"),
-                my_bank_account
-            )
+                filters.Regex(r"^انشاء حساب بنكي$"),
+                create_bank_account,
+            ),
         ),
 
         (
             129,
             -4,
             MessageHandler(
-                filters.Regex(r"^مسح حسابي$"),
-                delete_bank_account
-            )
+                filters.Regex(r"^حسابي$"),
+                my_bank_account,
+            ),
         ),
 
         (
             130,
             -4,
             MessageHandler(
-                filters.Regex(r"^(راتب|راتبي)$"),
-                salary
-            )
+                filters.Regex(r"^مسح حسابي$"),
+                delete_bank_account,
+            ),
         ),
 
         (
             131,
             -4,
             MessageHandler(
-                filters.Regex(r"^بخشيش$"),
-                tip
-            )
+                filters.Regex(r"^(راتب|راتبي)$"),
+                salary,
+            ),
         ),
 
         (
             132,
             -4,
             MessageHandler(
-                filters.Regex(r"^المتجر$"),
-                store
-            )
+                filters.Regex(r"^بخشيش$"),
+                tip,
+            ),
         ),
 
         (
             133,
             -4,
             MessageHandler(
-                filters.Regex(r"^ممتلكاتي$"),
-                my_possessions
-            )
+                filters.Regex(r"^المتجر$"),
+                store,
+            ),
         ),
 
         (
             134,
             -4,
             MessageHandler(
-                filters.Regex(r"^ممتلكاته$"),
-                other_possessions
-            )
+                filters.Regex(r"^ممتلكاتي$"),
+                my_possessions,
+            ),
         ),
 
         (
             135,
             -4,
             MessageHandler(
-                filters.Regex(r"^(شراء|بيع) \d+ \S+$"),
-                buy_sell
-            )
+                filters.Regex(r"^ممتلكاته$"),
+                other_possessions,
+            ),
         ),
 
         (
             136,
             -4,
             MessageHandler(
-                filters.Regex(r"^اهداء \d+ \S+$"),
-                gift
-            )
+                filters.Regex(r"^(شراء|بيع) \d+ \S+$"),
+                buy_sell,
+            ),
         ),
 
         (
             137,
             -4,
             MessageHandler(
-                filters.Regex(r"^زرف$"),
-                rob
-            )
+                filters.Regex(r"^اهداء \d+ \S+$"),
+                gift,
+            ),
         ),
 
         (
             138,
             -4,
             MessageHandler(
-                filters.Regex(r"^تحويل \d+$"),
-                transfer
-            )
+                filters.Regex(r"^زرف$"),
+                rob,
+            ),
         ),
 
         (
             139,
             -4,
             MessageHandler(
-                filters.Regex(r"^\d{17}$"),
-                transfer_account_number
-            )
+                filters.Regex(r"^تحويل \d+$"),
+                transfer,
+            ),
         ),
 
         (
             140,
             -4,
             MessageHandler(
-                filters.Regex(r"^استثمار(?: نقاطي|\s+\d+)?$"),
-                invest
-            )
+                filters.Regex(r"^\d{17}$"),
+                transfer_account_number,
+            ),
         ),
 
         (
             141,
             -4,
             MessageHandler(
-                filters.Regex(r"^حظ(?: نقاطي|\s+\d+)?$"),
-                luck
-            )
+                filters.Regex(r"^استثمار(?: نقاطي|\s+\d+)?$"),
+                invest,
+            ),
         ),
 
         (
             142,
             -4,
-            CallbackQueryHandler(
-                bank_callback,
-                pattern=r"^tasliyat:bank:"
-            )
+            MessageHandler(
+                filters.Regex(r"^حظ(?: نقاطي|\s+\d+)?$"),
+                luck,
+            ),
         ),
 
         (
             143,
             -4,
             CallbackQueryHandler(
-                transfer_message_callback,
-                pattern=r"^tasliyat:transfer_message:"
-            )
+                bank_callback,
+                pattern=r"^tasliyat:bank:",
+            ),
         ),
-    ])
 
-    # ==================================================
-    # الردود العامة
-    # ==================================================
-
-    handlers.append(
         (
-            164,
-            40,
-            MessageHandler(
-                filters.TEXT & ~filters.COMMAND,
-                check_replies
-            )
-        )
-    )
+            144,
+            -4,
+            CallbackQueryHandler(
+                transfer_message_callback,
+                pattern=r"^tasliyat:transfer_message:",
+            ),
+        ),
 
-    # ==================================================
-    # لوحة المطور - الخاص
-    # ==================================================
-
-    handlers.append(
+        # لوحة المطور - الخاص
         (
-            195,
+            196,
             -10,
             MessageHandler(
                 filters.ChatType.PRIVATE
                 & filters.Regex(r"^اوامر المطور$"),
-                developer_panel_command
-            )
-        )
-    )
+                developer_panel_command,
+            ),
+        ),
 
-    # ==================================================
-    # Callback الهمسات
-    # ==================================================
-
-    handlers.append(
+        # الهمسات - Callback
         (
-            197,
+            198,
             0,
             CallbackQueryHandler(
                 whisper_callbacks,
                 pattern=r"^wh_",
-            )
-        )
-    )
+            ),
+        ),
 
-    # ==================================================
-    # Callback قائمة الأوامر
-    # ==================================================
-
-    handlers.append(
+        # قائمة الأوامر - Callback
         (
-            199,
+            200,
             -4,
             CallbackQueryHandler(
                 commands_menu_callback,
-                pattern=r"^cmdmenu:"
-            )
-        )
-    )
+                pattern=r"^cmdmenu:",
+            ),
+        ),
 
-    # ==================================================
-    # حذف الرسائل
-    # ==================================================
-
-    handlers.append(
+        # حذف الرسائل
         (
-            200,
+            201,
             -3,
             MessageHandler(
                 filters.Regex(r"^مسح(?:\s*\d+)?$"),
-                delete_messages
-            )
-        )
-    )
-
-    return handlers
+                delete_messages,
+            ),
+        ),
+    ]
