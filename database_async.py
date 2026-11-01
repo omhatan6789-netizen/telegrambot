@@ -4,83 +4,68 @@ import logging
 import os
 import time
 from contextlib import asynccontextmanager
+from typing import Any, Optional
 
-from psycopg import AsyncConnection
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
 
 
-logger = logging.getLogger("database.async")
+logger = logging.getLogger("database")
 
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 
-# =========================================================
-# إعدادات الاتصال
-# =========================================================
+DB_POOL_MIN = int(os.getenv("DB_POOL_MIN", "1"))
+DB_POOL_MAX = int(os.getenv("DB_POOL_MAX", "5"))
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+DB_POOL_TIMEOUT = float(os.getenv("DB_POOL_TIMEOUT", "10"))
+DB_CONNECT_TIMEOUT = int(os.getenv("DB_CONNECT_TIMEOUT", "8"))
 
-if not DATABASE_URL:
-    raise RuntimeError(
-        "DATABASE_URL غير موجود في Environment Variables"
-    )
-
-DB_POOL_MIN = max(
-    1,
-    int(os.getenv("DB_POOL_MIN", "1"))
+DB_SLOW_QUERY_SECONDS = float(
+    os.getenv("DB_SLOW_QUERY_SECONDS", "0.5")
 )
 
-DB_POOL_MAX = max(
-    DB_POOL_MIN,
-    int(os.getenv("DB_POOL_MAX", "5"))
+DB_APPLICATION_NAME = os.getenv(
+    "DB_APPLICATION_NAME",
+    "nawaf-telegram-bot"
 )
 
-DB_POOL_TIMEOUT = max(
-    3,
-    float(os.getenv("DB_POOL_TIMEOUT", "10"))
-)
-
-DB_CONNECT_TIMEOUT = max(
-    3,
-    int(os.getenv("DB_CONNECT_TIMEOUT", "8"))
-)
-
-DB_SLOW_QUERY_SECONDS = max(
-    0.1,
-    float(os.getenv("DB_SLOW_QUERY_SECONDS", "0.5"))
-)
-
-
-# =========================================================
-# مجموعة الاتصالات
-# =========================================================
-
-_pool: AsyncConnectionPool | None = None
+_pool: Optional[AsyncConnectionPool] = None
 _pool_lock = asyncio.Lock()
 
 
-def get_pool() -> AsyncConnectionPool:
-    if _pool is None:
-        raise RuntimeError(
-            "قاعدة البيانات غير مهيأة. "
-            "شغّل init_db() أولاً."
-        )
+def _validate_settings():
+    if not DATABASE_URL:
+        raise RuntimeError("DATABASE_URL غير موجود في Environment Variables")
 
-    return _pool
+    if DB_POOL_MIN < 0:
+        raise ValueError("DB_POOL_MIN يجب أن يكون صفرًا أو أكبر")
+
+    if DB_POOL_MAX < 1:
+        raise ValueError("DB_POOL_MAX يجب أن يكون أكبر من صفر")
+
+    if DB_POOL_MIN > DB_POOL_MAX:
+        raise ValueError("DB_POOL_MIN لا يمكن أن يكون أكبر من DB_POOL_MAX")
 
 
-async def init_db() -> None:
+async def init_db():
     """
-    تهيئة مجموعة الاتصالات مرة واحدة عند تشغيل البوت.
+    تشغيل مجمع اتصالات قاعدة البيانات.
+    يستدعى مرة واحدة عند بدء البوت.
     """
 
     global _pool
+
+    if _pool is not None:
+        return
 
     async with _pool_lock:
 
         if _pool is not None:
             return
 
-        new_pool = AsyncConnectionPool(
+        _validate_settings()
+
+        pool = AsyncConnectionPool(
             conninfo=DATABASE_URL,
 
             min_size=DB_POOL_MIN,
@@ -99,69 +84,68 @@ async def init_db() -> None:
 
             kwargs={
                 "connect_timeout": DB_CONNECT_TIMEOUT,
-                "application_name": "nawaf-telegram-bot",
+                "application_name": DB_APPLICATION_NAME,
+                "row_factory": dict_row,
                 "prepare_threshold": None,
             },
         )
 
         try:
-            await new_pool.open(
+            await pool.open(
                 wait=True,
                 timeout=DB_POOL_TIMEOUT,
             )
 
-            async with new_pool.connection() as conn:
-                async with conn.cursor() as cur:
-                    await cur.execute("SELECT 1")
-                    await cur.fetchone()
+            async with pool.connection() as conn:
+                await conn.execute("SELECT 1")
 
-            _pool = new_pool
+            _pool = pool
 
             logger.info(
-                "تم تشغيل Async PostgreSQL Pool "
-                "(min=%s, max=%s)",
+                "Database pool connected | min=%s max=%s",
                 DB_POOL_MIN,
                 DB_POOL_MAX,
             )
 
         except Exception:
-            await new_pool.close()
+            await pool.close()
             raise
 
 
-# =========================================================
-# إغلاق الاتصالات
-# =========================================================
+async def close_db():
+    """
+    إغلاق جميع اتصالات قاعدة البيانات.
+    يستدعى عند إيقاف البوت.
+    """
 
-async def close_db() -> None:
     global _pool
 
     async with _pool_lock:
 
-        if _pool is None:
-            return
-
-        current_pool = _pool
+        pool = _pool
         _pool = None
 
-        await current_pool.close()
+        if pool is not None:
+            await pool.close()
+            logger.info("Database pool closed")
 
-        logger.info(
-            "تم إغلاق مجموعة اتصالات قاعدة البيانات"
+
+def get_pool() -> AsyncConnectionPool:
+    if _pool is None:
+        raise RuntimeError(
+            "قاعدة البيانات غير مهيأة. استدعِ init_db() أولًا."
         )
 
+    return _pool
 
-# =========================================================
-# الاتصال
-# =========================================================
 
 @asynccontextmanager
 async def connection():
     """
-    استخدام:
-        async with connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(...)
+    الحصول على اتصال غير متزامن.
+
+    يحفظ التغييرات تلقائيًا عند النجاح،
+    ويتراجع عنها عند حدوث استثناء.
     """
 
     pool = get_pool()
@@ -170,144 +154,165 @@ async def connection():
         yield conn
 
 
-# =========================================================
-# تنفيذ استعلام
-# =========================================================
+@asynccontextmanager
+async def transaction():
+    """
+    معاملة قاعدة بيانات مستقلة.
+    """
 
-async def execute(query: str, params=None) -> int:
+    async with connection() as conn:
+        async with conn.transaction():
+            yield conn
+
+
+async def execute(
+    query: str,
+    params: Optional[tuple] = None,
+) -> int:
+    """
+    تنفيذ INSERT / UPDATE / DELETE.
+    يرجع عدد الصفوف المتأثرة.
+    """
+
     started = time.perf_counter()
 
     async with connection() as conn:
-        async with conn.cursor() as cur:
-            await cur.execute(query, params)
-            rowcount = cur.rowcount
+        cursor = await conn.execute(query, params or ())
+        rowcount = cursor.rowcount
 
     _log_slow_query(query, started)
 
     return rowcount
 
 
-# =========================================================
-# جلب سجل واحد
-# =========================================================
+async def fetch_one(
+    query: str,
+    params: Optional[tuple] = None,
+) -> Optional[dict]:
+    """
+    جلب صف واحد على شكل dict.
+    """
 
-async def fetch_one(query: str, params=None):
     started = time.perf_counter()
 
     async with connection() as conn:
-        async with conn.cursor() as cur:
-            await cur.execute(query, params)
-            result = await cur.fetchone()
+        cursor = await conn.execute(query, params or ())
+        result = await cursor.fetchone()
 
     _log_slow_query(query, started)
 
     return result
 
 
-# =========================================================
-# جلب جميع السجلات
-# =========================================================
+async def fetch_all(
+    query: str,
+    params: Optional[tuple] = None,
+) -> list:
+    """
+    جلب جميع الصفوف على شكل قائمة من dict.
+    """
 
-async def fetch_all(query: str, params=None):
     started = time.perf_counter()
 
     async with connection() as conn:
-        async with conn.cursor() as cur:
-            await cur.execute(query, params)
-            result = await cur.fetchall()
+        cursor = await conn.execute(query, params or ())
+        result = await cursor.fetchall()
 
     _log_slow_query(query, started)
 
     return result
 
 
-# =========================================================
-# تنفيذ جماعي
-# =========================================================
+async def fetch_value(
+    query: str,
+    params: Optional[tuple] = None,
+    default: Any = None,
+) -> Any:
+    """
+    جلب أول قيمة من أول صف.
+    """
 
-async def execute_many(query: str, params_seq) -> None:
     started = time.perf_counter()
 
     async with connection() as conn:
-        async with conn.cursor() as cur:
-            await cur.executemany(
-                query,
-                params_seq,
-            )
+        cursor = await conn.execute(query, params or ())
+        row = await cursor.fetchone()
 
     _log_slow_query(query, started)
 
+    if row is None:
+        return default
 
-# =========================================================
-# فحص صحة الاتصال
-# =========================================================
+    return next(iter(row.values()), default)
 
-async def health_check() -> dict:
+
+async def execute_many(
+    query: str,
+    params_list: list,
+) -> int:
+    """
+    تنفيذ استعلام على مجموعة بيانات.
+    """
+
+    if not params_list:
+        return 0
+
     started = time.perf_counter()
+
+    async with connection() as conn:
+        cursor = await conn.cursor()
+        await cursor.executemany(query, params_list)
+        rowcount = cursor.rowcount
+        await cursor.close()
+
+    _log_slow_query(query, started)
+
+    return rowcount
+
+
+async def health_check() -> bool:
+    """
+    اختبار الاتصال بقاعدة البيانات.
+    """
 
     try:
-        result = await fetch_one("SELECT 1")
+        result = await fetch_value("SELECT 1", default=0)
+        return result == 1
 
-        return {
-            "ok": result is not None,
-            "latency_ms": round(
-                (time.perf_counter() - started) * 1000,
-                2,
-            ),
-        }
+    except Exception:
+        logger.exception("Database health check failed")
+        return False
 
-    except Exception as exc:
-        logger.exception(
-            "فشل فحص قاعدة البيانات"
-        )
-
-        return {
-            "ok": False,
-            "error": str(exc),
-        }
-
-
-# =========================================================
-# إحصائيات مجموعة الاتصالات
-# =========================================================
 
 def pool_stats() -> dict:
+    """
+    إحصائيات مجمع الاتصالات.
+    """
+
     pool = get_pool()
+    stats = pool.get_stats()
 
     return {
         "pool_min": DB_POOL_MIN,
         "pool_max": DB_POOL_MAX,
-        "pool_size": pool.get_stats().get(
-            "pool_size",
-            0,
-        ),
-        "pool_available": pool.get_stats().get(
-            "pool_available",
-            0,
-        ),
-        "requests_waiting": pool.get_stats().get(
-            "requests_waiting",
-            0,
-        ),
+        "pool_size": stats.get("pool_size", 0),
+        "pool_available": stats.get("pool_available", 0),
+        "requests_waiting": stats.get("requests_waiting", 0),
+        "requests_queued": stats.get("requests_queued", 0),
+        "requests_wait_ms": stats.get("requests_wait_ms", 0),
+        "connections_num": stats.get("connections_num", 0),
+        "connections_errors": stats.get("connections_errors", 0),
     }
 
 
-# =========================================================
-# تسجيل الاستعلامات البطيئة
-# =========================================================
-
-def _log_slow_query(query: str, started: float) -> None:
+def _log_slow_query(query: str, started: float):
     elapsed = time.perf_counter() - started
 
-    if elapsed < DB_SLOW_QUERY_SECONDS:
-        return
+    if elapsed >= DB_SLOW_QUERY_SECONDS:
+        compact_query = " ".join(query.split())
 
-    preview = " ".join(
-        str(query).split()
-    )[:180]
-
-    logger.warning(
-        "استعلام PostgreSQL بطيء: %.3fs | %s",
-        elapsed,
-        preview,
-    )
+        logger.warning(
+            "Slow database query | %.3fs | %s",
+            elapsed,
+            compact_query[:300],
+        )
