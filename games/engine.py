@@ -140,6 +140,7 @@ def get_matching_game(game_name):
 # تجهيز قاعدة البيانات
 # ==================================================
 
+
 def ensure_game_tables():
     conn = connect()
     cur = conn.cursor()
@@ -162,6 +163,31 @@ def ensure_game_tables():
                 caption TEXT,
                 answers TEXT
             )
+        """)
+
+        # إصلاح عمود id إذا كان الجدول موجودًا من قبل بدون ترقيم تلقائي.
+        cur.execute("""
+            CREATE SEQUENCE IF NOT EXISTS game_questions_id_seq
+        """)
+
+        cur.execute("""
+            ALTER TABLE game_questions
+            ALTER COLUMN id
+            SET DEFAULT nextval('game_questions_id_seq')
+        """)
+
+        cur.execute("""
+            SELECT setval(
+                'game_questions_id_seq',
+                GREATEST(COALESCE(MAX(id), 0) + 1, 1),
+                false
+            )
+            FROM game_questions
+        """)
+
+        cur.execute("""
+            ALTER SEQUENCE game_questions_id_seq
+            OWNED BY game_questions.id
         """)
 
         cur.execute("""
@@ -262,6 +288,7 @@ def ensure_game_tables():
     finally:
         cur.close()
         conn.close()
+
 
 
 # ==================================================
