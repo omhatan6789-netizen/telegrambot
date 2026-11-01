@@ -414,6 +414,10 @@ from auto_private_reply import (
     shutdown_auto_private_reply,
 )
 
+from name_reaction import (
+    start_name_reaction,
+    shutdown_name_reaction
+)
 
 import os
 import asyncio
@@ -676,12 +680,14 @@ def main():
         # تشغيل حساب الموسيقى والميزات المرتبطة به
         # ==========================================
 
+
         try:
             music_started = await start_music_call()
 
             if music_started:
                 await start_account_clock()
                 await start_auto_private_reply()
+                await start_name_reaction()
 
         except Exception as e:
             print(f"⚠️ تعذر تشغيل حساب الصوت: {e}")
@@ -742,10 +748,14 @@ def main():
             print(f"⚠️ تعذر إيقاف حساب الموسيقى: {e}")
         # إيقاف حساب الموسيقى
         try:
+            await shutdown_name_reaction()
+        except Exception as e:
+            print(f"⚠️ تعذر إيقاف تفاعل نواف: {e}")
+
+        try:
             await shutdown_music_call()
         except Exception as e:
             print(f"⚠️ تعذر إيقاف حساب الموسيقى: {e}")
-
         # حفظ الرسائل المعلقة
         try:
             await flush_user_messages()
