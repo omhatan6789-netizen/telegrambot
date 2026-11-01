@@ -103,13 +103,7 @@ from games.liar import (
     liar_guess_callback,
     check_liar_message,
 )
-# ==================================================
-# الأنمي
-# ==================================================
-from games.anime_game import (
-    start_anime_quiz,
-    check_anime_answer
-)
+
 # ==================================================
 # البداية
 # ==================================================
@@ -253,32 +247,8 @@ from handlers.replies import (
     delete_all_replies,
     delete_all_special_replies
 )
-# ==================================================
-# أسرع كلمة
-# ==================================================
-from games.speed_words import (
-    start_speed_words,
-    check_speed_words
-)
-# ==================================================
-# الألعاب
-# ==================================================
-from games.games_manager import (
-    add_game_start,
-    add_game_handler,
-    games_list,
-    delete_game,
-    enable_game,
-    disable_game,
-    enable_all_games,
-    disable_all_games,
-    add_question_start,
-    add_question_handler,
-    questions_list,
-    delete_question,
-    play_game,
-    check_game_answer
-)
+
+
 from button_colors import (
     patch_inline_keyboard_buttons,
     register_existing_panel_buttons
@@ -417,6 +387,14 @@ from auto_private_reply import (
 from name_reaction import (
     start_name_reaction,
     shutdown_name_reaction
+)
+
+# ==================================================
+# نظام الألعاب الجديد
+# ==================================================
+from games.engine import (
+    ensure_game_tables,
+    game_message_handler,
 )
 
 import os
@@ -623,6 +601,7 @@ def main():
     create_tables()
     create_developer_panel_tables()
     ensure_demon_tables()
+    ensure_game_tables()
     ensure_temporary_message_tables()
     ensure_emoji_reactions_table()
     ensure_ai_tables()
@@ -2420,15 +2399,7 @@ def main():
         ),
         group=9
     )
-    # ==================================================
-    # أسرع كلمة
-    # ==================================================
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(r"^كلمات$"),
-            start_speed_words
-        )
-    )
+    
     app.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND,
@@ -2472,125 +2443,23 @@ def main():
         ),
         group=-20
     )
+
+
+
     # ==================================================
-    # الألعاب المخصصة
+    # نظام الألعاب الجديد
     # ==================================================
+
     app.add_handler(
         MessageHandler(
-            filters.Regex(r"^اضف لعبة$"),
-            add_game_start
+            filters.ChatType.GROUPS
+            & (
+                filters.TEXT
+                | filters.PHOTO
+            ),
+            game_message_handler,
         ),
-        group=0
-    )
-    app.add_handler(
-        MessageHandler(
-            filters.ALL,
-            add_game_handler
-        ),
-        group=21
-    )
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(r"^الالعاب$"),
-            games_list
-        )
-    )
-    # ==================================================
-    # الأسئلة
-    # ==================================================
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(r"^اضف سؤال(?:\s|$)"),
-            add_question_start
-        ),
-        group=0
-    )
-    app.add_handler(
-        (
-            MessageHandler(
-                (
-                    filters.TEXT |
-                    filters.PHOTO
-                ) & ~filters.COMMAND,
-                add_question_handler
-            )
-        ),
-        group=23
-    )
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(r"^اسئلة"),
-            questions_list
-        )
-    )
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(r"^حذف سؤال"),
-            delete_question
-        )
-    )
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(r"^حذف لعبة"),
-            delete_game
-        )
-    )
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(r"^تفعيل لعبة"),
-            enable_game
-        )
-    )
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(r"^تعطيل لعبة"),
-            disable_game
-        )
-    )
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(r"^تفعيل الالعاب$"),
-            enable_all_games
-        )
-    )
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(r"^تعطيل الالعاب$"),
-            disable_all_games
-        )
-    )
-    # ==================================================
-    # لعبة الأنمي
-    # ==================================================
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(r"^انمي$"),
-            start_anime_quiz
-        )
-    )
-    app.add_handler(
-        MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
-            check_anime_answer
-        ),
-        group=32
-    )
-    # ==================================================
-    # الألعاب المخصصة
-    # ==================================================
-    app.add_handler(
-        MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
-            play_game
-        ),
-        group=30
-    )
-    app.add_handler(
-        MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
-            check_game_answer
-        ),
-        group=31
+        group=30,
     )
     # ==================================================
     # تشغيل الردود
@@ -2920,28 +2789,7 @@ def main():
         ),
         group=-3
     )
-    # ==================================================
-    # إيقاف المعالجات بعد الفوز في الألعاب
-    # ==================================================
-    async def stop_after_game(
-        update: Update,
-        context: ContextTypes.DEFAULT_TYPE
-    ):
-        from games.games_manager import active_games
-        if not update.effective_chat:
-            return
-        chat_id = update.effective_chat.id
-        if chat_id not in active_games:
-            return
-        raise ApplicationHandlerStop()
-    app.add_handler(
-        MessageHandler(
-            filters.ALL,
-            stop_after_game
-        ),
-        group=100
-    )
-
+    
     # ==================================================
     # تشغيل البوت
     # ==================================================
