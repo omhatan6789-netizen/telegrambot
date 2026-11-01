@@ -11,56 +11,29 @@ from handlers.points import (
 
 
 def build_points_handlers(app):
-    handlers = [
-        # إضافة النقاط
-        (
-            111,
-            -1,
-            MessageHandler(
-                filters.Regex(r"^اضف \d+$"),
-                add_points_command
-            )
-        ),
+    return [
+        (112, -1, MessageHandler(
+            filters.Regex(r"^اضف \d+$"),
+            add_points_command
+        )),
 
-        # خصم النقاط
-        (
-            112,
-            -1,
-            MessageHandler(
-                filters.Regex(r"^خصم \d+$"),
-                remove_points_command
-            )
-        ),
+        (113, -1, MessageHandler(
+            filters.Regex(r"^خصم \d+$"),
+            remove_points_command
+        )),
 
-        # بيع النقاط
-        (
-            113,
-            -1,
-            MessageHandler(
-                filters.Regex(r"^بيع نقاطي \d+$"),
-                sell_points
-            )
-        ),
+        (114, -1, MessageHandler(
+            filters.Regex(r"^بيع نقاطي \d+$"),
+            sell_points
+        )),
 
-        # عرض نقاط المستخدم
-        (
-            114,
-            0,
-            MessageHandler(
-                filters.Regex(r"^نقاطي$"),
-                my_points
-            )
-        ),
+        (115, 0, MessageHandler(
+            filters.Regex(r"^نقاطي$"),
+            my_points
+        )),
 
-        # ترتيب النقاط
-        (
-            115,
-            0,
-            MessageHandler(
-                filters.Regex(r"^توب$"),
-                top_points
-            )
-        ),
+        (116, 0, MessageHandler(
+            filters.Regex(r"^توب$"),
+            top_points
+        )),
     ]
-
-    return handlers
