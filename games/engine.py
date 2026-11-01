@@ -682,20 +682,13 @@ async def delete_game(message, user_id, game_name):
         actual_name = row[0]
 
         cur.execute("""
-            SELECT id
-            FROM game_questions
-            WHERE game_name = ?
+            DELETE FROM game_question_messages
+            WHERE question_id IN (
+                SELECT id
+                FROM game_questions
+                WHERE game_name = ?
+            )
         """, (actual_name,))
-
-        question_ids = [
-            row[0] for row in cur.fetchall()
-        ]
-
-        if question_ids:
-            cur.execute("""
-                DELETE FROM game_question_messages
-                WHERE question_id = ANY(?)
-            """, (question_ids,))
 
         cur.execute("""
             DELETE FROM game_questions
