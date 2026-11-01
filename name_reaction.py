@@ -1,6 +1,7 @@
 import re
 import json
 import time
+import asyncio
 from pathlib import Path
 from pyrogram import filters
 from pyrogram.enums import UserStatus, ChatType
@@ -30,6 +31,8 @@ SETTINGS_FILE = Path("name_reaction_settings.json")
 DEFAULT_ENABLED = True
 # المدة بين رسائل تنبيه التقييد للشخص نفسه
 RESTRICT_NOTICE_INTERVAL = 60
+# عدد الرسائل في كل دفعة حذف
+DELETE_BATCH_SIZE = 100
 _client = None
 _handler = None
 _control_handler = None
@@ -110,6 +113,92 @@ async def get_account_status():
     except Exception as exc:
         print(f"[NAME REACTION] Status error: {exc}")
         return ONLINE_REPLY
+# ==========================================
+# مسح رسائل الحساب في القروب
+# ==========================================
+async def delete_own_messages(client, message, count):
+    if message.chat.type not in (
+        ChatType.GROUP,
+        ChatType.SUPERGROUP
+    ):
+        return
+    if count <= 0:
+        return
+    chat_id = message.chat.id
+    message_ids = []
+    print(
+        f"[MESSAGE CLEANER] Searching for {count} own messages "
+        f"in chat {chat_id}"
+    )
+    # البحث عن رسائل الحساب من الأحدث إلى الأقدم
+    try:
+        async for old_message in client.get_chat_history(chat_id):
+            # تجاهل رسالة أمر المسح
+            if old_message.id == message.id:
+                continue
+            # التأكد أن الرسالة من حسابنا
+            if (
+                old_message.from_user
+                and old_message.from_user.is_self
+            ):
+                message_ids.append(old_message.id)
+                if len(message_ids) >= count:
+                    break
+    except FloodWait as exc:
+        print(
+            f"[MESSAGE CLEANER] History FloodWait: {exc.value}s"
+        )
+        return
+    except Exception as exc:
+        print(
+            f"[MESSAGE CLEANER] History error: {exc}"
+        )
+        return
+    # حذف الرسائل على دفعات
+    deleted_count = 0
+    failed_count = 0
+    for start in range(0, len(message_ids), DELETE_BATCH_SIZE):
+        batch = message_ids[
+            start:start + DELETE_BATCH_SIZE
+        ]
+        while True:
+            try:
+                await client.delete_messages(
+                    chat_id=chat_id,
+                    message_ids=batch,
+                    revoke=True
+                )
+                deleted_count += len(batch)
+                break
+            except FloodWait as exc:
+                print(
+                    f"[MESSAGE CLEANER] FloodWait: {exc.value}s"
+                )
+                await asyncio.sleep(exc.value + 1)
+            except Exception as exc:
+                print(
+                    f"[MESSAGE CLEANER] Batch delete error: {exc}"
+                )
+                failed_count += len(batch)
+                break
+    # حذف رسالة الأمر
+    try:
+        await client.delete_messages(
+            chat_id=chat_id,
+            message_ids=message.id,
+            revoke=True
+        )
+    except Exception as exc:
+        print(
+            f"[MESSAGE CLEANER] Command delete error: {exc}"
+        )
+    print(
+        f"[MESSAGE CLEANER] Finished | "
+        f"Requested: {count} | "
+        f"Found: {len(message_ids)} | "
+        f"Deleted: {deleted_count} | "
+        f"Failed: {failed_count}"
+    )
 # ==========================================
 # تنفيذ أوامر الكتم والتقييد
 # ==========================================
@@ -209,8 +298,25 @@ async def _reply_control_handler(client, message):
     global replies_enabled
     if not message.outgoing:
         return
-    text = (message.text or message.caption or "").strip()
+    text = (
+        message.text or message.caption or ""
+    ).strip()
     if not text:
+        return
+    # --------------------------
+    # مسح الرسائل
+    # --------------------------
+    match = re.fullmatch(
+        r"مسح\s+(\d+)",
+        text
+    )
+    if match:
+        count = int(match.group(1))
+        await delete_own_messages(
+            client,
+            message,
+            count
+        )
         return
     # --------------------------
     # تفعيل الردود
@@ -221,9 +327,13 @@ async def _reply_control_handler(client, message):
         try:
             await message.reply_text(ENABLE_REPLY)
         except FloodWait as exc:
-            print(f"[NAME REACTION] FloodWait: {exc.value}s")
+            print(
+                f"[NAME REACTION] FloodWait: {exc.value}s"
+            )
         except Exception as exc:
-            print(f"[NAME REACTION] Enable error: {exc}")
+            print(
+                f"[NAME REACTION] Enable error: {exc}"
+            )
         return
     # --------------------------
     # تعطيل الردود
@@ -234,9 +344,13 @@ async def _reply_control_handler(client, message):
         try:
             await message.reply_text(DISABLE_REPLY)
         except FloodWait as exc:
-            print(f"[NAME REACTION] FloodWait: {exc.value}s")
+            print(
+                f"[NAME REACTION] FloodWait: {exc.value}s"
+            )
         except Exception as exc:
-            print(f"[NAME REACTION] Disable error: {exc}")
+            print(
+                f"[NAME REACTION] Disable error: {exc}"
+            )
         return
     # --------------------------
     # الكتم
@@ -286,7 +400,9 @@ async def _private_moderation_handler(client, message):
         return
     user_id = str(message.from_user.id)
     # تحديث الاسم المحفوظ
-    display_name = get_user_display_name(message.from_user)
+    display_name = get_user_display_name(
+        message.from_user
+    )
     changed = False
     if user_id in muted_users:
         if muted_users[user_id] != display_name:
@@ -322,10 +438,10 @@ async def _private_moderation_handler(client, message):
         print(
             f"[PRIVATE MODERATION] Delete error: {exc}"
         )
-    # إذا كان مكتوماً لا نرسل له أي تنبيه
+    # إذا كان مكتوماً لا نرسل أي تنبيه
     if is_muted:
         return
-    # إذا كان مقيداً نرسل له تنبيهاً
+    # إذا كان مقيداً نرسل تنبيهاً
     if is_restricted:
         now = time.monotonic()
         last_notice = restrict_notice_times.get(
@@ -448,9 +564,15 @@ async def start_name_reaction():
         group=PRIVATE_HANDLER_GROUP
     )
     print("[NAME REACTION] Started successfully.")
-    print(f"[NAME REACTION] Replies enabled: {replies_enabled}")
-    print(f"[PRIVATE MODERATION] Muted: {len(muted_users)}")
-    print(f"[PRIVATE MODERATION] Restricted: {len(restricted_users)}")
+    print(
+        f"[NAME REACTION] Replies enabled: {replies_enabled}"
+    )
+    print(
+        f"[PRIVATE MODERATION] Muted: {len(muted_users)}"
+    )
+    print(
+        f"[PRIVATE MODERATION] Restricted: {len(restricted_users)}"
+    )
 # ==========================================
 # الإيقاف
 # ==========================================
