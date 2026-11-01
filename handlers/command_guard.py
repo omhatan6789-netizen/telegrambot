@@ -26,15 +26,12 @@ MULTI_WORD_COMMANDS = [
     "مسح رد",
     "الردود",
     "مسح الردود",
+
+    # نظام الألعاب الجديد
     "اضف لعبة",
     "الالعاب",
-    "اضف سؤال",
-    "حذف سؤال",
     "حذف لعبة",
-    "تفعيل لعبة",
-    "تعطيل لعبة",
-    "تفعيل الالعاب",
-    "تعطيل الالعاب",
+
     "رفع Dev",
     "تنزيل Dev",
     "رفع المالك",
@@ -97,16 +94,20 @@ def is_waiting_for_input(context, user_id):
     except Exception:
         pass
     try:
-        from games.games_manager import (
+        from games.engine import (
             add_game_sessions,
             add_question_sessions,
         )
+
         if user_id in add_game_sessions:
             return True
+
         if user_id in add_question_sessions:
             return True
-    except Exception:
-        pass
+
+    except Exception as e:
+        print(f"⚠️ خطأ في فحص جلسات الألعاب: {e}")
+        
     try:
         from handlers.button_colors import (
             color_sessions
