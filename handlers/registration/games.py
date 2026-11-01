@@ -6,22 +6,15 @@ from telegram.ext import (
     filters,
 )
 
-# ==================================================
-# الألعاب القديمة
-# ==================================================
-
-from games.hide_and_seek import (
-    start_hide_game,
-    hide_number_callback,
-    search_number_callback,
+from games.demon_nawaf import (
+    start_demon_nawaf,
+    demon_nawaf_callback,
+    demon_nawaf_private_start,
 )
 
-from games.penalties import (
-    start_penalty_game,
-    distribute_penalties,
-    manual_team_command,
-    distribution_callback,
-    penalty_direction_callback,
+from handlers.games_menu import (
+    games_menu_command,
+    games_menu_callback,
 )
 
 from games.big_game_join import (
@@ -32,15 +25,27 @@ from games.big_game_join import (
     end_big_game_router,
 )
 
+from games.xo import (
+    start_xo_game,
+    xo_callback,
+)
+
+from games.rock_paper_scissors import (
+    start_rock_paper_scissors,
+    rock_paper_scissors_callback,
+)
+
 from games.word_race import (
     start_word_race,
     word_race_mode,
     word_race_distribution,
     word_race_manual_team,
-    check_word_race_message,
     word_race_callback,
+    check_word_race_message,
     WordRaceActiveFilter,
 )
+
+from games.engine import game_message_handler
 
 from games.image_quiz.image_quiz import (
     start_image_quiz,
@@ -71,591 +76,588 @@ from games.liar import (
     check_liar_message,
 )
 
-from games.xo import (
-    start_xo_game,
-    xo_callback,
+from games.penalties import (
+    start_penalty_game,
+    distribute_penalties,
+    manual_team_command,
+    distribution_callback,
+    penalty_direction_callback,
 )
 
-from games.rock_paper_scissors import (
-    start_rock_paper_scissors,
-    rock_paper_scissors_callback,
-)
-
-from games.demon_nawaf import (
-    start_demon_nawaf,
-    demon_nawaf_callback,
-    demon_nawaf_private_start,
-)
-
-# ==================================================
-# قائمة الألعاب وشرحها
-# ==================================================
-
-from handlers.games_menu import (
-    games_menu_command,
-    games_menu_callback,
+from games.hide_and_seek import (
+    start_hide_game,
+    hide_number_callback,
+    search_number_callback,
 )
 
 from handlers.games_help import games_help
 
-# ==================================================
-# محرك الألعاب الجديد
-# ==================================================
-
-from games.engine import game_message_handler
-
 
 def build_games_handlers(app):
-    handlers = []
+    handlers = [
 
-    # --------------------------------------------------
-    # ديمون نواف
-    # --------------------------------------------------
+        # ==========================================
+        # ديمون نواف
+        # ==========================================
 
-    handlers.append((
-        100,
-        -4,
-        MessageHandler(
-            (filters.ChatType.GROUPS | filters.ChatType.PRIVATE)
-            & filters.Regex(r"^(?:ديمون نواف|Demon Nawaf)$"),
-            start_demon_nawaf,
-        ),
-    ))
-
-    handlers.append((
-        110,
-        -4,
-        CallbackQueryHandler(
-            demon_nawaf_callback,
-            pattern=r"^dn:",
-        ),
-    ))
-
-    handlers.append((
-        120,
-        -5,
-        MessageHandler(
-            filters.ChatType.PRIVATE
-            & filters.Regex(r"^/start(?:@\w+)?\s+demon_nawaf$"),
-            demon_nawaf_private_start,
-        ),
-    ))
-
-    # --------------------------------------------------
-    # قائمة الألعاب
-    # --------------------------------------------------
-
-    handlers.append((
-        200,
-        -4,
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.Regex(r"^\.لعبة$"),
-            games_menu_command,
-        ),
-    ))
-
-    # --------------------------------------------------
-    # الألعاب الموحدة
-    # --------------------------------------------------
-
-    handlers.append((
-        210,
-        -4,
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.Regex(r"^دخول$"),
-            join_big_game_router,
-        ),
-    ))
-
-    handlers.append((
-        220,
-        -4,
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.Regex(r"^\.خروج$"),
-            leave_big_game_router,
-        ),
-    ))
-
-    handlers.append((
-        230,
-        -4,
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.Regex(r"^\.ابدا$"),
-            begin_big_game_router,
-        ),
-    ))
-
-    handlers.append((
-        240,
-        -4,
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.Regex(r"^\.كمل$"),
-            continue_big_game_router,
-        ),
-    ))
-
-    handlers.append((
-        250,
-        -4,
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.Regex(r"^\.انهاء$"),
-            end_big_game_router,
-        ),
-    ))
-
-    # --------------------------------------------------
-    # اكس او
-    # --------------------------------------------------
-
-    handlers.append((
-        260,
-        -4,
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.Regex(r"^اكس او(?:\s+\d+)?$"),
-            start_xo_game,
-        ),
-    ))
-
-    handlers.append((
-        270,
-        -4,
-        CallbackQueryHandler(
-            xo_callback,
-            pattern=r"^xo:",
-        ),
-    ))
-
-    # --------------------------------------------------
-    # حجرة ورقة مقص
-    # --------------------------------------------------
-
-    handlers.append((
-        280,
-        -4,
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.Regex(
-                r"^(?:حجرة(?: ورقة مقص)?|ورقة|مقص)(?:\s+\d+)?$"
+        (
+            122,
+            -4,
+            MessageHandler(
+                (
+                    filters.ChatType.GROUPS
+                    | filters.ChatType.PRIVATE
+                )
+                & filters.Regex(
+                    r"^(?:ديمون نواف|Demon Nawaf)$"
+                ),
+                start_demon_nawaf,
             ),
-            start_rock_paper_scissors,
         ),
-    ))
 
-    handlers.append((
-        290,
-        -4,
-        CallbackQueryHandler(
-            rock_paper_scissors_callback,
-            pattern=r"^rps:",
-        ),
-    ))
-
-    # --------------------------------------------------
-    # سباق الكلمات
-    # --------------------------------------------------
-
-    handlers.append((
-        300,
-        -4,
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.Regex(r"^سباق الكلمات$"),
-            start_word_race,
-        ),
-    ))
-
-    handlers.append((
-        310,
-        -4,
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & WordRaceActiveFilter([r"^\.الطور$"]),
-            word_race_mode,
-        ),
-    ))
-
-    handlers.append((
-        320,
-        -4,
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & WordRaceActiveFilter([r"^\.وزع$"]),
-            word_race_distribution,
-        ),
-    ))
-
-    handlers.append((
-        330,
-        -4,
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & WordRaceActiveFilter(
-                [r"^\.اضافة (احمر|ازرق|اخضر|اصفر)$"]
+        (
+            123,
+            -4,
+            CallbackQueryHandler(
+                demon_nawaf_callback,
+                pattern=r"^dn:",
             ),
-            word_race_manual_team,
         ),
-    ))
 
-    handlers.append((
-        340,
-        -4,
-        CallbackQueryHandler(
-            word_race_callback,
-            pattern=r"^wr:",
+        (
+            124,
+            -5,
+            MessageHandler(
+                filters.ChatType.PRIVATE
+                & filters.Regex(
+                    r"^/start(?:@\w+)?\s+demon_nawaf$"
+                ),
+                demon_nawaf_private_start,
+            ),
         ),
-    ))
 
-    handlers.append((
-        350,
-        9,
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.TEXT
-            & ~filters.COMMAND,
-            check_word_race_message,
+        # ==========================================
+        # قائمة الألعاب
+        # ==========================================
+
+        (
+            145,
+            -4,
+            MessageHandler(
+                filters.ChatType.GROUPS
+                & filters.Regex(r"^\.لعبة$"),
+                games_menu_command,
+            ),
         ),
-    ))
 
-    handlers.append((
-        360,
-        9,
-        MessageHandler(
-            filters.ChatType.PRIVATE
-            & filters.TEXT
-            & ~filters.COMMAND,
-            check_word_race_message,
+        # ==========================================
+        # الألعاب الموحدة
+        # ==========================================
+
+        (
+            146,
+            -4,
+            MessageHandler(
+                filters.ChatType.GROUPS
+                & filters.Regex(r"^دخول$"),
+                join_big_game_router,
+            ),
         ),
-    ))
 
-    # --------------------------------------------------
-    # توقع الصورة
-    # --------------------------------------------------
-
-    handlers.append((
-        370,
-        -6,
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.Regex(r"^توقع الصورة$"),
-            start_image_quiz,
+        (
+            147,
+            -4,
+            MessageHandler(
+                filters.ChatType.GROUPS
+                & filters.Regex(r"^\.خروج$"),
+                leave_big_game_router,
+            ),
         ),
-    ))
 
-    handlers.append((
-        380,
-        -6,
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.Regex(r"^\.اضافة$"),
-            add_image_quiz_player,
+        (
+            148,
+            -4,
+            MessageHandler(
+                filters.ChatType.GROUPS
+                & filters.Regex(r"^\.ابدا$"),
+                begin_big_game_router,
+            ),
         ),
-    ))
 
-    handlers.append((
-        390,
-        -6,
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.Regex(r"^\.اعدادات$"),
-            image_quiz_settings,
+        (
+            149,
+            -4,
+            MessageHandler(
+                filters.ChatType.GROUPS
+                & filters.Regex(r"^\.كمل$"),
+                continue_big_game_router,
+            ),
         ),
-    ))
 
-    handlers.append((
-        400,
-        -6,
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.Regex(r"^اضف صور توقع$"),
-            add_manual_image_command,
+        (
+            150,
+            -4,
+            MessageHandler(
+                filters.ChatType.GROUPS
+                & filters.Regex(r"^\.انهاء$"),
+                end_big_game_router,
+            ),
         ),
-    ))
 
-    handlers.append((
-        410,
-        -6,
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.PHOTO,
-            receive_manual_image,
+        # ==========================================
+        # اكس او
+        # ==========================================
+
+        (
+            151,
+            -4,
+            MessageHandler(
+                filters.ChatType.GROUPS
+                & filters.Regex(r"^اكس او(?:\s+\d+)?$"),
+                start_xo_game,
+            ),
         ),
-    ))
 
-    handlers.append((
-        420,
-        -6,
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.Regex(r"^الغاء اضافة صورة$"),
-            cancel_manual_image,
+        (
+            152,
+            -4,
+            CallbackQueryHandler(
+                xo_callback,
+                pattern=r"^xo:",
+            ),
         ),
-    ))
 
-    handlers.append((
-        430,
-        -6,
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.Regex(r"^حذف صور توقع$"),
-            delete_manual_image_command,
+        # ==========================================
+        # حجرة ورقة مقص
+        # ==========================================
+
+        (
+            153,
+            -4,
+            MessageHandler(
+                filters.ChatType.GROUPS
+                & filters.Regex(
+                    r"^(?:حجرة(?: ورقة مقص)?|ورقة|مقص)(?:\s+\d+)?$"
+                ),
+                start_rock_paper_scissors,
+            ),
         ),
-    ))
 
-    handlers.append((
-        440,
-        -6,
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.PHOTO,
-            receive_delete_manual_image,
+        (
+            154,
+            -4,
+            CallbackQueryHandler(
+                rock_paper_scissors_callback,
+                pattern=r"^rps:",
+            ),
         ),
-    ))
 
-    handlers.append((
-        450,
-        -6,
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.Regex(r"^الغاء حذف صورة$"),
-            cancel_delete_manual_image,
+        # ==========================================
+        # سباق الكلمات
+        # ==========================================
+
+        (
+            155,
+            -4,
+            MessageHandler(
+                filters.ChatType.GROUPS
+                & filters.Regex(r"^سباق الكلمات$"),
+                start_word_race,
+            ),
         ),
-    ))
 
-    handlers.append((
-        460,
-        -6,
-        CallbackQueryHandler(
-            image_quiz_callback,
-            pattern=r"^iq:",
+        (
+            156,
+            -4,
+            MessageHandler(
+                filters.ChatType.GROUPS
+                & WordRaceActiveFilter([r"^\.الطور$"]),
+                word_race_mode,
+            ),
         ),
-    ))
 
-    handlers.append((
-        470,
-        8,
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.TEXT
-            & ~filters.COMMAND,
-            check_image_quiz_message,
+        (
+            157,
+            -4,
+            MessageHandler(
+                filters.ChatType.GROUPS
+                & WordRaceActiveFilter([r"^\.وزع$"]),
+                word_race_distribution,
+            ),
         ),
-    ))
 
-    # --------------------------------------------------
-    # طاولة الكذب
-    # --------------------------------------------------
-
-    handlers.append((
-        480,
-        -4,
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & filters.Regex(r"^طاولة الكذب$"),
-            start_liars_table,
+        (
+            158,
+            -4,
+            MessageHandler(
+                filters.ChatType.GROUPS
+                & WordRaceActiveFilter(
+                    [r"^\.اضافة (احمر|ازرق|اخضر|اصفر)$"]
+                ),
+                word_race_manual_team,
+            ),
         ),
-    ))
 
-    handlers.append((
-        490,
-        -4,
-        CallbackQueryHandler(
-            liars_table_callback,
-            pattern=r"^lt:",
+        (
+            159,
+            -4,
+            CallbackQueryHandler(
+                word_race_callback,
+                pattern=r"^wr:",
+            ),
         ),
-    ))
 
-    handlers.append((
-        500,
-        -4,
-        CommandHandler(
-            "start",
-            liars_table_private_start,
+        (
+            160,
+            9,
+            MessageHandler(
+                filters.ChatType.GROUPS
+                & filters.TEXT
+                & ~filters.COMMAND,
+                check_word_race_message,
+            ),
         ),
-    ))
 
-    # --------------------------------------------------
-    # لعبة الكذاب
-    # --------------------------------------------------
-
-    handlers.append((
-        510,
-        0,
-        MessageHandler(
-            filters.Regex(r"^الكذاب$"),
-            start_liar_game_lobby,
+        (
+            161,
+            9,
+            MessageHandler(
+                filters.ChatType.PRIVATE
+                & filters.TEXT
+                & ~filters.COMMAND,
+                check_word_race_message,
+            ),
         ),
-    ))
 
-    handlers.append((
-        520,
-        -3,
-        MessageHandler(
-            filters.Regex(r"^\.التصويت$"),
-            force_voting,
+        # ==========================================
+        # محرك الألعاب
+        # ==========================================
+
+        (
+            164,
+            30,
+            MessageHandler(
+                filters.ChatType.GROUPS
+                & (
+                    filters.TEXT
+                    | filters.PHOTO
+                ),
+                game_message_handler,
+            ),
         ),
-    ))
 
-    handlers.append((
-        530,
-        -3,
-        CallbackQueryHandler(
-            liar_lobby_callback,
-            pattern=r"^liar_lobby:",
+        # ==========================================
+        # توقع الصورة
+        # ==========================================
+
+        (
+            168,
+            -6,
+            MessageHandler(
+                filters.ChatType.GROUPS
+                & filters.Regex(r"^توقع الصورة$"),
+                start_image_quiz,
+            ),
         ),
-    ))
 
-    handlers.append((
-        540,
-        -3,
-        CallbackQueryHandler(
-            liar_vote_callback,
-            pattern=r"^liar_vote:",
+        (
+            169,
+            -6,
+            MessageHandler(
+                filters.ChatType.GROUPS
+                & filters.Regex(r"^\.اضافة$"),
+                add_image_quiz_player,
+            ),
         ),
-    ))
 
-    handlers.append((
-        550,
-        -3,
-        CallbackQueryHandler(
-            liar_guess_callback,
-            pattern=r"^liar_guess:",
+        (
+            170,
+            -6,
+            MessageHandler(
+                filters.ChatType.GROUPS
+                & filters.Regex(r"^\.اعدادات$"),
+                image_quiz_settings,
+            ),
         ),
-    ))
 
-    handlers.append((
-        560,
-        9,
-        MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
-            check_liar_message,
+        (
+            171,
+            -6,
+            MessageHandler(
+                filters.ChatType.GROUPS
+                & filters.Regex(r"^اضف صور توقع$"),
+                add_manual_image_command,
+            ),
         ),
-    ))
 
-    # --------------------------------------------------
-    # البلنتيات
-    # --------------------------------------------------
-
-    handlers.append((
-        570,
-        0,
-        MessageHandler(
-            filters.Regex(r"^بلنتيات$"),
-            start_penalty_game,
+        (
+            172,
+            -6,
+            MessageHandler(
+                filters.ChatType.GROUPS
+                & filters.PHOTO,
+                receive_manual_image,
+            ),
         ),
-    ))
 
-    handlers.append((
-        580,
-        0,
-        MessageHandler(
-            filters.Regex(r"^\.وزع$"),
-            distribute_penalties,
+        (
+            173,
+            -6,
+            MessageHandler(
+                filters.ChatType.GROUPS
+                & filters.Regex(r"^الغاء اضافة صورة$"),
+                cancel_manual_image,
+            ),
         ),
-    ))
 
-    handlers.append((
-        590,
-        0,
-        MessageHandler(
-            filters.Regex(r"^\.(?:احمر|ازرق)(?:\s+\d+)+$"),
-            manual_team_command,
+        (
+            174,
+            -6,
+            MessageHandler(
+                filters.ChatType.GROUPS
+                & filters.Regex(r"^حذف صور توقع$"),
+                delete_manual_image_command,
+            ),
         ),
-    ))
 
-    handlers.append((
-        600,
-        -3,
-        CallbackQueryHandler(
-            distribution_callback,
-            pattern=r"^penalty:distribution:",
+        (
+            175,
+            -6,
+            MessageHandler(
+                filters.ChatType.GROUPS
+                & filters.PHOTO,
+                receive_delete_manual_image,
+            ),
         ),
-    ))
 
-    handlers.append((
-        610,
-        -3,
-        CallbackQueryHandler(
-            penalty_direction_callback,
-            pattern=r"^penalty:direction:",
+        (
+            176,
+            -6,
+            MessageHandler(
+                filters.ChatType.GROUPS
+                & filters.Regex(r"^الغاء حذف صورة$"),
+                cancel_delete_manual_image,
+            ),
         ),
-    ))
 
-    # --------------------------------------------------
-    # الغميضة
-    # --------------------------------------------------
-
-    handlers.append((
-        620,
-        0,
-        MessageHandler(
-            filters.Regex(r"^غميضة$"),
-            start_hide_game,
+        (
+            177,
+            -6,
+            CallbackQueryHandler(
+                image_quiz_callback,
+                pattern=r"^iq:",
+            ),
         ),
-    ))
 
-    handlers.append((
-        630,
-        -3,
-        CallbackQueryHandler(
-            hide_number_callback,
-            pattern=r"^hide:",
+        (
+            178,
+            8,
+            MessageHandler(
+                filters.ChatType.GROUPS
+                & filters.TEXT
+                & ~filters.COMMAND,
+                check_image_quiz_message,
+            ),
         ),
-    ))
 
-    handlers.append((
-        640,
-        -3,
-        CallbackQueryHandler(
-            search_number_callback,
-            pattern=r"^search:",
+        # ==========================================
+        # طاولة الكذب
+        # ==========================================
+
+        (
+            179,
+            -4,
+            MessageHandler(
+                filters.ChatType.GROUPS
+                & filters.Regex(r"^طاولة الكذب$"),
+                start_liars_table,
+            ),
         ),
-    ))
 
-    # --------------------------------------------------
-    # محرك الألعاب الجديد
-    # --------------------------------------------------
-
-    handlers.append((
-        650,
-        30,
-        MessageHandler(
-            filters.ChatType.GROUPS
-            & (filters.TEXT | filters.PHOTO),
-            game_message_handler,
+        (
+            180,
+            -4,
+            CallbackQueryHandler(
+                liars_table_callback,
+                pattern=r"^lt:",
+            ),
         ),
-    ))
 
-    # --------------------------------------------------
-    # شرح الألعاب
-    # --------------------------------------------------
-
-    handlers.append((
-        660,
-        0,
-        MessageHandler(
-            filters.Regex(r"^شرح الالعاب$"),
-            games_help,
+        (
+            181,
+            -4,
+            CommandHandler(
+                "start",
+                liars_table_private_start,
+            ),
         ),
-    ))
 
-    # --------------------------------------------------
-    # Callback قائمة الألعاب
-    # --------------------------------------------------
+        # ==========================================
+        # لعبة الكذاب
+        # ==========================================
 
-    handlers.append((
-        670,
-        0,
-        CallbackQueryHandler(
-            games_menu_callback,
-            pattern=r"^game_menu:",
+        (
+            182,
+            0,
+            MessageHandler(
+                filters.Regex(r"^الكذاب$"),
+                start_liar_game_lobby,
+            ),
         ),
-    ))
+
+        (
+            183,
+            -3,
+            MessageHandler(
+                filters.Regex(r"^\.التصويت$"),
+                force_voting,
+            ),
+        ),
+
+        (
+            184,
+            -3,
+            CallbackQueryHandler(
+                liar_lobby_callback,
+                pattern=r"^liar_lobby:",
+            ),
+        ),
+
+        (
+            185,
+            -3,
+            CallbackQueryHandler(
+                liar_vote_callback,
+                pattern=r"^liar_vote:",
+            ),
+        ),
+
+        (
+            186,
+            -3,
+            CallbackQueryHandler(
+                liar_guess_callback,
+                pattern=r"^liar_guess:",
+            ),
+        ),
+
+        (
+            187,
+            9,
+            MessageHandler(
+                filters.TEXT
+                & ~filters.COMMAND,
+                check_liar_message,
+            ),
+        ),
+
+        # ==========================================
+        # لعبة البلنتيات
+        # ==========================================
+
+        (
+            188,
+            0,
+            MessageHandler(
+                filters.Regex(r"^بلنتيات$"),
+                start_penalty_game,
+            ),
+        ),
+
+        (
+            189,
+            0,
+            MessageHandler(
+                filters.Regex(r"^\.وزع$"),
+                distribute_penalties,
+            ),
+        ),
+
+        (
+            190,
+            0,
+            MessageHandler(
+                filters.Regex(
+                    r"^\.(?:احمر|ازرق)(?:\s+\d+)+$"
+                ),
+                manual_team_command,
+            ),
+        ),
+
+        (
+            191,
+            -3,
+            CallbackQueryHandler(
+                distribution_callback,
+                pattern=r"^penalty:distribution:",
+            ),
+        ),
+
+        (
+            192,
+            -3,
+            CallbackQueryHandler(
+                penalty_direction_callback,
+                pattern=r"^penalty:direction:",
+            ),
+        ),
+
+        # ==========================================
+        # لعبة الغميضة
+        # ==========================================
+
+        (
+            193,
+            0,
+            MessageHandler(
+                filters.Regex(r"^غميضة$"),
+                start_hide_game,
+            ),
+        ),
+
+        (
+            194,
+            -3,
+            CallbackQueryHandler(
+                hide_number_callback,
+                pattern=r"^hide:",
+            ),
+        ),
+
+        (
+            195,
+            -3,
+            CallbackQueryHandler(
+                search_number_callback,
+                pattern=r"^search:",
+            ),
+        ),
+
+        # ==========================================
+        # شرح الألعاب
+        # ==========================================
+
+        (
+            197,
+            0,
+            MessageHandler(
+                filters.Regex(r"^شرح الالعاب$"),
+                games_help,
+            ),
+        ),
+
+        # ==========================================
+        # Callback قائمة الألعاب
+        # ==========================================
+
+        (
+            199,
+            0,
+            CallbackQueryHandler(
+                games_menu_callback,
+                pattern=r"^game_menu:",
+            ),
+        ),
+    ]
 
     return handlers
