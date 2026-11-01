@@ -2400,13 +2400,7 @@ def main():
         group=9
     )
     
-    app.add_handler(
-        MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
-            check_speed_words
-        ),
-        group=10
-    )
+    
     # ==================================================
     # أدوات الصور - الخاص فقط
     # ==================================================
