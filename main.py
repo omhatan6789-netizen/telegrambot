@@ -409,6 +409,12 @@ from handlers.temporary_messages import (
 
 from account_clock import start_account_clock, shutdown_account_clock
 
+from auto_private_reply import (
+    start_auto_private_reply,
+    shutdown_auto_private_reply,
+)
+
+
 import os
 import asyncio
 import threading
@@ -666,12 +672,16 @@ def main():
             temporary_message_scheduler(application)
         )
 
-        # تشغيل حساب الموسيقى
+        # ==========================================
+        # تشغيل حساب الموسيقى والميزات المرتبطة به
+        # ==========================================
+
         try:
             music_started = await start_music_call()
 
             if music_started:
                 await start_account_clock()
+                await start_auto_private_reply()
 
         except Exception as e:
             print(f"⚠️ تعذر تشغيل حساب الصوت: {e}")
@@ -712,11 +722,29 @@ def main():
             except asyncio.CancelledError:
                 pass
 
+
+        # إيقاف الساعة
+        try:
+            await shutdown_account_clock()
+        except Exception as e:
+            print(f"⚠️ تعذر إيقاف الساعة: {e}")
+
+        # إيقاف الرد التلقائي
+        try:
+            await shutdown_auto_private_reply()
+        except Exception as e:
+            print(f"⚠️ تعذر إيقاف الرد التلقائي: {e}")
+
         # إيقاف حساب الموسيقى
         try:
             await shutdown_music_call()
         except Exception as e:
             print(f"⚠️ تعذر إيقاف حساب الموسيقى: {e}")
+                # إيقاف حساب الموسيقى
+                try:
+                    await shutdown_music_call()
+                except Exception as e:
+                    print(f"⚠️ تعذر إيقاف حساب الموسيقى: {e}")
 
         # حفظ الرسائل المعلقة
         try:
