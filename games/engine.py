@@ -396,11 +396,6 @@ async def expire_question(chat_id, game_name, question_id, context):
         active_games.pop(key, None)
         question_tasks.pop(key, None)
 
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text=f"انتهى وقت سؤال لعبة {game_name}! ⏰"
-        )
-
     except asyncio.CancelledError:
         raise
 
