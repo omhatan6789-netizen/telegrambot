@@ -1,4 +1,3 @@
-
 import asyncio
 import html
 import json
@@ -29,16 +28,10 @@ question_tasks = {}
 add_game_sessions = {}
 add_question_sessions = {}
 
-# كاش أسماء الألعاب.
-GAMES_CACHE_SECONDS = 30
+# كاش دائم طوال تشغيل البوت؛ يتم تحميله عند تجهيز الجداول.
 _games_cache = []
-_games_cache_at = 0
 _games_cache_loaded = False
-
-# كاش أسئلة الألعاب لتسريع تشغيلها.
-QUESTIONS_CACHE_SECONDS = 30
 _questions_cache = {}
-_questions_cache_at = {}
 
 
 # ==================================================
@@ -59,20 +52,16 @@ def is_game_admin(user_id):
 
 
 def invalidate_games_cache():
-    global _games_cache_at, _games_cache_loaded
-    _games_cache_at = 0
+    global _games_cache_loaded
     _games_cache_loaded = False
 
 
 def invalidate_questions_cache(game_name=None):
     if game_name is None:
         _questions_cache.clear()
-        _questions_cache_at.clear()
         return
 
-    key = normalize_text(game_name)
-    _questions_cache.pop(key, None)
-    _questions_cache_at.pop(key, None)
+    _questions_cache.pop(normalize_text(game_name), None)
 
 
 def get_game_key(chat_id, game_name):
@@ -116,15 +105,9 @@ def cancel_game_everywhere(game_name):
 # ==================================================
 
 def get_games(force=False):
-    global _games_cache, _games_cache_at, _games_cache_loaded
+    global _games_cache, _games_cache_loaded
 
-    now = time.monotonic()
-
-    if (
-        not force
-        and _games_cache_loaded
-        and now - _games_cache_at < GAMES_CACHE_SECONDS
-    ):
+    if _games_cache_loaded and not force:
         return list(_games_cache)
 
     conn = connect()
@@ -139,9 +122,7 @@ def get_games(force=False):
         """)
 
         _games_cache = [row[0] for row in cur.fetchall()]
-        _games_cache_at = time.monotonic()
         _games_cache_loaded = True
-
         return list(_games_cache)
 
     finally:
@@ -317,21 +298,74 @@ def ensure_game_tables():
         cur.close()
         conn.close()
 
+    # تحميل أسماء الألعاب والأسئلة مرة واحدة عند بدء تشغيل البوت.
+    load_game_caches()
+
 
 # ==================================================
 # قراءة أسئلة لعبة مع Cache
 # ==================================================
 
+def load_game_caches():
+    """تحميل الألعاب وأسئلتها إلى الذاكرة عند تشغيل البوت."""
+    global _games_cache, _games_cache_loaded, _questions_cache
+
+    conn = connect()
+    cur = conn.cursor()
+
+    try:
+        cur.execute("""
+            SELECT name
+            FROM games
+            WHERE status = 'on'
+            ORDER BY name
+        """)
+        games = [row[0] for row in cur.fetchall()]
+
+        cur.execute("""
+            SELECT id, game_name, question, image, caption, answers
+            FROM game_questions
+            ORDER BY id
+        """)
+
+        questions = {
+            normalize_text(name): []
+            for name in games
+        }
+
+        for row in cur.fetchall():
+            try:
+                answers = json.loads(row[5] or "[]")
+            except (TypeError, ValueError):
+                answers = []
+
+            if isinstance(answers, str):
+                answers = [answers]
+            elif not isinstance(answers, list):
+                answers = []
+
+            key = normalize_text(row[1])
+            questions.setdefault(key, []).append({
+                "id": row[0],
+                "question": row[2] or "",
+                "image": row[3],
+                "caption": row[4],
+                "answers": answers,
+            })
+
+        _games_cache = games
+        _games_cache_loaded = True
+        _questions_cache = questions
+
+    finally:
+        cur.close()
+        conn.close()
+
+
 def get_game_questions(game_name, force=False):
     cache_key = normalize_text(game_name)
-    now = time.monotonic()
 
-    if (
-        not force
-        and cache_key in _questions_cache
-        and now - _questions_cache_at.get(cache_key, 0)
-        < QUESTIONS_CACHE_SECONDS
-    ):
+    if not force and cache_key in _questions_cache:
         return list(_questions_cache[cache_key])
 
     conn = connect()
@@ -345,10 +379,9 @@ def get_game_questions(game_name, force=False):
             ORDER BY id
         """, (game_name,))
 
-        rows = cur.fetchall()
         result = []
 
-        for row in rows:
+        for row in cur.fetchall():
             try:
                 answers = json.loads(row[4] or "[]")
             except (TypeError, ValueError):
@@ -369,8 +402,6 @@ def get_game_questions(game_name, force=False):
             })
 
         _questions_cache[cache_key] = result
-        _questions_cache_at[cache_key] = time.monotonic()
-
         return list(result)
 
     finally:
@@ -418,11 +449,8 @@ async def start_game(message, game_name, context):
     # إلغاء السؤال السابق من اللعبة نفسها فقط.
     cancel_active_game(chat_id, matched_game)
 
-    # جلب الأسئلة خارج مسار الحلقة الرئيسية لتقليل تعطيل البوت.
-    questions = await asyncio.to_thread(
-        get_game_questions,
-        matched_game
-    )
+    # الأسئلة موجودة في الذاكرة؛ لا ننتظر اتصال قاعدة البيانات عند بدء اللعبة.
+    questions = get_game_questions(matched_game)
 
     if not questions:
         await message.reply_text(
@@ -670,7 +698,13 @@ async def save_new_game(message, name):
         conn.commit()
 
         if created:
-            invalidate_games_cache()
+            if _games_cache_loaded:
+                _games_cache.append(name)
+                _games_cache.sort()
+            else:
+                invalidate_games_cache()
+
+            _questions_cache[normalize_text(name)] = []
 
             await message.reply_text(
                 f"تمت إضافة لعبة {name} بنجاح.\n"
@@ -833,6 +867,7 @@ async def save_question(message, session, answers):
             INSERT INTO game_questions
             (game_name, question, image, caption, answers)
             VALUES (?, ?, ?, ?, ?)
+            RETURNING id
         """, (
             session["game"],
             session["question"],
@@ -841,8 +876,20 @@ async def save_question(message, session, answers):
             json.dumps(answers, ensure_ascii=False)
         ))
 
+        inserted = cur.fetchone()
         conn.commit()
-        invalidate_questions_cache(session["game"])
+
+        cache_key = normalize_text(session["game"])
+        if inserted and cache_key in _questions_cache:
+            _questions_cache[cache_key].append({
+                "id": inserted[0],
+                "question": session["question"] or "",
+                "image": session["image"],
+                "caption": session["caption"],
+                "answers": list(answers),
+            })
+        else:
+            invalidate_questions_cache(session["game"])
 
         await message.reply_text(
             f"تمت إضافة السؤال إلى لعبة {session['game']} بنجاح.\n"
@@ -863,6 +910,8 @@ async def save_question(message, session, answers):
 # ==================================================
 
 async def delete_game(message, user_id, game_name):
+    global _games_cache, _games_cache_loaded
+
     if not is_game_admin(user_id):
         await message.reply_text("هذا الأمر للمشرفين فقط.")
         return
@@ -899,8 +948,14 @@ async def delete_game(message, user_id, game_name):
         conn.commit()
 
         cancel_game_everywhere(actual_name)
-        invalidate_games_cache()
-        invalidate_questions_cache(actual_name)
+
+        if _games_cache_loaded:
+            _games_cache = [
+                name for name in _games_cache
+                if normalize_text(name) != normalize_text(actual_name)
+            ]
+
+        _questions_cache.pop(normalize_text(actual_name), None)
 
         await message.reply_text(
             f"تم حذف لعبة {actual_name} وجميع أسئلتها."
@@ -994,7 +1049,14 @@ async def delete_question_by_reply(message, user_id, game_name):
         conn.commit()
 
         cancel_question_everywhere(question_id)
-        invalidate_questions_cache(actual_game)
+
+        cache_key = normalize_text(actual_game)
+        cached_questions = _questions_cache.get(cache_key)
+        if cached_questions is not None:
+            _questions_cache[cache_key] = [
+                item for item in cached_questions
+                if item["id"] != question_id
+            ]
 
         await message.reply_text(
             "تم حذف السؤال وإجاباته بنجاح."
