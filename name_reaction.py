@@ -12,7 +12,7 @@ from music_call import get_music_client
 # الإعدادات
 # ==========================================
 TARGET_WORD = "نواف"
-REACTION_EMOJI = "😴"
+REACTION_EMOJI = "👍"
 ONLINE_REPLY = "مشغول👾"
 OFFLINE_REPLY = "نايم"
 ENABLE_REPLY = "طيب لا تنفخ فعلت لك الردود"
