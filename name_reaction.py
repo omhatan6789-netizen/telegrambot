@@ -59,8 +59,6 @@ DELETE_BATCH_SIZE = 100
 
 DAILY_MESSAGE = "@W_H_8"
 
-DAILY_GROUP_INVITE = "https://t.me/+puLNpCy1DaRhZjU0"
-
 DAILY_SEND_HOUR = 1
 DAILY_SEND_MINUTE = 30
 
@@ -819,34 +817,16 @@ def save_daily_state(data):
         )
 
 
+
 async def resolve_daily_chat():
-
     try:
-
-        invite_hash = DAILY_GROUP_INVITE.split("+", 1)[1]
-
-        invite = await _client.check_chat_invite(
-            invite_hash
-        )
-
-        chat = getattr(invite, "chat", None)
-
-        if chat is None:
-
-            raise RuntimeError(
-                "تعذر تحديد المجموعة من رابط الدعوة."
-            )
-
+        chat = await _client.get_chat(DAILY_CHAT_ID)
+        print(f"[DAILY MESSAGE] Target group: {chat.title}")
         return chat.id
 
     except Exception as exc:
-
-        print(
-            f"[DAILY MESSAGE] Group resolution error: {exc}"
-        )
-
+        print(f"[DAILY MESSAGE] Group resolution error: {exc}")
         return None
-
 
 async def daily_message_loop():
 
