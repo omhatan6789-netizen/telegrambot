@@ -1,4 +1,3 @@
-
 import re
 import json
 import time
@@ -195,6 +194,7 @@ async def get_account_status():
 # مسح رسائل الحساب في القروب
 # ==========================================
 
+
 async def delete_own_messages(client, message, count):
 
     if message.chat.type not in (
@@ -207,23 +207,27 @@ async def delete_own_messages(client, message, count):
         return
 
     chat_id = message.chat.id
+
+    # حذف رسالة الأمر فوراً
+    try:
+        await client.delete_messages(
+            chat_id=chat_id,
+            message_ids=message.id,
+            revoke=True
+        )
+    except Exception as exc:
+        print(f"[MESSAGE CLEANER] Command delete error: {exc}")
+
     message_ids = []
 
     print(
-        f"[MESSAGE CLEANER] Searching for {count} own messages "
-        f"in chat {chat_id}"
+        f"[MESSAGE CLEANER] Searching for {count} own messages"
     )
 
-    # البحث عن رسائل الحساب من الأحدث إلى الأقدم
-
+    # البحث عن أحدث رسائل الحساب
     try:
         async for old_message in client.get_chat_history(chat_id):
 
-            # تجاهل رسالة أمر المسح
-            if old_message.id == message.id:
-                continue
-
-            # التأكد أن الرسالة من حسابنا
             if (
                 old_message.from_user
                 and old_message.from_user.is_self
@@ -234,27 +238,18 @@ async def delete_own_messages(client, message, count):
                     break
 
     except FloodWait as exc:
-        print(
-            f"[MESSAGE CLEANER] History FloodWait: {exc.value}s"
-        )
-        return
+        print(f"[MESSAGE CLEANER] History FloodWait: {exc.value}s")
 
     except Exception as exc:
-        print(
-            f"[MESSAGE CLEANER] History error: {exc}"
-        )
-        return
+        print(f"[MESSAGE CLEANER] History error: {exc}")
 
-    # حذف الرسائل على دفعات
-
+    # الحذف من الأحدث إلى الأقدم
     deleted_count = 0
     failed_count = 0
 
     for start in range(0, len(message_ids), DELETE_BATCH_SIZE):
 
-        batch = message_ids[
-            start:start + DELETE_BATCH_SIZE
-        ]
+        batch = message_ids[start:start + DELETE_BATCH_SIZE]
 
         while True:
             try:
@@ -271,30 +266,14 @@ async def delete_own_messages(client, message, count):
                 print(
                     f"[MESSAGE CLEANER] FloodWait: {exc.value}s"
                 )
-
                 await asyncio.sleep(exc.value + 1)
 
             except Exception as exc:
                 print(
-                    f"[MESSAGE CLEANER] Batch delete error: {exc}"
+                    f"[MESSAGE CLEANER] Delete error: {exc}"
                 )
-
                 failed_count += len(batch)
                 break
-
-    # حذف رسالة الأمر
-
-    try:
-        await client.delete_messages(
-            chat_id=chat_id,
-            message_ids=message.id,
-            revoke=True
-        )
-
-    except Exception as exc:
-        print(
-            f"[MESSAGE CLEANER] Command delete error: {exc}"
-        )
 
     print(
         f"[MESSAGE CLEANER] Finished | "
@@ -303,6 +282,7 @@ async def delete_own_messages(client, message, count):
         f"Deleted: {deleted_count} | "
         f"Failed: {failed_count}"
     )
+
 
 
 # ==========================================
