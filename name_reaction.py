@@ -20,7 +20,7 @@ from music_call import get_music_client
 # ==========================================
 
 TARGET_WORD = "نواف"
-REACTION_EMOJI = "👎"
+REACTION_EMOJI = "⚡️"
 
 ONLINE_REPLY = "مشغول👾"
 OFFLINE_REPLY = "نايم"
