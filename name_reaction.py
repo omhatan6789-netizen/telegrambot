@@ -1,3 +1,4 @@
+
 import re
 import json
 import time
@@ -13,13 +14,12 @@ from pyrogram.errors import FloodWait
 
 from music_call import get_music_client
 
-
 # ==========================================
 # الإعدادات
 # ==========================================
 
 TARGET_WORD = "نواف"
-REACTION_EMOJI = "⚡️"
+REACTION_EMOJI = "💯"
 
 ONLINE_REPLY = "مشغول👾"
 OFFLINE_REPLY = "نايم"
@@ -51,7 +51,6 @@ RESTRICT_NOTICE_INTERVAL = 60
 # عدد الرسائل في كل دفعة حذف
 DELETE_BATCH_SIZE = 100
 
-
 # ==========================================
 # الإرسال اليومي
 # ==========================================
@@ -64,7 +63,6 @@ DAILY_SEND_MINUTE = 30
 DAILY_TIMEZONE = ZoneInfo("Asia/Riyadh")
 
 DAILY_STATE_FILE = Path("daily_mention_state.json")
-
 
 # ==========================================
 # المتغيرات العامة
@@ -81,7 +79,6 @@ _daily_chat_id = None
 
 # آخر وقت أرسلنا فيه تنبيه التقييد
 restrict_notice_times = {}
-
 
 # ==========================================
 # حفظ الإعدادات
@@ -112,13 +109,11 @@ def load_settings():
 
     return default
 
-
 settings = load_settings()
 
 replies_enabled = settings["replies_enabled"]
 muted_users = settings["muted"]
 restricted_users = settings["restricted"]
-
 
 def save_settings():
     try:
@@ -143,7 +138,6 @@ def save_settings():
     except Exception as exc:
         print(f"[NAME REACTION] Settings save error: {exc}")
 
-
 # ==========================================
 # اسم المستخدم
 # ==========================================
@@ -159,7 +153,6 @@ def get_user_display_name(user):
 
     return name
 
-
 # ==========================================
 # اكتشاف كلمة نواف
 # ==========================================
@@ -167,7 +160,6 @@ def get_user_display_name(user):
 WORD_PATTERN = re.compile(
     rf"(?<!\w){re.escape(TARGET_WORD)}(?!\w)"
 )
-
 
 # ==========================================
 # معرفة حالة الحساب
@@ -189,11 +181,9 @@ async def get_account_status():
         print(f"[NAME REACTION] Status error: {exc}")
         return ONLINE_REPLY
 
-
 # ==========================================
 # مسح رسائل الحساب في القروب
 # ==========================================
-
 
 async def delete_own_messages(client, message, count):
 
@@ -207,27 +197,23 @@ async def delete_own_messages(client, message, count):
         return
 
     chat_id = message.chat.id
-
-    # حذف رسالة الأمر فوراً
-    try:
-        await client.delete_messages(
-            chat_id=chat_id,
-            message_ids=message.id,
-            revoke=True
-        )
-    except Exception as exc:
-        print(f"[MESSAGE CLEANER] Command delete error: {exc}")
-
     message_ids = []
 
     print(
-        f"[MESSAGE CLEANER] Searching for {count} own messages"
+        f"[MESSAGE CLEANER] Searching for {count} own messages "
+        f"in chat {chat_id}"
     )
 
-    # البحث عن أحدث رسائل الحساب
+    # البحث عن رسائل الحساب من الأحدث إلى الأقدم
+
     try:
         async for old_message in client.get_chat_history(chat_id):
 
+            # تجاهل رسالة أمر المسح
+            if old_message.id == message.id:
+                continue
+
+            # التأكد أن الرسالة من حسابنا
             if (
                 old_message.from_user
                 and old_message.from_user.is_self
@@ -238,18 +224,27 @@ async def delete_own_messages(client, message, count):
                     break
 
     except FloodWait as exc:
-        print(f"[MESSAGE CLEANER] History FloodWait: {exc.value}s")
+        print(
+            f"[MESSAGE CLEANER] History FloodWait: {exc.value}s"
+        )
+        return
 
     except Exception as exc:
-        print(f"[MESSAGE CLEANER] History error: {exc}")
+        print(
+            f"[MESSAGE CLEANER] History error: {exc}"
+        )
+        return
 
-    # الحذف من الأحدث إلى الأقدم
+    # حذف الرسائل على دفعات
+
     deleted_count = 0
     failed_count = 0
 
     for start in range(0, len(message_ids), DELETE_BATCH_SIZE):
 
-        batch = message_ids[start:start + DELETE_BATCH_SIZE]
+        batch = message_ids[
+            start:start + DELETE_BATCH_SIZE
+        ]
 
         while True:
             try:
@@ -266,14 +261,30 @@ async def delete_own_messages(client, message, count):
                 print(
                     f"[MESSAGE CLEANER] FloodWait: {exc.value}s"
                 )
+
                 await asyncio.sleep(exc.value + 1)
 
             except Exception as exc:
                 print(
-                    f"[MESSAGE CLEANER] Delete error: {exc}"
+                    f"[MESSAGE CLEANER] Batch delete error: {exc}"
                 )
+
                 failed_count += len(batch)
                 break
+
+    # حذف رسالة الأمر
+
+    try:
+        await client.delete_messages(
+            chat_id=chat_id,
+            message_ids=message.id,
+            revoke=True
+        )
+
+    except Exception as exc:
+        print(
+            f"[MESSAGE CLEANER] Command delete error: {exc}"
+        )
 
     print(
         f"[MESSAGE CLEANER] Finished | "
@@ -282,8 +293,6 @@ async def delete_own_messages(client, message, count):
         f"Deleted: {deleted_count} | "
         f"Failed: {failed_count}"
     )
-
-
 
 # ==========================================
 # تنفيذ أوامر الكتم والتقييد
@@ -387,7 +396,6 @@ async def moderate_user(message, action):
             f"[PRIVATE MODERATION] Unrestricted {user_id}"
         )
 
-
 # ==========================================
 # عرض قائمة المستخدمين
 # ==========================================
@@ -413,7 +421,6 @@ async def show_users_list(message, user_list, title):
     await message.reply_text(
         "\n".join(lines)
     )
-
 
 # ==========================================
 # أوامر التحكم
@@ -554,7 +561,6 @@ async def _reply_control_handler(client, message):
 
         return
 
-
 # ==========================================
 # مراقبة رسائل الخاص
 # ==========================================
@@ -671,7 +677,6 @@ async def _private_moderation_handler(client, message):
                 f"[PRIVATE MODERATION] Notice error: {exc}"
             )
 
-
 # ==========================================
 # استقبال رسائل القروبات واكتشاف نواف
 # ==========================================
@@ -747,7 +752,6 @@ async def _name_reaction_handler(client, message):
             f"[NAME REACTION] Reply error: {exc}"
         )
 
-
 # ==========================================
 # الإرسال اليومي التلقائي
 # ==========================================
@@ -772,7 +776,6 @@ def load_daily_state():
 
     return {}
 
-
 def save_daily_state(data):
 
     try:
@@ -795,8 +798,6 @@ def save_daily_state(data):
         print(
             f"[DAILY MESSAGE] State save error: {exc}"
         )
-
-
 
 async def resolve_daily_chat():
     try:
@@ -922,7 +923,6 @@ async def daily_message_loop():
 
             await asyncio.sleep(60)
 
-
 # ==========================================
 # التشغيل
 # ==========================================
@@ -1014,7 +1014,6 @@ async def start_name_reaction():
     print(
         "[DAILY MESSAGE] Daily scheduler enabled."
     )
-
 
 # ==========================================
 # الإيقاف
